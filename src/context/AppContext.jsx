@@ -7,7 +7,8 @@ import { createLocalBackend, isLocalStoreReady, initLocalStore } from '../api/lo
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
 import { LS_SPREADSHEET_ID, LS_MODE, DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED } from '../config';
-import { newId } from '../utils/format';
+import { newId, todayIso } from '../utils/format';
+import { walletBalance } from '../utils/finance';
 
 const AppContext = createContext(null);
 
@@ -357,6 +358,33 @@ export function AppProvider({ children }) {
     [withAuthGuard],
   );
 
+  // Задать реальный баланс кошелька — создаёт операцию-корректировку на разницу.
+  const setWalletBalance = useCallback(
+    (wallet, actual) =>
+      withAuthGuard(async () => {
+        const current = walletBalance(transactions, wallet.id);
+        const diff = actual - current;
+        if (Math.abs(diff) < 0.005) return; // уже совпадает
+        const tx = {
+          id: newId(),
+          date: todayIso(),
+          type: diff > 0 ? 'adjust_in' : 'adjust_out',
+          amount: Math.abs(diff),
+          category: '',
+          note: 'Корректировка баланса',
+          tags: [],
+          wallet: wallet.id,
+          currency: wallet.currency,
+          origAmount: null,
+          origCurrency: '',
+          transferId: '',
+        };
+        await backendRef.current.addTransaction(tx);
+        setTransactions((prev) => [...prev, tx]);
+      }),
+    [withAuthGuard, transactions],
+  );
+
   // --- Теги -----------------------------------------------------------------
   const addTag = useCallback(
     (name) => withAuthGuard(async () => { await backendRef.current.addTag(name); setTags(await backendRef.current.fetchTags()); }),
@@ -424,6 +452,7 @@ export function AppProvider({ children }) {
     addWallet,
     updateWallet,
     setWalletStatus,
+    setWalletBalance,
     addTag,
     deleteTag,
     setBaseCurrencyPref,

@@ -107,12 +107,15 @@ export default function Transactions() {
         <ul className="tx-list">
           {filtered.map((t) => {
             const transfer = t.type.startsWith('transfer');
-            const positive = isIncome(t) || t.type === 'transfer_in';
+            const adjust = t.type.startsWith('adjust');
+            const positive = isIncome(t) || t.type === 'transfer_in' || t.type === 'adjust_in';
+            const icon = transfer ? '⇄' : adjust ? '⚖️' : iconByCategory.get(t.category) || '🏷️';
+            const title = transfer ? 'Перевод' : adjust ? 'Корректировка' : t.category || 'Без категории';
             return (
               <li key={t.id} className="tx-item tx-item--clickable" onClick={() => navigate(`/edit/${t.id}`)}>
-                <span className="tx-item__cat-icon">{transfer ? '⇄' : iconByCategory.get(t.category) || '🏷️'}</span>
+                <span className="tx-item__cat-icon">{icon}</span>
                 <div className="tx-item__main">
-                  <span className="tx-item__category">{transfer ? 'Перевод' : t.category || 'Без категории'}</span>
+                  <span className="tx-item__category">{title}</span>
                   <span className="tx-item__note">
                     {walletById.get(t.wallet)?.name}
                     {t.origAmount ? ` · ${formatAmount(t.origAmount, t.origCurrency)}` : ''}

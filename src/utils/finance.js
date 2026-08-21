@@ -75,12 +75,13 @@ export function expenseTotalsByCategory(transactions, toDisplay) {
 }
 
 // Баланс кошелька в его валюте.
+// adjust_in / adjust_out — корректировки реального баланса (не доход/расход).
 export function walletBalance(transactions, walletId) {
   let balance = 0;
   for (const t of transactions) {
     if (t.wallet !== walletId) continue;
-    if (t.type === 'income' || t.type === 'transfer_in') balance += t.amount;
-    else if (t.type === 'expense' || t.type === 'transfer_out') balance -= t.amount;
+    if (t.type === 'income' || t.type === 'transfer_in' || t.type === 'adjust_in') balance += t.amount;
+    else if (t.type === 'expense' || t.type === 'transfer_out' || t.type === 'adjust_out') balance -= t.amount;
   }
   return balance;
 }

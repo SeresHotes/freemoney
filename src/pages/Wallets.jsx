@@ -5,14 +5,17 @@ import { CURRENCIES, formatAmount } from '../utils/currencies';
 import { walletBalance } from '../utils/finance';
 
 export default function Wallets() {
-  const { wallets, transactions, addWallet, updateWallet, setWalletStatus } = useApp();
+  const { wallets, transactions, addWallet, updateWallet, setWalletStatus, setWalletBalance } = useApp();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState(CURRENCIES[0].code);
+  const [balanceInput, setBalanceInput] = useState('');
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  const editingBalance = editing ? walletBalance(transactions, editing.id) : 0;
 
   const active = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
   const archived = useMemo(() => wallets.filter((w) => w.status === 'archived'), [wallets]);
@@ -21,6 +24,7 @@ export default function Wallets() {
     setEditing(null);
     setName('');
     setCurrency(CURRENCIES[0].code);
+    setBalanceInput('');
     setFormError(null);
   };
 
@@ -28,6 +32,8 @@ export default function Wallets() {
     setEditing(w);
     setName(w.name);
     setCurrency(w.currency);
+    setBalanceInput('');
+    setFormError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -41,8 +47,17 @@ export default function Wallets() {
     }
     setBusy(true);
     try {
-      if (editing) await updateWallet(editing, { name: trimmed, currency });
-      else await addWallet({ name: trimmed, currency });
+      if (editing) {
+        await updateWallet(editing, { name: trimmed, currency });
+        // Если указан реальный баланс — создаём корректировку на разницу.
+        const raw = balanceInput.trim();
+        if (raw !== '') {
+          const target = Number(raw.replace(',', '.'));
+          if (!Number.isNaN(target)) await setWalletBalance(editing, target);
+        }
+      } else {
+        await addWallet({ name: trimmed, currency });
+      }
       reset();
     } catch {
       setFormError('Не удалось сохранить');
@@ -78,6 +93,25 @@ export default function Wallets() {
           <button className="btn btn--primary" type="submit" disabled={busy}>{editing ? 'Сохранить' : 'Добавить'}</button>
           {editing && <button type="button" className="btn" onClick={reset} disabled={busy}>Отмена</button>}
         </div>
+
+        {editing && (
+          <label className="field">
+            <span className="field__label">
+              Реальный баланс сейчас · сейчас в приложении: {formatAmount(editingBalance, editing.currency)}
+            </span>
+            <input
+              className="field__input"
+              type="text"
+              inputMode="decimal"
+              placeholder={`оставьте пустым, чтобы не менять (${editing.currency})`}
+              value={balanceInput}
+              onChange={(e) => setBalanceInput(e.target.value)}
+            />
+            <span className="muted" style={{ fontSize: '0.78rem' }}>
+              Если укажете сумму, создастся операция-корректировка на разницу.
+            </span>
+          </label>
+        )}
       </form>
       {formError && <p className="form-error">{formError}</p>}
 

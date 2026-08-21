@@ -99,8 +99,10 @@ export default function AddTransaction() {
     else if (e.key === 'Backspace' && !tagDraft && tags.length) removeTag(tags[tags.length - 1]);
   };
 
-  // Перевод редактируем/удаляем отдельно — здесь только регулярные операции.
-  if (editing && (!editingTx || editingTx.type.startsWith('transfer'))) {
+  // Переводы и корректировки правим/удаляем отдельно — здесь только обычные операции.
+  const special = editingTx && (editingTx.type.startsWith('transfer') || editingTx.type.startsWith('adjust'));
+  if (editing && (!editingTx || special)) {
+    const isAdjust = editingTx?.type.startsWith('adjust');
     return (
       <div className="page">
         <header className="page__header page__header--with-back">
@@ -111,12 +113,14 @@ export default function AddTransaction() {
           <p className="muted">Операция не найдена.</p>
         ) : (
           <>
-            <p className="muted">Перевод между кошельками нельзя отредактировать — только удалить.</p>
+            <p className="muted">
+              {isAdjust ? 'Корректировку баланса' : 'Перевод между кошельками'} нельзя отредактировать — только удалить.
+            </p>
             <button
               className="btn btn--block btn--expense"
               onClick={async () => { await deleteTransaction(editingTx.id); navigate(-1); }}
             >
-              Удалить перевод
+              Удалить
             </button>
           </>
         )}
