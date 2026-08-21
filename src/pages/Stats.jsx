@@ -1,17 +1,22 @@
 import { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { useApp } from '../context/AppContext';
-import { monthKey, monthLabel, dayLabel, todayIso } from '../utils/format';
+import { monthKey, monthLabel, dayLabel, todayIso, compactNumber } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
-import { isIncome, isExpense, matchesFilters, buildTimeSeries } from '../utils/finance';
+import {
+  isIncome, isExpense, matchesFilters,
+  buildCategoryTimeSeries, expenseTotalsByCategory,
+} from '../utils/finance';
 import { useBaseRates } from '../hooks/useBaseRates';
 import ChipMultiSelect from '../components/ChipMultiSelect';
-import TrendChart from '../components/TrendChart';
+import CategoryTrendChart from '../components/CategoryTrendChart';
 
 const COLORS = [
   '#60a5fa', '#f87171', '#34d399', '#fbbf24', '#a78bfa',
   '#f472b6', '#22d3ee', '#fb923c', '#4ade80', '#e879f9',
 ];
+const OTHER_COLOR = '#64748b';
+const TOP = 8;
 
 export default function Stats() {
   const { transactions, categories, wallets, tags, baseCurrency } = useApp();
@@ -20,10 +25,9 @@ export default function Stats() {
   const [cats, setCats] = useState([]);
   const [tagSel, setTagSel] = useState([]);
   const [wals, setWals] = useState([]);
-  const [granularity, setGranularity] = useState('month'); // 'day' | 'month'
+  const [granularity, setGranularity] = useState('month');
 
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
-
   const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [categories]);
   const walletOptions = useMemo(() => activeWallets.map((w) => ({ value: w.id, label: w.name })), [activeWallets]);
   const tagOptions = useMemo(() => {
@@ -32,7 +36,6 @@ export default function Stats() {
     return [...set].sort().map((t) => ({ value: t, label: `#${t}` }));
   }, [tags, transactions]);
 
-  // Валюта показа: один кошелёк → его валюта, иначе базовая.
   const singleWallet = wals.length === 1 ? activeWallets.find((w) => w.id === wals[0]) : null;
   const displayCurrency = singleWallet ? singleWallet.currency : baseCurrency;
   const toDisplay = (t) => (singleWallet ? t.amount : toBase(t.amount, t.currency));
@@ -67,13 +70,21 @@ export default function Stats() {
     return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [monthTx, singleWallet, toBase]);
 
-  const trend = useMemo(() => {
-    const series = buildTimeSeries(scoped, granularity, toDisplay);
-    const sliced = granularity === 'day' ? series.slice(-30) : series.slice(-12);
-    return sliced.map((b) => ({
+  // Топ категорий расходов за период (для цветов и стек-графика).
+  const { series, catTrend } = useMemo(() => {
+    const totals = expenseTotalsByCategory(scoped, toDisplay);
+    const topCats = totals.slice(0, TOP).map((c) => c.name);
+    const hasOther = totals.length > TOP;
+    const seriesList = topCats.map((name, i) => ({ name, color: COLORS[i % COLORS.length] }));
+    if (hasOther) seriesList.push({ name: 'Другое', color: OTHER_COLOR });
+
+    const raw = buildCategoryTimeSeries(scoped, granularity, toDisplay, topCats);
+    const sliced = granularity === 'day' ? raw.slice(-30) : raw.slice(-12);
+    const data = sliced.map((b) => ({
       ...b,
       label: granularity === 'day' ? dayLabel(b.key) : monthLabel(b.key).replace(/ \d{4}$/, ''),
     }));
+    return { series: seriesList, catTrend: data };
   }, [scoped, granularity, singleWallet, toBase]);
 
   const fmt = (v) => formatAmount(v, displayCurrency);
@@ -91,21 +102,6 @@ export default function Stats() {
       </div>
 
       <section>
-        <div className="seg">
-          <button className={`seg__btn${granularity === 'day' ? ' seg__btn--active' : ''}`} onClick={() => setGranularity('day')}>По дням</button>
-          <button className={`seg__btn${granularity === 'month' ? ' seg__btn--active' : ''}`} onClick={() => setGranularity('month')}>По месяцам</button>
-        </div>
-        <h2 className="section-title">
-          Динамика {granularity === 'day' ? '(30 дней)' : '(12 месяцев)'} · {displayCurrency}
-        </h2>
-        {trend.length === 0 ? (
-          <p className="muted empty">Нет данных за период</p>
-        ) : (
-          <TrendChart data={trend} formatValue={(v) => fmt(v)} />
-        )}
-      </section>
-
-      <section>
         <h2 className="section-title">Сводка за месяц</h2>
         <select className="field__input field__input--select" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
           {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
@@ -118,7 +114,7 @@ export default function Stats() {
       </section>
 
       <section>
-        <h2 className="section-title">Расходы по категориям</h2>
+        <h2 className="section-title">Расходы по категориям · {monthLabel(selectedMonth)}</h2>
         {byCategory.length === 0 ? (
           <p className="muted empty">Нет расходов за этот месяц</p>
         ) : (
@@ -139,6 +135,31 @@ export default function Stats() {
                   <span className="legend__dot" style={{ background: COLORS[i % COLORS.length] }} />
                   <span className="legend__name">{c.name}</span>
                   <span className="legend__value">{fmt(c.value)}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+
+      <section>
+        <div className="seg">
+          <button className={`seg__btn${granularity === 'day' ? ' seg__btn--active' : ''}`} onClick={() => setGranularity('day')}>По дням</button>
+          <button className={`seg__btn${granularity === 'month' ? ' seg__btn--active' : ''}`} onClick={() => setGranularity('month')}>По месяцам</button>
+        </div>
+        <h2 className="section-title">
+          Динамика расходов {granularity === 'day' ? '(30 дней)' : '(12 месяцев)'} · {displayCurrency}
+        </h2>
+        {catTrend.length === 0 ? (
+          <p className="muted empty">Нет данных за период</p>
+        ) : (
+          <>
+            <CategoryTrendChart data={catTrend} series={series} formatValue={(v) => fmt(v)} formatAxis={compactNumber} />
+            <ul className="legend">
+              {series.map((s) => (
+                <li key={s.name} className="legend__item">
+                  <span className="legend__dot" style={{ background: s.color }} />
+                  <span className="legend__name">{s.name}</span>
                 </li>
               ))}
             </ul>

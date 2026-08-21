@@ -6,8 +6,9 @@ const TOOLTIP_STYLE = {
   borderRadius: 8,
 };
 
-// data: [{ label, income, expense }]. formatValue — тултип, formatAxis — ось Y.
-export default function TrendChart({ data, formatValue, formatAxis, height = 240 }) {
+// Стек-график расходов по категориям во времени.
+// data: [{ label, [catName]: value }]; series: [{ name, color }].
+export default function CategoryTrendChart({ data, series, formatValue, formatAxis, height = 260 }) {
   return (
     <div className="chart">
       <ResponsiveContainer width="100%" height={height}>
@@ -22,8 +23,15 @@ export default function TrendChart({ data, formatValue, formatAxis, height = 240
             labelStyle={{ color: '#f1f5f9' }}
             itemStyle={{ color: '#f1f5f9' }}
           />
-          <Bar dataKey="income" name="Доход" fill="#34d399" radius={[3, 3, 0, 0]} />
-          <Bar dataKey="expense" name="Расход" fill="#f87171" radius={[3, 3, 0, 0]} />
+          {series.map((s, i) => (
+            <Bar
+              key={s.name}
+              dataKey={s.name}
+              stackId="e"
+              fill={s.color}
+              radius={i === series.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+            />
+          ))}
         </BarChart>
       </ResponsiveContainer>
     </div>

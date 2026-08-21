@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { monthKey, todayIso, daysAgoIso, dayLabel } from '../utils/format';
+import { monthKey, todayIso, daysAgoIso, dayLabel, compactNumber } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isIncome, isExpense, buildTimeSeries } from '../utils/finance';
 import { useBaseRates } from '../hooks/useBaseRates';
@@ -91,7 +91,7 @@ export default function Home() {
           <p className="muted empty">Пока нет операций. Добавьте первую!</p>
         ) : (
           <Suspense fallback={<div className="chart"><div className="spinner" /></div>}>
-            <TrendChart data={chartData} formatValue={(v) => formatAmount(v, baseCurrency)} />
+            <TrendChart data={chartData} formatValue={(v) => formatAmount(v, baseCurrency)} formatAxis={compactNumber} />
           </Suspense>
         )}
       </section>

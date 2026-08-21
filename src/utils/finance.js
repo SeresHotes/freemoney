@@ -41,6 +41,39 @@ export function buildTimeSeries(transactions, granularity, toDisplay) {
   return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
 }
 
+// Ряд расходов по категориям во времени (для стек-графика).
+// topCategories — категории, показываемые отдельно; остальные идут в «Другое».
+export function buildCategoryTimeSeries(transactions, granularity, toDisplay, topCategories) {
+  const topSet = new Set(topCategories);
+  const map = new Map();
+  for (const t of transactions) {
+    if (!isExpense(t)) continue;
+    const key = granularity === 'day' ? t.date : monthKey(t.date);
+    if (!key) continue;
+    const value = toDisplay(t);
+    if (value == null) continue;
+    if (!map.has(key)) map.set(key, { key });
+    const bucket = map.get(key);
+    const name = t.category || 'Без категории';
+    const bucketKey = topSet.has(name) ? name : 'Другое';
+    bucket[bucketKey] = (bucket[bucketKey] || 0) + value;
+  }
+  return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+}
+
+// Суммы расходов по категориям (для выбора топа и цветов).
+export function expenseTotalsByCategory(transactions, toDisplay) {
+  const map = new Map();
+  for (const t of transactions) {
+    if (!isExpense(t)) continue;
+    const value = toDisplay(t);
+    if (value == null) continue;
+    const name = t.category || 'Без категории';
+    map.set(name, (map.get(name) || 0) + value);
+  }
+  return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+}
+
 // Баланс кошелька в его валюте.
 export function walletBalance(transactions, walletId) {
   let balance = 0;

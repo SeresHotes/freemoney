@@ -44,6 +44,15 @@ export function dayLabel(iso) {
   return d && m ? `${d}.${m}` : iso;
 }
 
+// Компактное число для оси графика: 1500 -> «1,5 тыс.», 20000 -> «20 тыс.».
+const compactFormatter = new Intl.NumberFormat('ru-RU', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+export function compactNumber(value) {
+  return compactFormatter.format(value || 0);
+}
+
 export function newId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
