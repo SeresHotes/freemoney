@@ -1,0 +1,36 @@
+// Вспомогательные функции форматирования.
+
+const moneyFormatter = new Intl.NumberFormat('ru-RU', {
+  style: 'currency',
+  currency: 'RUB',
+  maximumFractionDigits: 0,
+});
+
+export function formatMoney(value) {
+  return moneyFormatter.format(value || 0);
+}
+
+// Дата в формате YYYY-MM-DD (для input[type=date] и хранения).
+export function todayIso() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+// Ключ месяца YYYY-MM из ISO-даты.
+export function monthKey(isoDate) {
+  return (isoDate || '').slice(0, 7);
+}
+
+// Человекочитаемое название месяца: "2026-08" -> "август 2026".
+export function monthLabel(key) {
+  if (!key) return '';
+  const [year, month] = key.split('-');
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+}
+
+export function newId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+}
