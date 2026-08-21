@@ -66,7 +66,14 @@ export function AppProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const savedMode = localStorage.getItem(LS_MODE);
+      let savedMode = localStorage.getItem(LS_MODE);
+      // Миграция: у кого уже была подключена Google Таблица (до появления
+      // выбора режима) — автоматически считаем режимом Google.
+      if (!savedMode && localStorage.getItem(LS_SPREADSHEET_ID)) {
+        savedMode = 'google';
+        localStorage.setItem(LS_MODE, savedMode);
+        setMode(savedMode);
+      }
       if (!savedMode) {
         setStatus('select-mode');
         return;
