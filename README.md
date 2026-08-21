@@ -134,6 +134,26 @@ npm run dev
 
 ---
 
+## Мобильное приложение (Capacitor)
+
+Приложение можно собрать как нативное для Android/iOS через
+[Capacitor](https://capacitorjs.com/). Веб-код переиспользуется как есть.
+
+Сборка веб-части для обёртки использует `base: '/'` (не `/freemoney/`):
+
+```bash
+npm run cap:sync      # сборка (build:app) + копирование в нативный проект
+npm run cap:android   # открыть проект в Android Studio (там же собирается APK)
+```
+
+Для Android нужен Android Studio (JDK + SDK), для iOS — Mac с Xcode
+(`npx cap add ios` создаст iOS-проект). Публикация в сторы требует
+аккаунтов Google Play / Apple Developer.
+
+В нативной сборке появляется третий способ хранения — **«Файлы на устройстве
+(.csv)»**: данные лежат в `.csv` файлах в папке «Документы» устройства
+(через `@capacitor/filesystem`). В обычном браузере этот режим скрыт.
+
 ## Стек
 
 - **React + Vite** — фронтенд и сборка

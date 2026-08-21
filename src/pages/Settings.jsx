@@ -6,6 +6,7 @@ import { CURRENCIES } from '../utils/currencies';
 const MODE_LABELS = {
   google: '☁️ Google Таблицы',
   local: '📱 Локально в браузере',
+  device: '🗂️ Файлы на устройстве (.csv)',
 };
 
 export default function Settings() {

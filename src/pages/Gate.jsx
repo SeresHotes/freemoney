@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { findExistingSpreadsheets } from '../api/store';
 import { SPREADSHEET_TITLE } from '../config';
+import { isNativePlatform } from '../utils/platform';
 
 // Извлекает spreadsheetId из вставленной ссылки или id.
 function parseSpreadsheetId(input) {
@@ -42,6 +43,17 @@ export function ModeSelectScreen() {
         <p className="muted mode-hint">
           Без входа и интернета, данные хранятся на этом устройстве. Экспорт/импорт в CSV — в настройках.
         </p>
+
+        {isNativePlatform() && (
+          <>
+            <button className="btn btn--block" disabled={busy} onClick={() => pick('device')}>
+              🗂️ Файлы на устройстве (.csv)
+            </button>
+            <p className="muted mode-hint">
+              Данные хранятся в .csv файлах в папке «Документы» устройства.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

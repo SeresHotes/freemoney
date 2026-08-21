@@ -4,6 +4,7 @@ import { AuthError } from '../api/sheets';
 import { initSpreadsheet } from '../api/store';
 import { createGoogleBackend } from '../api/googleBackend';
 import { createLocalBackend, isLocalStoreReady, initLocalStore } from '../api/localBackend';
+import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
 import { LS_SPREADSHEET_ID, LS_MODE, DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED } from '../config';
 import { newId } from '../utils/format';
@@ -78,6 +79,11 @@ export function AppProvider({ children }) {
     await activateBackend(createLocalBackend());
   }, [activateBackend]);
 
+  const activateDevice = useCallback(async () => {
+    if (!(await isDeviceStoreReady())) await initDeviceStore();
+    await activateBackend(createDeviceBackend());
+  }, [activateBackend]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -96,6 +102,10 @@ export function AppProvider({ children }) {
           await activateLocal();
           return;
         }
+        if (savedMode === 'device') {
+          await activateDevice();
+          return;
+        }
         if (!IS_CLIENT_ID_CONFIGURED) {
           setStatus('no-config');
           return;
@@ -112,7 +122,7 @@ export function AppProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [activateGoogle, activateLocal]);
+  }, [activateGoogle, activateLocal, activateDevice]);
 
   const chooseMode = useCallback(
     async (chosen) => {
@@ -122,13 +132,16 @@ export function AppProvider({ children }) {
       if (chosen === 'local') {
         setStatus('loading');
         await activateLocal();
+      } else if (chosen === 'device') {
+        setStatus('loading');
+        await activateDevice();
       } else if (!IS_CLIENT_ID_CONFIGURED) {
         setStatus('no-config');
       } else {
         setStatus('signed-out');
       }
     },
-    [activateLocal],
+    [activateLocal, activateDevice],
   );
 
   const resetMode = useCallback(() => {
