@@ -7,6 +7,8 @@ import {
   addTransaction,
   addCategory,
   setCategoryStatus,
+  updateCategory,
+  renameCategoryInTransactions,
 } from './store';
 
 export function createGoogleBackend(spreadsheetId) {
@@ -27,5 +29,10 @@ export function createGoogleBackend(spreadsheetId) {
     addCategory: (cat) => addCategory(spreadsheetId, cat),
 
     setCategoryStatus: (id, status) => setCategoryStatus(spreadsheetId, id, status),
+
+    updateCategory: (id, patch) => updateCategory(spreadsheetId, id, patch),
+
+    renameCategory: (oldName, newName) =>
+      renameCategoryInTransactions(spreadsheetId, oldName, newName),
   };
 }

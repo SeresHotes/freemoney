@@ -129,5 +129,29 @@ export function createLocalBackend() {
       }
       db.close();
     },
+
+    updateCategory: async (id, { name, kind, icon }) => {
+      const db = await openDb();
+      const store = tx(db, STORE_CAT, 'readwrite');
+      const cat = await reqToPromise(store.get(id));
+      if (cat) {
+        Object.assign(cat, { name, kind, icon: icon || DEFAULT_ICON });
+        await reqToPromise(store.put(cat));
+      }
+      db.close();
+    },
+
+    renameCategory: async (oldName, newName) => {
+      const db = await openDb();
+      const store = tx(db, STORE_TX, 'readwrite');
+      const all = await reqToPromise(store.getAll());
+      for (const t of all) {
+        if (t.category === oldName) {
+          t.category = newName;
+          await reqToPromise(store.put(t));
+        }
+      }
+      db.close();
+    },
   };
 }

@@ -85,8 +85,9 @@ function requestToken({ prompt }) {
         return;
       }
       accessToken = response.access_token;
-      // expires_in в секундах; минусуем минуту на дорогу.
-      tokenExpiry = Date.now() + (Number(response.expires_in) - 60) * 1000;
+      // expires_in в секундах; если поле отсутствует — считаем час.
+      const ttl = Number(response.expires_in) || 3600;
+      tokenExpiry = Date.now() + (ttl - 60) * 1000;
       persistToken();
       resolve(accessToken);
     };

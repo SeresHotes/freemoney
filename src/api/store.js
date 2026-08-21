@@ -14,6 +14,7 @@ import {
   getValues,
   appendRow,
   updateValues,
+  batchUpdateValues,
   listAppSpreadsheets,
 } from './sheets';
 import { SPREADSHEET_TITLE } from '../config';
@@ -115,4 +116,24 @@ export async function addCategory(id, { name, kind, icon }) {
 // Архивирование / восстановление категории — правим только колонку status.
 export async function setCategoryStatus(id, rowNumber, status) {
   await updateValues(id, `${SHEET_CAT}!C${rowNumber}`, [[status]]);
+}
+
+// Обновить имя, тип и иконку категории (status не трогаем — это колонка C).
+export async function updateCategory(id, rowNumber, { name, kind, icon }) {
+  await batchUpdateValues(id, [
+    { range: `${SHEET_CAT}!A${rowNumber}:B${rowNumber}`, values: [[name, kind]] },
+    { range: `${SHEET_CAT}!D${rowNumber}`, values: [[icon]] },
+  ]);
+}
+
+// Каскадно переименовать категорию во всех транзакциях (колонка category).
+export async function renameCategoryInTransactions(id, oldName, newName) {
+  const rows = await getValues(id, `${SHEET_TX}!A2:G`);
+  const data = [];
+  rows.forEach((r, index) => {
+    if (r[4] === oldName) {
+      data.push({ range: `${SHEET_TX}!E${index + 2}`, values: [[newName]] });
+    }
+  });
+  await batchUpdateValues(id, data);
 }

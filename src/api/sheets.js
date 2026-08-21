@@ -62,6 +62,17 @@ export async function updateValues(spreadsheetId, range, values) {
   return authFetch(url, { method: 'PUT', body: JSON.stringify({ values }) });
 }
 
+// Обновить несколько диапазонов за один запрос.
+// data — массив { range, values }.
+export async function batchUpdateValues(spreadsheetId, data) {
+  if (data.length === 0) return {};
+  const url = `${SHEETS_API}/${spreadsheetId}/values:batchUpdate`;
+  return authFetch(url, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  });
+}
+
 // Найти таблицы, созданные этим приложением (в рамках scope drive.file).
 // Используется для восстановления, если localStorage очистился.
 export async function listAppSpreadsheets() {

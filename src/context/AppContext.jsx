@@ -88,7 +88,9 @@ export function AppProvider({ children }) {
           setStatus('no-config');
           return;
         }
-        await initAuth();
+        // initAuth нужен для обновления токена; при наличии живого кэша
+        // его сбой не должен ронять восстановление сессии.
+        await initAuth().catch(() => {});
         await ensureToken(); // тихое восстановление сессии из кэша токена
         if (cancelled) return;
         await activateGoogle();
@@ -222,6 +224,24 @@ export function AppProvider({ children }) {
     [withAuthGuard],
   );
 
+  const updateCategory = useCallback(
+    (id, patch) =>
+      withAuthGuard(async () => {
+        const current = categories.find((c) => c.id === id);
+        const oldName = current?.name;
+        await backendRef.current.updateCategory(id, patch);
+        // Если имя изменилось — переименовываем во всех операциях.
+        if (patch.name && oldName && patch.name !== oldName) {
+          await backendRef.current.renameCategory(oldName, patch.name);
+          setTransactions((prev) =>
+            prev.map((t) => (t.category === oldName ? { ...t, category: patch.name } : t)),
+          );
+        }
+        setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+      }),
+    [withAuthGuard, categories],
+  );
+
   // --- CSV ------------------------------------------------------------------
   const exportTransactions = useCallback(() => exportTransactionsCsv(transactions), [transactions]);
   const exportCategories = useCallback(() => exportCategoriesCsv(categories), [categories]);
@@ -260,6 +280,7 @@ export function AppProvider({ children }) {
     addTransaction,
     addCategory,
     setCategoryStatus,
+    updateCategory,
     exportTransactions,
     exportCategories,
     importTransactions,

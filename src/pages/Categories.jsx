@@ -9,14 +9,32 @@ const KIND_LABELS = {
 };
 
 export default function Categories() {
-  const { categories, addCategory, setCategoryStatus } = useApp();
+  const { categories, addCategory, setCategoryStatus, updateCategory } = useApp();
 
   const [name, setName] = useState('');
   const [kind, setKind] = useState('expense');
   const [icon, setIcon] = useState(EMOJI_PALETTE[0]);
+  const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setName('');
+    setKind('expense');
+    setIcon(EMOJI_PALETTE[0]);
+    setFormError(null);
+  };
+
+  const startEdit = (c) => {
+    setEditingId(c.id);
+    setName(c.name);
+    setKind(c.kind);
+    setIcon(c.icon || EMOJI_PALETTE[0]);
+    setFormError(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const { active, archived } = useMemo(() => {
     return {
@@ -25,7 +43,7 @@ export default function Categories() {
     };
   }, [categories]);
 
-  const handleAdd = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
     const trimmed = name.trim();
@@ -34,7 +52,10 @@ export default function Categories() {
       return;
     }
     const exists = categories.some(
-      (c) => c.name.toLowerCase() === trimmed.toLowerCase() && c.status === 'active',
+      (c) =>
+        c.id !== editingId &&
+        c.name.toLowerCase() === trimmed.toLowerCase() &&
+        c.status === 'active',
     );
     if (exists) {
       setFormError('Такая категория уже есть');
@@ -42,11 +63,14 @@ export default function Categories() {
     }
     setBusy(true);
     try {
-      await addCategory({ name: trimmed, kind, icon });
-      setName('');
-      setIcon(EMOJI_PALETTE[0]);
+      if (editingId) {
+        await updateCategory(editingId, { name: trimmed, kind, icon });
+      } else {
+        await addCategory({ name: trimmed, kind, icon });
+      }
+      resetForm();
     } catch (err) {
-      setFormError('Не удалось добавить категорию');
+      setFormError(editingId ? 'Не удалось сохранить' : 'Не удалось добавить категорию');
     } finally {
       setBusy(false);
     }
@@ -67,7 +91,8 @@ export default function Categories() {
         <h1>Категории</h1>
       </header>
 
-      <form className="form add-cat" onSubmit={handleAdd}>
+      <form className="form add-cat" onSubmit={handleSubmit}>
+        {editingId && <p className="section-title" style={{ margin: 0 }}>Редактирование категории</p>}
         <div className="add-cat__row">
           <span className="add-cat__preview">{icon}</span>
           <input
@@ -101,8 +126,13 @@ export default function Categories() {
             <option value="both">Оба</option>
           </select>
           <button className="btn btn--primary" type="submit" disabled={busy}>
-            Добавить
+            {editingId ? 'Сохранить' : 'Добавить'}
           </button>
+          {editingId && (
+            <button type="button" className="btn" disabled={busy} onClick={resetForm}>
+              Отмена
+            </button>
+          )}
         </div>
       </form>
       {formError && <p className="form-error">{formError}</p>}
@@ -117,14 +147,24 @@ export default function Categories() {
                 <span className="cat-item__name">{c.name}</span>
                 <span className={`kind-badge kind-badge--${c.kind}`}>{KIND_LABELS[c.kind]}</span>
               </div>
-              <button
-                className="link-btn cat-item__action"
-                disabled={busy}
-                onClick={() => changeStatus(c.id, 'archived')}
-                title="В архив"
-              >
-                🗑️
-              </button>
+              <div className="cat-item__actions">
+                <button
+                  className="link-btn cat-item__action"
+                  disabled={busy}
+                  onClick={() => startEdit(c)}
+                  title="Редактировать"
+                >
+                  ✏️
+                </button>
+                <button
+                  className="link-btn cat-item__action"
+                  disabled={busy}
+                  onClick={() => changeStatus(c.id, 'archived')}
+                  title="В архив"
+                >
+                  🗑️
+                </button>
+              </div>
             </li>
           ))}
         </ul>

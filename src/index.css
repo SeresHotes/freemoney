@@ -437,6 +437,11 @@ h2 {
 .cat-item__icon {
   font-size: 1.3rem;
 }
+.cat-item__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
 
 /* --- Gate create ---------------------------------------------------------- */
 .gate__create {
