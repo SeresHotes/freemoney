@@ -92,9 +92,9 @@ export function AppProvider({ children }) {
     setStatus('signed-out');
   }, []);
 
-  const createSheet = useCallback(async () => {
+  const createSheet = useCallback(async (title) => {
     setError(null);
-    const id = await initSpreadsheet();
+    const id = await initSpreadsheet(title);
     localStorage.setItem(LS_SPREADSHEET_ID, id);
     setSpreadsheetId(id);
     await loadData(id);

@@ -1,11 +1,13 @@
 // Высокоуровневая модель данных поверх Google Sheets.
 //
 // Структура таблицы:
-//   Лист "Transactions": id | date | type | amount | category | note
+//   Лист "Transactions": id | date | type | amount | category | note | tags
 //     type    — 'expense' | 'income'
-//   Лист "Categories":   name | kind | status
+//     tags    — произвольное число тегов, хранятся через запятую в одной ячейке
+//   Лист "Categories":   name | kind | status | icon
 //     kind    — 'expense' | 'income' | 'both'
 //     status  — 'active' | 'archived'   (удаление = архивирование, строки не удаляем)
+//     icon    — эмодзи категории
 
 import {
   createSpreadsheet,
@@ -19,26 +21,31 @@ import { SPREADSHEET_TITLE } from '../config';
 export const SHEET_TX = 'Transactions';
 export const SHEET_CAT = 'Categories';
 
-const TX_HEADER = ['id', 'date', 'type', 'amount', 'category', 'note'];
-const CAT_HEADER = ['name', 'kind', 'status'];
+const TX_HEADER = ['id', 'date', 'type', 'amount', 'category', 'note', 'tags'];
+const CAT_HEADER = ['name', 'kind', 'status', 'icon'];
+
+// Иконка по умолчанию для категорий без заданного эмодзи.
+export const DEFAULT_ICON = '🏷️';
 
 // Базовые категории при создании таблицы.
 const DEFAULT_CATEGORIES = [
-  ['Зарплата', 'income', 'active'],
-  ['Прочий доход', 'income', 'active'],
-  ['Продукты', 'expense', 'active'],
-  ['Кафе и рестораны', 'expense', 'active'],
-  ['Транспорт', 'expense', 'active'],
-  ['Жильё', 'expense', 'active'],
-  ['Развлечения', 'expense', 'active'],
-  ['Здоровье', 'expense', 'active'],
-  ['Одежда', 'expense', 'active'],
-  ['Прочее', 'both', 'active'],
+  ['Зарплата', 'income', 'active', '💼'],
+  ['Прочий доход', 'income', 'active', '💰'],
+  ['Продукты', 'expense', 'active', '🛒'],
+  ['Кафе и рестораны', 'expense', 'active', '🍔'],
+  ['Транспорт', 'expense', 'active', '🚕'],
+  ['Жильё', 'expense', 'active', '🏠'],
+  ['Развлечения', 'expense', 'active', '🎬'],
+  ['Здоровье', 'expense', 'active', '💊'],
+  ['Одежда', 'expense', 'active', '👕'],
+  ['Прочее', 'both', 'active', '🏷️'],
 ];
 
 // Создать новую таблицу с двумя листами, шапками и базовыми категориями.
-export async function initSpreadsheet() {
-  const spreadsheet = await createSpreadsheet(SPREADSHEET_TITLE, [
+// title — желаемое имя таблицы (по умолчанию SPREADSHEET_TITLE).
+export async function initSpreadsheet(title = SPREADSHEET_TITLE) {
+  const name = title.trim() || SPREADSHEET_TITLE;
+  const spreadsheet = await createSpreadsheet(name, [
     { properties: { title: SHEET_TX } },
     { properties: { title: SHEET_CAT } },
   ]);
@@ -55,7 +62,7 @@ export async function findExistingSpreadsheets() {
 // --- Транзакции -------------------------------------------------------------
 
 export async function fetchTransactions(id) {
-  const rows = await getValues(id, `${SHEET_TX}!A2:F`);
+  const rows = await getValues(id, `${SHEET_TX}!A2:G`);
   return rows
     .filter((r) => r[0]) // пропускаем пустые строки
     .map((r) => ({
@@ -65,18 +72,38 @@ export async function fetchTransactions(id) {
       amount: Number(r[3]) || 0,
       category: r[4] || '',
       note: r[5] || '',
+      tags: parseTags(r[6]),
     }));
 }
 
 export async function addTransaction(id, tx) {
-  const row = [tx.id, tx.date, tx.type, tx.amount, tx.category, tx.note || ''];
+  const row = [
+    tx.id,
+    tx.date,
+    tx.type,
+    tx.amount,
+    tx.category,
+    tx.note || '',
+    serializeTags(tx.tags),
+  ];
   await appendRow(id, `${SHEET_TX}!A1`, row);
+}
+
+// Теги в ячейке хранятся через запятую; парсим в массив уникальных значений.
+function parseTags(cell) {
+  if (!cell) return [];
+  return [...new Set(String(cell).split(',').map((t) => t.trim()).filter(Boolean))];
+}
+
+function serializeTags(tags) {
+  if (!Array.isArray(tags)) return '';
+  return [...new Set(tags.map((t) => t.trim()).filter(Boolean))].join(', ');
 }
 
 // --- Категории --------------------------------------------------------------
 
 export async function fetchCategories(id) {
-  const rows = await getValues(id, `${SHEET_CAT}!A2:C`);
+  const rows = await getValues(id, `${SHEET_CAT}!A2:D`);
   return rows
     .filter((r) => r[0])
     .map((r, index) => ({
@@ -85,11 +112,12 @@ export async function fetchCategories(id) {
       name: r[0],
       kind: r[1] || 'both',
       status: r[2] || 'active',
+      icon: r[3] || DEFAULT_ICON, // старые таблицы без колонки icon получают дефолт
     }));
 }
 
-export async function addCategory(id, { name, kind }) {
-  await appendRow(id, `${SHEET_CAT}!A1`, [name, kind, 'active']);
+export async function addCategory(id, { name, kind, icon }) {
+  await appendRow(id, `${SHEET_CAT}!A1`, [name, kind, 'active', icon || DEFAULT_ICON]);
 }
 
 // Архивирование / восстановление категории — правим только колонку status.

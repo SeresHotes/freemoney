@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { findExistingSpreadsheets } from '../api/store';
+import { SPREADSHEET_TITLE } from '../config';
 
 // Извлекает spreadsheetId из вставленной ссылки или id.
 function parseSpreadsheetId(input) {
@@ -70,6 +71,7 @@ export function NoSheetScreen() {
   const { createSheet, useExistingSheet, signOut } = useApp();
   const [busy, setBusy] = useState(false);
   const [manualId, setManualId] = useState('');
+  const [sheetName, setSheetName] = useState(SPREADSHEET_TITLE);
   const [existing, setExisting] = useState([]);
   const [localError, setLocalError] = useState(null);
 
@@ -106,13 +108,22 @@ export function NoSheetScreen() {
           Создайте новую Google Таблицу для учёта или подключите существующую.
         </p>
 
-        <button
-          className="btn btn--primary btn--block"
-          disabled={busy}
-          onClick={() => runAction(createSheet)}
-        >
-          {busy ? 'Создаю…' : '➕ Создать новую таблицу'}
-        </button>
+        <div className="gate__create">
+          <input
+            className="field__input"
+            type="text"
+            placeholder="Название таблицы"
+            value={sheetName}
+            onChange={(e) => setSheetName(e.target.value)}
+          />
+          <button
+            className="btn btn--primary btn--block"
+            disabled={busy || !sheetName.trim()}
+            onClick={() => runAction(() => createSheet(sheetName))}
+          >
+            {busy ? 'Создаю…' : '➕ Создать новую таблицу'}
+          </button>
+        </div>
 
         {existing.length > 0 && (
           <div className="gate__section">

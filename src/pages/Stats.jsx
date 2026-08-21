@@ -22,6 +22,21 @@ const COLORS = [
 export default function Stats() {
   const { transactions } = useApp();
 
+  const [selectedTag, setSelectedTag] = useState(null);
+
+  // Все теги для фильтра.
+  const allTags = useMemo(() => {
+    const set = new Set();
+    for (const t of transactions) (t.tags || []).forEach((tag) => set.add(tag));
+    return [...set].sort();
+  }, [transactions]);
+
+  // Операции с учётом фильтра по тегу.
+  const filtered = useMemo(
+    () => (selectedTag ? transactions.filter((t) => (t.tags || []).includes(selectedTag)) : transactions),
+    [transactions, selectedTag],
+  );
+
   // Список месяцев, где есть операции (по убыванию), + текущий.
   const months = useMemo(() => {
     const set = new Set(transactions.map((t) => monthKey(t.date)).filter(Boolean));
@@ -32,8 +47,8 @@ export default function Stats() {
   const [selectedMonth, setSelectedMonth] = useState(months[0] || monthKey(todayIso()));
 
   const monthTx = useMemo(
-    () => transactions.filter((t) => monthKey(t.date) === selectedMonth),
-    [transactions, selectedMonth],
+    () => filtered.filter((t) => monthKey(t.date) === selectedMonth),
+    [filtered, selectedMonth],
   );
 
   const income = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
@@ -54,7 +69,7 @@ export default function Stats() {
   // Динамика по последним 6 месяцам.
   const trend = useMemo(() => {
     const map = new Map();
-    for (const t of transactions) {
+    for (const t of filtered) {
       const key = monthKey(t.date);
       if (!key) continue;
       if (!map.has(key)) map.set(key, { month: key, income: 0, expense: 0 });
@@ -66,7 +81,7 @@ export default function Stats() {
       .sort((a, b) => (a.month < b.month ? -1 : 1))
       .slice(-6)
       .map((b) => ({ ...b, label: monthLabel(b.month).replace(/ \d{4}$/, '') }));
-  }, [transactions]);
+  }, [filtered]);
 
   return (
     <div className="page">
@@ -87,6 +102,26 @@ export default function Stats() {
           ))}
         </select>
       </div>
+
+      {allTags.length > 0 && (
+        <div className="tag-filter">
+          <button
+            className={`tag-chip${selectedTag === null ? ' tag-chip--active' : ''}`}
+            onClick={() => setSelectedTag(null)}
+          >
+            Все
+          </button>
+          {allTags.map((t) => (
+            <button
+              key={t}
+              className={`tag-chip${selectedTag === t ? ' tag-chip--active' : ''}`}
+              onClick={() => setSelectedTag(t)}
+            >
+              #{t}
+            </button>
+          ))}
+        </div>
+      )}
 
       <section className="stats-summary">
         <div className="stats-summary__cell">

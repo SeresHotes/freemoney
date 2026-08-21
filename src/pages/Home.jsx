@@ -4,8 +4,14 @@ import { useApp } from '../context/AppContext';
 import { formatMoney, monthKey, todayIso } from '../utils/format';
 
 export default function Home() {
-  const { transactions } = useApp();
+  const { transactions, categories } = useApp();
   const navigate = useNavigate();
+
+  const iconByCategory = useMemo(() => {
+    const map = new Map();
+    for (const c of categories) map.set(c.name, c.icon);
+    return map;
+  }, [categories]);
 
   const { income, expense, balance, recent } = useMemo(() => {
     const currentMonth = monthKey(todayIso());
@@ -48,9 +54,17 @@ export default function Home() {
           <ul className="tx-list">
             {recent.map((t) => (
               <li key={t.id} className="tx-item">
+                <span className="tx-item__cat-icon">{iconByCategory.get(t.category) || '🏷️'}</span>
                 <div className="tx-item__main">
                   <span className="tx-item__category">{t.category || 'Без категории'}</span>
                   {t.note && <span className="tx-item__note">{t.note}</span>}
+                  {t.tags?.length > 0 && (
+                    <span className="tx-item__tags">
+                      {t.tags.map((tag) => (
+                        <span key={tag} className="tag-chip tag-chip--mini">#{tag}</span>
+                      ))}
+                    </span>
+                  )}
                 </div>
                 <div className="tx-item__right">
                   <span className={`tx-item__amount tx-item__amount--${t.type}`}>

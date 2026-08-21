@@ -6,7 +6,7 @@ import { newId, todayIso } from '../utils/format';
 export default function AddTransaction() {
   const { type } = useParams(); // 'expense' | 'income'
   const navigate = useNavigate();
-  const { categories, addTransaction } = useApp();
+  const { categories, transactions, addTransaction } = useApp();
 
   const isExpense = type === 'expense';
 
@@ -23,8 +23,42 @@ export default function AddTransaction() {
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(todayIso());
   const [note, setNote] = useState('');
+  const [tags, setTags] = useState([]);
+  const [tagDraft, setTagDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  // Все ранее использованные теги — для подсказок.
+  const allTags = useMemo(() => {
+    const set = new Set();
+    for (const t of transactions) (t.tags || []).forEach((tag) => set.add(tag));
+    return [...set].sort();
+  }, [transactions]);
+
+  const suggestions = useMemo(() => {
+    const draft = tagDraft.trim().toLowerCase();
+    return allTags
+      .filter((t) => !tags.includes(t))
+      .filter((t) => !draft || t.toLowerCase().includes(draft))
+      .slice(0, 8);
+  }, [allTags, tags, tagDraft]);
+
+  const addTag = (raw) => {
+    const value = raw.trim();
+    if (value && !tags.includes(value)) setTags((prev) => [...prev, value]);
+    setTagDraft('');
+  };
+
+  const removeTag = (tag) => setTags((prev) => prev.filter((t) => t !== tag));
+
+  const handleTagKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag(tagDraft);
+    } else if (e.key === 'Backspace' && !tagDraft && tags.length) {
+      removeTag(tags[tags.length - 1]);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -38,6 +72,10 @@ export default function AddTransaction() {
       setFormError('Выберите категорию');
       return;
     }
+    // Учитываем тег, который пользователь набрал, но не подтвердил.
+    const finalTags = tagDraft.trim() && !tags.includes(tagDraft.trim())
+      ? [...tags, tagDraft.trim()]
+      : tags;
     setSaving(true);
     try {
       await addTransaction({
@@ -47,6 +85,7 @@ export default function AddTransaction() {
         amount: value,
         category,
         note: note.trim(),
+        tags: finalTags,
       });
       navigate('/');
     } catch (err) {
@@ -96,6 +135,7 @@ export default function AddTransaction() {
                   className={`category-chip${category === c.name ? ' category-chip--active' : ''}`}
                   onClick={() => setCategory(c.name)}
                 >
+                  <span className="category-chip__icon">{c.icon}</span>
                   {c.name}
                 </button>
               ))}
@@ -123,6 +163,35 @@ export default function AddTransaction() {
             onChange={(e) => setNote(e.target.value)}
           />
         </label>
+
+        <div className="field">
+          <span className="field__label">Теги (необязательно)</span>
+          <div className="tag-input">
+            {tags.map((t) => (
+              <span key={t} className="tag-chip tag-chip--removable" onClick={() => removeTag(t)}>
+                #{t}<span className="tag-chip__x">×</span>
+              </span>
+            ))}
+            <input
+              className="tag-input__field"
+              type="text"
+              placeholder={tags.length ? '' : 'работа, отпуск…'}
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={handleTagKeyDown}
+              onBlur={() => tagDraft.trim() && addTag(tagDraft)}
+            />
+          </div>
+          {suggestions.length > 0 && (
+            <div className="tag-suggestions">
+              {suggestions.map((t) => (
+                <button type="button" key={t} className="tag-chip tag-chip--suggestion" onClick={() => addTag(t)}>
+                  #{t}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {formError && <p className="form-error">{formError}</p>}
 

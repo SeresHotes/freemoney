@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { EMOJI_PALETTE } from '../utils/emoji';
 
 const KIND_LABELS = {
   expense: 'Расход',
@@ -12,6 +13,7 @@ export default function Categories() {
 
   const [name, setName] = useState('');
   const [kind, setKind] = useState('expense');
+  const [icon, setIcon] = useState(EMOJI_PALETTE[0]);
   const [busy, setBusy] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -40,8 +42,9 @@ export default function Categories() {
     }
     setBusy(true);
     try {
-      await addCategory({ name: trimmed, kind });
+      await addCategory({ name: trimmed, kind, icon });
       setName('');
+      setIcon(EMOJI_PALETTE[0]);
     } catch (err) {
       setFormError('Не удалось добавить категорию');
     } finally {
@@ -64,22 +67,43 @@ export default function Categories() {
         <h1>Категории</h1>
       </header>
 
-      <form className="form form--inline" onSubmit={handleAdd}>
-        <input
-          className="field__input"
-          type="text"
-          placeholder="Новая категория"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <select className="field__input field__input--select" value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="expense">Расход</option>
-          <option value="income">Доход</option>
-          <option value="both">Оба</option>
-        </select>
-        <button className="btn btn--primary" type="submit" disabled={busy}>
-          Добавить
-        </button>
+      <form className="form add-cat" onSubmit={handleAdd}>
+        <div className="add-cat__row">
+          <span className="add-cat__preview">{icon}</span>
+          <input
+            className="field__input"
+            type="text"
+            placeholder="Новая категория"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div className="emoji-picker">
+          {EMOJI_PALETTE.map((e) => (
+            <button
+              type="button"
+              key={e}
+              className={`emoji-picker__item${icon === e ? ' emoji-picker__item--active' : ''}`}
+              onClick={() => setIcon(e)}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+        <div className="add-cat__row">
+          <select
+            className="field__input field__input--select"
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+          >
+            <option value="expense">Расход</option>
+            <option value="income">Доход</option>
+            <option value="both">Оба</option>
+          </select>
+          <button className="btn btn--primary" type="submit" disabled={busy}>
+            Добавить
+          </button>
+        </div>
       </form>
       {formError && <p className="form-error">{formError}</p>}
 
@@ -89,6 +113,7 @@ export default function Categories() {
           {active.map((c) => (
             <li key={c.row} className="cat-item">
               <div className="cat-item__main">
+                <span className="cat-item__icon">{c.icon}</span>
                 <span className="cat-item__name">{c.name}</span>
                 <span className={`kind-badge kind-badge--${c.kind}`}>{KIND_LABELS[c.kind]}</span>
               </div>
@@ -115,6 +140,7 @@ export default function Categories() {
             {archived.map((c) => (
               <li key={c.row} className="cat-item cat-item--archived">
                 <div className="cat-item__main">
+                  <span className="cat-item__icon">{c.icon}</span>
                   <span className="cat-item__name">{c.name}</span>
                   <span className={`kind-badge kind-badge--${c.kind}`}>{KIND_LABELS[c.kind]}</span>
                 </div>
