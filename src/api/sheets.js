@@ -95,7 +95,7 @@ export async function getValuesBatch(spreadsheetId, ranges) {
 export async function appendRow(spreadsheetId, range, values) {
   const url =
     `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}` +
-    ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
+    ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS';
   return authFetch(url, { method: 'POST', body: JSON.stringify({ values: [values] }) });
 }
 
@@ -103,7 +103,7 @@ export async function appendRow(spreadsheetId, range, values) {
 export async function updateValues(spreadsheetId, range, values) {
   const url =
     `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}` +
-    '?valueInputOption=USER_ENTERED';
+    '?valueInputOption=RAW';
   return authFetch(url, { method: 'PUT', body: JSON.stringify({ values }) });
 }
 
@@ -129,7 +129,7 @@ export async function batchUpdateValues(spreadsheetId, data) {
   const url = `${SHEETS_API}/${spreadsheetId}/values:batchUpdate`;
   return authFetch(url, {
     method: 'POST',
-    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+    body: JSON.stringify({ valueInputOption: 'RAW', data }),
   });
 }
 
