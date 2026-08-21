@@ -1,44 +1,31 @@
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { monthKey, todayIso } from '../utils/format';
+import { monthKey, todayIso, daysAgoIso, dayLabel } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
-import { walletBalance, isIncome, isExpense } from '../utils/finance';
+import { walletBalance, isIncome, isExpense, buildTimeSeries } from '../utils/finance';
 import { useBaseRates } from '../hooks/useBaseRates';
 
+const TrendChart = lazy(() => import('../components/TrendChart'));
+
 export default function Home() {
-  const { transactions, categories, wallets, baseCurrency } = useApp();
+  const { transactions, wallets, baseCurrency } = useApp();
   const navigate = useNavigate();
   const { toBase, ready } = useBaseRates(baseCurrency);
 
-  const iconByCategory = useMemo(() => {
-    const map = new Map();
-    for (const c of categories) map.set(c.name, c.icon);
-    return map;
-  }, [categories]);
-
-  const walletById = useMemo(() => {
-    const map = new Map();
-    for (const w of wallets) map.set(w.id, w);
-    return map;
-  }, [wallets]);
-
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
 
-  // Общий капитал в базовой валюте.
   const netWorth = useMemo(() => {
     let sum = 0;
     let hasUnknown = false;
     for (const w of activeWallets) {
-      const bal = walletBalance(transactions, w.id);
-      const inBase = toBase(bal, w.currency);
+      const inBase = toBase(walletBalance(transactions, w.id), w.currency);
       if (inBase == null) hasUnknown = true;
       else sum += inBase;
     }
     return { sum, hasUnknown };
   }, [activeWallets, transactions, toBase]);
 
-  // Доход/расход за текущий месяц в базовой валюте.
   const month = useMemo(() => {
     const key = monthKey(todayIso());
     let income = 0;
@@ -53,21 +40,15 @@ export default function Home() {
     return { income, expense };
   }, [transactions, toBase]);
 
-  const recent = useMemo(
-    () => [...transactions].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 10),
-    [transactions],
-  );
-
-  const label = (t) => {
-    if (t.type === 'transfer_out') return `Перевод → ${walletById.get(otherLeg(t))?.name || ''}`.trim();
-    if (t.type === 'transfer_in') return `Перевод ← ${walletById.get(otherLeg(t))?.name || ''}`.trim();
-    return t.category || 'Без категории';
-  };
-  // Для подписи перевода ищем кошелёк второй ноги (по transferId).
-  function otherLeg(t) {
-    const pair = transactions.find((x) => x.transferId && x.transferId === t.transferId && x.id !== t.id);
-    return pair?.wallet;
-  }
+  // График доход/расход по дням за последние 30 дней (в базовой валюте).
+  const chartData = useMemo(() => {
+    const cutoff = daysAgoIso(30);
+    const recent = transactions.filter((t) => t.date >= cutoff);
+    return buildTimeSeries(recent, 'day', (t) => toBase(t.amount, t.currency)).map((b) => ({
+      ...b,
+      label: dayLabel(b.key),
+    }));
+  }, [transactions, toBase]);
 
   return (
     <div className="page">
@@ -88,7 +69,7 @@ export default function Home() {
       {activeWallets.length > 0 && (
         <section className="wallet-chips">
           {activeWallets.map((w) => (
-            <button key={w.id} className="wallet-chip" onClick={() => navigate('/wallets')}>
+            <button key={w.id} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${w.id}`)}>
               <span className="wallet-chip__name">{w.name}</span>
               <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.id), w.currency)}</span>
             </button>
@@ -105,41 +86,13 @@ export default function Home() {
       </button>
 
       <section>
-        <h2 className="section-title">Последние операции</h2>
-        {recent.length === 0 ? (
+        <h2 className="section-title">Доходы и расходы за 30 дней ({baseCurrency})</h2>
+        {chartData.length === 0 ? (
           <p className="muted empty">Пока нет операций. Добавьте первую!</p>
         ) : (
-          <ul className="tx-list">
-            {recent.map((t) => {
-              const transfer = t.type === 'transfer_in' || t.type === 'transfer_out';
-              const sign = isIncome(t) || t.type === 'transfer_in' ? '+' : t.type === 'transfer_out' || isExpense(t) ? '−' : '';
-              const amountClass = isIncome(t) || t.type === 'transfer_in' ? 'income' : 'expense';
-              return (
-                <li key={t.id} className="tx-item">
-                  <span className="tx-item__cat-icon">{transfer ? '⇄' : iconByCategory.get(t.category) || '🏷️'}</span>
-                  <div className="tx-item__main">
-                    <span className="tx-item__category">{label(t)}</span>
-                    <span className="tx-item__note">
-                      {walletById.get(t.wallet)?.name}
-                      {t.origAmount ? ` · ${formatAmount(t.origAmount, t.origCurrency)}` : ''}
-                      {t.note ? ` · ${t.note}` : ''}
-                    </span>
-                    {t.tags?.length > 0 && (
-                      <span className="tx-item__tags">
-                        {t.tags.map((tag) => <span key={tag} className="tag-chip tag-chip--mini">#{tag}</span>)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="tx-item__right">
-                    <span className={`tx-item__amount tx-item__amount--${amountClass}`}>
-                      {sign}{formatAmount(t.amount, t.currency)}
-                    </span>
-                    <span className="tx-item__date">{t.date}</span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <Suspense fallback={<div className="chart"><div className="spinner" /></div>}>
+            <TrendChart data={chartData} formatValue={(v) => formatAmount(v, baseCurrency)} />
+          </Suspense>
         )}
       </section>
     </div>

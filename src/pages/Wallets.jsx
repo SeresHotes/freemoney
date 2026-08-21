@@ -89,7 +89,7 @@ export default function Wallets() {
         <h2 className="section-title">Активные ({active.length})</h2>
         <ul className="cat-list">
           {active.map((w) => (
-            <li key={w.id} className="cat-item">
+            <li key={w.id} className="cat-item cat-item--clickable" onClick={() => navigate(`/transactions?wallet=${w.id}`)}>
               <div className="cat-item__main">
                 <span className="cat-item__name">{w.name}</span>
                 <span className="kind-badge">{w.currency}</span>
@@ -97,8 +97,8 @@ export default function Wallets() {
               <div className="cat-item__right">
                 <span className="wallet-balance">{formatAmount(walletBalance(transactions, w.id), w.currency)}</span>
                 <div className="cat-item__actions">
-                  <button className="link-btn cat-item__action" disabled={busy} onClick={() => startEdit(w)} title="Редактировать">✏️</button>
-                  <button className="link-btn cat-item__action" disabled={busy} onClick={() => archive(w)} title="В архив">🗑️</button>
+                  <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); startEdit(w); }} title="Редактировать">✏️</button>
+                  <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); archive(w); }} title="В архив">🗑️</button>
                 </div>
               </div>
             </li>

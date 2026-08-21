@@ -225,6 +225,45 @@ h2 {
 .filters__dates .field__input {
   flex: 1;
 }
+.chipms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.chipms__label {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.chipms__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/* Сегментированный переключатель */
+.seg {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.25rem;
+  gap: 0.25rem;
+}
+.seg__btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0.5rem;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.seg__btn--active {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+}
 .tx-item__cat-icon {
   font-size: 1.4rem;
   flex-shrink: 0;

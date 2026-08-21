@@ -30,6 +30,20 @@ export function monthLabel(key) {
   return date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 }
 
+// Дата N дней назад в формате YYYY-MM-DD.
+export function daysAgoIso(n) {
+  const now = new Date();
+  now.setDate(now.getDate() - n);
+  const offset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+// Короткая подпись дня: "2026-08-21" -> "21.08".
+export function dayLabel(iso) {
+  const [, m, d] = (iso || '').split('-');
+  return d && m ? `${d}.${m}` : iso;
+}
+
 export function newId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
