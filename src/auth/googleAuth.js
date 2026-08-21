@@ -5,10 +5,39 @@
 import { GOOGLE_CLIENT_ID, OAUTH_SCOPE } from '../config';
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
+const LS_TOKEN = 'freemoney:token';
 
 let tokenClient = null;
 let accessToken = null;
 let tokenExpiry = 0; // timestamp в мс, когда токен считаем протухшим
+
+// Токен GIS живёт только в памяти и протухает через ~час. Чтобы перезагрузка
+// страницы не требовала повторного входа, кэшируем его в localStorage на время
+// жизни. XSS-риск минимален: токен короткоживущий и ограничен scope drive.file.
+function persistToken() {
+  try {
+    localStorage.setItem(LS_TOKEN, JSON.stringify({ token: accessToken, expiry: tokenExpiry }));
+  } catch {
+    /* localStorage недоступен — не критично */
+  }
+}
+
+function loadCachedToken() {
+  try {
+    const raw = localStorage.getItem(LS_TOKEN);
+    if (!raw) return;
+    const { token, expiry } = JSON.parse(raw);
+    if (token && expiry && Date.now() < expiry) {
+      accessToken = token;
+      tokenExpiry = expiry;
+    }
+  } catch {
+    /* повреждённый кэш — игнорируем */
+  }
+}
+
+// Загружаем кэш при инициализации модуля (до первого рендера).
+loadCachedToken();
 
 function loadGisScript() {
   return new Promise((resolve, reject) => {
@@ -58,6 +87,7 @@ function requestToken({ prompt }) {
       accessToken = response.access_token;
       // expires_in в секундах; минусуем минуту на дорогу.
       tokenExpiry = Date.now() + (Number(response.expires_in) - 60) * 1000;
+      persistToken();
       resolve(accessToken);
     };
     tokenClient.error_callback = (err) => {
@@ -91,4 +121,9 @@ export function signOut() {
   }
   accessToken = null;
   tokenExpiry = 0;
+  try {
+    localStorage.removeItem(LS_TOKEN);
+  } catch {
+    /* ignore */
+  }
 }

@@ -17,6 +17,8 @@ export const SPREADSHEET_TITLE = 'FreeMoney — учёт денег';
 
 // Ключи в localStorage.
 export const LS_SPREADSHEET_ID = 'freemoney:spreadsheetId';
+// Выбранный режим хранения: 'google' | 'local'.
+export const LS_MODE = 'freemoney:mode';
 
 // Признак, что Client ID не настроен (плейсхолдер).
 export const IS_CLIENT_ID_CONFIGURED = !GOOGLE_CLIENT_ID.startsWith('YOUR_');
