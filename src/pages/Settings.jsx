@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES } from '../utils/currencies';
@@ -10,21 +10,14 @@ const MODE_LABELS = {
 
 export default function Settings() {
   const {
-    mode, transactions, categories, wallets, tags, baseCurrency,
-    setBaseCurrencyPref, exportAll, importAll, addTag, deleteTag, resetMode, refresh,
+    mode, transactions, categories, wallets, baseCurrency,
+    setBaseCurrencyPref, exportAll, importAll, resetMode, refresh,
   } = useApp();
 
   const navigate = useNavigate();
   const fileRef = useRef(null);
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [newTag, setNewTag] = useState('');
-
-  const usedTags = useMemo(() => {
-    const set = new Set(tags);
-    for (const t of transactions) (t.tags || []).forEach((x) => set.add(x));
-    return [...set].sort();
-  }, [tags, transactions]);
 
   const handleImport = async (file) => {
     if (!file) return;
@@ -41,29 +34,6 @@ export default function Settings() {
     }
   };
 
-  const submitTag = async (e) => {
-    e.preventDefault();
-    const name = newTag.trim();
-    if (!name) return;
-    setBusy(true);
-    try {
-      await addTag(name);
-      setNewTag('');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const removeTag = async (name) => {
-    if (!window.confirm(`Удалить тег «${name}» из списка и всех операций?`)) return;
-    setBusy(true);
-    try {
-      await deleteTag(name);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="page">
       <header className="page__header"><h1>Настройки</h1></header>
@@ -73,6 +43,7 @@ export default function Settings() {
         <div className="settings-actions">
           <button className="btn btn--block" onClick={() => navigate('/categories')}>🏷️ Категории</button>
           <button className="btn btn--block" onClick={() => navigate('/wallets')}>👛 Кошельки</button>
+          <button className="btn btn--block" onClick={() => navigate('/tags')}>🔖 Теги</button>
         </div>
       </section>
 
@@ -108,23 +79,6 @@ export default function Settings() {
           onChange={(e) => { handleImport(e.target.files?.[0]); e.target.value = ''; }}
         />
         {message && <p className="muted" style={{ marginTop: '0.75rem' }}>{message}</p>}
-      </section>
-
-      <section>
-        <h2 className="section-title">Теги ({usedTags.length})</h2>
-        <form className="form form--inline" onSubmit={submitTag}>
-          <input className="field__input" type="text" placeholder="Новый тег" value={newTag} onChange={(e) => setNewTag(e.target.value)} />
-          <button className="btn btn--primary" type="submit" disabled={busy}>Добавить</button>
-        </form>
-        {usedTags.length > 0 && (
-          <div className="tag-filter" style={{ marginTop: '0.75rem' }}>
-            {usedTags.map((t) => (
-              <span key={t} className="tag-chip tag-chip--removable" onClick={() => removeTag(t)}>
-                #{t}<span className="tag-chip__x">×</span>
-              </span>
-            ))}
-          </div>
-        )}
       </section>
 
       <section>

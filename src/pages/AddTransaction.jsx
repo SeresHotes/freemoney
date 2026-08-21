@@ -77,11 +77,8 @@ export default function AddTransaction() {
     return () => { cancelled = true; };
   }, [crossCurrency, amount, entryCurrency, walletCurrency, date, walletAmountTouched]);
 
-  const allTags = useMemo(() => {
-    const set = new Set(knownTags);
-    for (const t of transactions) (t.tags || []).forEach((tag) => set.add(tag));
-    return [...set].sort();
-  }, [knownTags, transactions]);
+  // Подсказки — только из управляемого списка тегов (удалённые не показываются).
+  const allTags = useMemo(() => [...knownTags].sort(), [knownTags]);
 
   const suggestions = useMemo(() => {
     const draft = tagDraft.trim().toLowerCase();

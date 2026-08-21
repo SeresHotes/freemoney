@@ -7,6 +7,7 @@ import AddTransaction from './pages/AddTransaction';
 import Transactions from './pages/Transactions';
 import Categories from './pages/Categories';
 import CategoryEdit from './pages/CategoryEdit';
+import Tags from './pages/Tags';
 import Wallets from './pages/Wallets';
 import Transfer from './pages/Transfer';
 import Settings from './pages/Settings';
@@ -43,6 +44,7 @@ function Shell() {
           <Route path="/categories/:id/edit" element={<CategoryEdit />} />
           <Route path="/wallets" element={<Wallets />} />
           <Route path="/transfer" element={<Transfer />} />
+          <Route path="/tags" element={<Tags />} />
           <Route
             path="/stats"
             element={

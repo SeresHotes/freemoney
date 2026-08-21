@@ -39,9 +39,21 @@ export function AppProvider({ children }) {
       const currency = t.currency || walletCurrency[wallet] || base;
       return { ...t, wallet, currency };
     });
+
+    // Разовый перенос: наполняем список тегов из уже проставленных в операциях.
+    let tagList = tgs;
+    if (settings.tagsBackfilled !== '1') {
+      const used = new Set();
+      txs.forEach((t) => (t.tags || []).forEach((x) => used.add(x)));
+      const missing = [...used].filter((x) => !tgs.includes(x));
+      for (const name of missing) await backend.addTag(name);
+      await backend.setSetting('tagsBackfilled', '1');
+      if (missing.length) tagList = [...tgs, ...missing];
+    }
+
     setCategories(cats);
     setWallets(wls);
-    setTags(tgs);
+    setTags(tagList);
     setBaseCurrency(base);
     setTransactions(normalized);
   }, []);
@@ -192,14 +204,25 @@ export function AppProvider({ children }) {
     [handleSignOut],
   );
 
+  // Регистрирует новые теги в управляемом списке (для подсказок).
+  const registerTags = useCallback(
+    async (list) => {
+      const missing = (list || []).filter((t) => !tags.includes(t));
+      for (const name of missing) await backendRef.current.addTag(name);
+      if (missing.length) setTags((prev) => [...new Set([...prev, ...missing])]);
+    },
+    [tags],
+  );
+
   // --- Операции -------------------------------------------------------------
   const addTransaction = useCallback(
     (tx) =>
       withAuthGuard(async () => {
         await backendRef.current.addTransaction(tx);
+        await registerTags(tx.tags);
         setTransactions((prev) => [...prev, tx]);
       }),
-    [withAuthGuard],
+    [withAuthGuard, registerTags],
   );
 
   const addTransfer = useCallback(
@@ -228,9 +251,10 @@ export function AppProvider({ children }) {
     (tx) =>
       withAuthGuard(async () => {
         await backendRef.current.updateTransaction(tx);
+        await registerTags(tx.tags);
         setTransactions((prev) => prev.map((t) => (t.id === tx.id ? tx : t)));
       }),
-    [withAuthGuard],
+    [withAuthGuard, registerTags],
   );
 
   // Удаление операции; для перевода удаляются обе связанные ноги.
@@ -304,9 +328,13 @@ export function AppProvider({ children }) {
     (name) => withAuthGuard(async () => { await backendRef.current.addTag(name); setTags(await backendRef.current.fetchTags()); }),
     [withAuthGuard],
   );
+  // Удаление тега = убрать из списка подсказок. Историю операций не трогаем.
   const deleteTag = useCallback(
-    (name) => withAuthGuard(async () => { await backendRef.current.deleteTag(name); await refresh(); }),
-    [withAuthGuard, refresh],
+    (name) => withAuthGuard(async () => {
+      await backendRef.current.deleteTag(name);
+      setTags((prev) => prev.filter((t) => t !== name));
+    }),
+    [withAuthGuard],
   );
 
   // --- Настройки ------------------------------------------------------------

@@ -246,7 +246,7 @@ export async function addTag(id, name) {
   await appendRow(id, `${SHEET_TAG}!A1`, [name]);
 }
 
-// Удаление тега: убираем из списка (перезаписываем весь столбец) и из операций.
+// Удаление тега из списка подсказок (операции не трогаем).
 export async function deleteTag(id, name) {
   const tags = (await fetchTags(id)).filter((t) => t !== name);
   // Перезаписываем область тегов: сначала чистим с запасом, потом пишем оставшиеся.
@@ -254,17 +254,6 @@ export async function deleteTag(id, name) {
   if (tags.length) {
     await updateValues(id, `${SHEET_TAG}!A2`, tags.map((t) => [t]));
   }
-  // Удаляем тег из всех операций.
-  const rows = await getValues(id, `${SHEET_TX}!A2:L`);
-  const data = [];
-  rows.forEach((r, index) => {
-    const current = parseTags(r[6]);
-    if (current.includes(name)) {
-      const next = current.filter((t) => t !== name);
-      data.push({ range: `${SHEET_TX}!G${index + 2}`, values: [[serializeTags(next)]] });
-    }
-  });
-  await batchUpdateValues(id, data);
 }
 
 // --- Настройки --------------------------------------------------------------

@@ -222,14 +222,6 @@ export function createLocalBackend() {
     deleteTag: async (name) => {
       const db = await openDb();
       await reqToPromise(store(db, STORE_TAG, 'readwrite').delete(name));
-      const s = store(db, STORE_TX, 'readwrite');
-      const all = await reqToPromise(s.getAll());
-      for (const t of all) {
-        if (Array.isArray(t.tags) && t.tags.includes(name)) {
-          t.tags = t.tags.filter((x) => x !== name);
-          await reqToPromise(s.put(t));
-        }
-      }
       db.close();
     },
 
