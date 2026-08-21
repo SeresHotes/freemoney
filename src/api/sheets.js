@@ -9,7 +9,18 @@ const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
 // Ошибка авторизации — контекст по ней сбрасывает пользователя на экран входа.
 export class AuthError extends Error {}
 
-async function authFetch(url, options = {}) {
+const MAX_RETRIES = 4;
+const RATE_LIMIT_RE = /rateLimitExceeded|userRateLimitExceeded|quotaExceeded|quota/i;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Экспоненциальная задержка с джиттером: ~0.5s, 1s, 2s, 4s.
+function backoffMs(attempt) {
+  const base = 500 * 2 ** attempt;
+  return base + Math.floor(Math.random() * 300);
+}
+
+async function authFetch(url, options = {}, attempt = 0) {
   const token = await ensureToken();
   const response = await fetch(url, {
     ...options,
@@ -19,9 +30,33 @@ async function authFetch(url, options = {}) {
       ...(options.headers || {}),
     },
   });
-  if (response.status === 401 || response.status === 403) {
-    throw new AuthError(`Google API ${response.status}`);
+
+  if (response.status === 401) {
+    throw new AuthError('Google API 401');
   }
+
+  // 429 и 5xx — временные, повторяем с backoff.
+  if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+    if (attempt < MAX_RETRIES) {
+      await delay(backoffMs(attempt));
+      return authFetch(url, options, attempt + 1);
+    }
+    throw new Error(`Google API ${response.status} (после ${MAX_RETRIES} попыток)`);
+  }
+
+  if (response.status === 403) {
+    const text = await response.text();
+    // Превышение квоты приходит как 403 — тоже повторяем; иначе это отказ доступа.
+    if (RATE_LIMIT_RE.test(text)) {
+      if (attempt < MAX_RETRIES) {
+        await delay(backoffMs(attempt));
+        return authFetch(url, options, attempt + 1);
+      }
+      throw new Error('Google API 403: превышен лимит запросов');
+    }
+    throw new AuthError('Google API 403');
+  }
+
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`Google API ${response.status}: ${text}`);
@@ -44,6 +79,16 @@ export async function getValues(spreadsheetId, range) {
   const url = `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
   const data = await authFetch(url);
   return data.values || [];
+}
+
+// Прочитать несколько диапазонов одним запросом. Возвращает массив значений
+// в том же порядке, что и ranges (каждый элемент — массив строк).
+export async function getValuesBatch(spreadsheetId, ranges) {
+  const qs = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join('&');
+  const url = `${SHEETS_API}/${spreadsheetId}/values:batchGet?${qs}`;
+  const data = await authFetch(url);
+  const byRange = data.valueRanges || [];
+  return ranges.map((_, i) => byRange[i]?.values || []);
 }
 
 // Дописать строку в конец диапазона.

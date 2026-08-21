@@ -90,6 +90,27 @@ export function createLocalBackend() {
       db.close();
     },
 
+    // Всё сразу (у локальной базы лимитов нет, но интерфейс единый).
+    fetchAll: async () => {
+      const db = await openDb();
+      const [txs, cats, wls, tgs, settings] = await Promise.all([
+        getAll(db, STORE_TX), getAll(db, STORE_CAT), getAll(db, STORE_WALLET),
+        getAll(db, STORE_TAG), getAll(db, STORE_SETTINGS),
+      ]);
+      db.close();
+      return {
+        transactions: txs
+          .map((r) => ({ ...r, tags: Array.isArray(r.tags) ? r.tags : [] }))
+          .sort((a, b) => (a.date < b.date ? -1 : 1)),
+        categories: cats
+          .map((c) => ({ ...c, icon: c.icon || DEFAULT_ICON }))
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+        wallets: wls.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+        tags: tgs.map((r) => r.name),
+        settings: Object.fromEntries(settings.map((r) => [r.key, r.value])),
+      };
+    },
+
     fetchTransactions: async () => {
       const db = await openDb();
       const rows = await getAll(db, STORE_TX);

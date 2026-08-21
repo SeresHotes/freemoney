@@ -24,13 +24,9 @@ export function AppProvider({ children }) {
 
   // Загрузка всех данных с нормализацией операций (кошелёк/валюта по умолчанию).
   const loadData = useCallback(async (backend) => {
-    const [cats, txs, wls, tgs, settings] = await Promise.all([
-      backend.fetchCategories(),
-      backend.fetchTransactions(),
-      backend.fetchWallets(),
-      backend.fetchTags(),
-      backend.fetchSettings(),
-    ]);
+    // Одно чтение всех данных (для Google — один запрос вместо пяти).
+    const { categories: cats, transactions: txs, wallets: wls, tags: tgs, settings } =
+      await backend.fetchAll();
     const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
     const defaultWallet = wls.find((w) => w.status === 'active') || wls[0];
     const walletCurrency = Object.fromEntries(wls.map((w) => [w.id, w.currency]));

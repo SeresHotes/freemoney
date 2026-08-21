@@ -15,6 +15,7 @@
 import {
   createSpreadsheet,
   getValues,
+  getValuesBatch,
   appendRow,
   updateValues,
   batchUpdateValues,
@@ -108,8 +109,7 @@ function serializeTags(tags) {
   return [...new Set(tags.map((t) => t.trim()).filter(Boolean))].join(', ');
 }
 
-export async function fetchTransactions(id) {
-  const rows = await getValues(id, `${SHEET_TX}!A2:L`);
+function mapTxRows(rows) {
   return rows
     .filter((r) => r[0])
     .map((r) => ({
@@ -126,6 +126,11 @@ export async function fetchTransactions(id) {
       origCurrency: r[10] || '',
       transferId: r[11] || '',
     }));
+}
+
+export async function fetchTransactions(id) {
+  const rows = await getValues(id, `${SHEET_TX}!A2:L`);
+  return mapTxRows(rows);
 }
 
 function txToRow(t) {
@@ -167,8 +172,7 @@ export async function deleteTransaction(id, txId) {
 
 // --- Категории --------------------------------------------------------------
 
-export async function fetchCategories(id) {
-  const rows = await getValues(id, `${SHEET_CAT}!A2:D`);
+function mapCatRows(rows) {
   return rows
     .filter((r) => r[0])
     .map((r, index) => ({
@@ -178,6 +182,11 @@ export async function fetchCategories(id) {
       status: r[2] || 'active',
       icon: r[3] || DEFAULT_ICON,
     }));
+}
+
+export async function fetchCategories(id) {
+  const rows = await getValues(id, `${SHEET_CAT}!A2:D`);
+  return mapCatRows(rows);
 }
 
 export async function addCategory(id, { name, kind, icon }) {
@@ -206,8 +215,7 @@ export async function renameCategoryInTransactions(id, oldName, newName) {
 
 // --- Кошельки ---------------------------------------------------------------
 
-export async function fetchWallets(id) {
-  const rows = await getValues(id, `${SHEET_WALLET}!A2:E`);
+function mapWalletRows(rows) {
   return rows
     .filter((r) => r[0])
     .map((r, index) => ({
@@ -218,6 +226,11 @@ export async function fetchWallets(id) {
       status: r[3] || 'active',
       order: Number(r[4]) || 0,
     }));
+}
+
+export async function fetchWallets(id) {
+  const rows = await getValues(id, `${SHEET_WALLET}!A2:E`);
+  return mapWalletRows(rows);
 }
 
 export async function addWallet(id, { name, currency }) {
@@ -258,13 +271,35 @@ export async function deleteTag(id, name) {
 
 // --- Настройки --------------------------------------------------------------
 
-export async function fetchSettings(id) {
-  const rows = await getValues(id, `${SHEET_SETTINGS}!A2:B`);
+function mapSettingsRows(rows) {
   const map = {};
   rows.forEach((r) => {
     if (r[0]) map[r[0]] = r[1] ?? '';
   });
   return map;
+}
+
+export async function fetchSettings(id) {
+  const rows = await getValues(id, `${SHEET_SETTINGS}!A2:B`);
+  return mapSettingsRows(rows);
+}
+
+// Одно чтение всех данных сразу (экономит квоту API).
+export async function fetchAll(id) {
+  const [txRows, catRows, walletRows, tagRows, settingsRows] = await getValuesBatch(id, [
+    `${SHEET_TX}!A2:L`,
+    `${SHEET_CAT}!A2:D`,
+    `${SHEET_WALLET}!A2:E`,
+    `${SHEET_TAG}!A2:A`,
+    `${SHEET_SETTINGS}!A2:B`,
+  ]);
+  return {
+    transactions: mapTxRows(txRows),
+    categories: mapCatRows(catRows),
+    wallets: mapWalletRows(walletRows),
+    tags: tagRows.map((r) => r[0]).filter(Boolean),
+    settings: mapSettingsRows(settingsRows),
+  };
 }
 
 export async function setSetting(id, key, value) {

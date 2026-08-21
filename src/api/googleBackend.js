@@ -3,6 +3,7 @@
 
 import {
   ensureSchema,
+  fetchAll,
   fetchTransactions,
   fetchCategories,
   fetchWallets,
@@ -30,6 +31,12 @@ export function createGoogleBackend(spreadsheetId) {
     spreadsheetId,
 
     ensureSchema: () => ensureSchema(spreadsheetId),
+
+    // Одно чтение всех данных (categories: row -> id).
+    fetchAll: async () => {
+      const data = await fetchAll(spreadsheetId);
+      return { ...data, categories: data.categories.map((c) => ({ id: c.row, ...c })) };
+    },
 
     fetchTransactions: () => fetchTransactions(spreadsheetId),
 
