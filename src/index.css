@@ -230,9 +230,18 @@ h2 {
   flex-direction: column;
   gap: 0.4rem;
 }
+.chipms__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
 .chipms__label {
   color: var(--muted);
   font-size: 0.8rem;
+}
+.chipms__invert {
+  font-size: 0.75rem;
 }
 .chipms__row {
   display: flex;

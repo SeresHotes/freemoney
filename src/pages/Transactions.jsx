@@ -5,12 +5,20 @@ import { formatAmount } from '../utils/currencies';
 import { isIncome, matchesFilters } from '../utils/finance';
 import ChipMultiSelect from '../components/ChipMultiSelect';
 
+const TYPE_OPTIONS = [
+  { value: 'expense', label: 'Расходы' },
+  { value: 'income', label: 'Доходы' },
+  { value: 'transfer', label: 'Переводы' },
+  { value: 'adjust', label: 'Корректировки' },
+];
+
 export default function Transactions() {
   const { transactions, categories, wallets, tags } = useApp();
   const navigate = useNavigate();
   // Фильтры храним в URL, чтобы они сохранялись при переходе к операции и назад.
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const types = searchParams.getAll('type');
   const cats = searchParams.getAll('category');
   const wals = searchParams.getAll('wallet');
   const tagSel = searchParams.getAll('tag');
@@ -27,7 +35,7 @@ export default function Transactions() {
   const setSingle = (key, val) => update((n) => { if (val) n.set(key, val); else n.delete(key); });
 
   const [showFilters, setShowFilters] = useState(
-    () => cats.length + wals.length + tagSel.length > 0 || Boolean(from || to),
+    () => types.length + cats.length + wals.length + tagSel.length > 0 || Boolean(from || to),
   );
 
   const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
@@ -48,7 +56,7 @@ export default function Transactions() {
     const q = query.trim().toLowerCase();
     const qNum = q.replace(',', '.');
     const isNumeric = q !== '' && !Number.isNaN(Number(qNum));
-    const f = { categories: cats, tags: tagSel, wallets: wals, from, to };
+    const f = { types, categories: cats, tags: tagSel, wallets: wals, from, to };
     return transactions
       .filter((t) => matchesFilters(t, f))
       .filter((t) => {
@@ -59,9 +67,9 @@ export default function Transactions() {
         return noteHit || amountHit;
       })
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  }, [transactions, query, cats, tagSel, wals, from, to]);
+  }, [transactions, query, types, cats, tagSel, wals, from, to]);
 
-  const activeCount = cats.length + tagSel.length + wals.length + (from ? 1 : 0) + (to ? 1 : 0);
+  const activeCount = types.length + cats.length + tagSel.length + wals.length + (from ? 1 : 0) + (to ? 1 : 0);
   const clear = () => setSearchParams({}, { replace: true });
 
   return (
@@ -82,6 +90,7 @@ export default function Transactions() {
 
       {showFilters && (
         <div className="filters">
+          <ChipMultiSelect label="Тип" options={TYPE_OPTIONS} selected={types} onChange={(a) => setArr('type', a)} />
           <ChipMultiSelect label="Категории" options={catOptions} selected={cats} onChange={(a) => setArr('category', a)} />
           <ChipMultiSelect label="Кошельки" options={walletOptions} selected={wals} onChange={(a) => setArr('wallet', a)} />
           {tagOptions.length > 0 && (

@@ -13,9 +13,17 @@ export function isRealFlow(t) {
 
 import { monthKey } from './format';
 
+// Укрупнённый тип операции: expense | income | transfer | adjust.
+export function txKind(t) {
+  if (t.type.startsWith('transfer')) return 'transfer';
+  if (t.type.startsWith('adjust')) return 'adjust';
+  return t.type;
+}
+
 // Проверка операции по набору фильтров (пустой массив = без ограничения).
 // tags — совпадение по любому из выбранных.
 export function matchesFilters(t, f) {
+  if (f.types?.length && !f.types.includes(txKind(t))) return false;
   if (f.categories?.length && !f.categories.includes(t.category)) return false;
   if (f.wallets?.length && !f.wallets.includes(t.wallet)) return false;
   if (f.tags?.length && !(t.tags || []).some((x) => f.tags.includes(x))) return false;
