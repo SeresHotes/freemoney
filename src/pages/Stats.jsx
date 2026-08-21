@@ -10,13 +10,7 @@ import {
 import { useBaseRates } from '../hooks/useBaseRates';
 import ChipMultiSelect from '../components/ChipMultiSelect';
 import CategoryTrendChart from '../components/CategoryTrendChart';
-
-const COLORS = [
-  '#60a5fa', '#f87171', '#34d399', '#fbbf24', '#a78bfa',
-  '#f472b6', '#22d3ee', '#fb923c', '#4ade80', '#e879f9',
-];
-const OTHER_COLOR = '#64748b';
-const TOP = 8;
+import { CATEGORY_COLORS as COLORS, buildCategorySeries } from '../utils/chartColors';
 
 export default function Stats() {
   const { transactions, categories, wallets, tags, baseCurrency } = useApp();
@@ -73,12 +67,9 @@ export default function Stats() {
   // Топ категорий расходов за период (для цветов и стек-графика).
   const { series, catTrend } = useMemo(() => {
     const totals = expenseTotalsByCategory(scoped, toDisplay);
-    const topCats = totals.slice(0, TOP).map((c) => c.name);
-    const hasOther = totals.length > TOP;
-    const seriesList = topCats.map((name, i) => ({ name, color: COLORS[i % COLORS.length] }));
-    if (hasOther) seriesList.push({ name: 'Другое', color: OTHER_COLOR });
+    const { top, series: seriesList } = buildCategorySeries(totals);
 
-    const raw = buildCategoryTimeSeries(scoped, granularity, toDisplay, topCats);
+    const raw = buildCategoryTimeSeries(scoped, granularity, toDisplay, top);
     const sliced = granularity === 'day' ? raw.slice(-30) : raw.slice(-12);
     const data = sliced.map((b) => ({
       ...b,

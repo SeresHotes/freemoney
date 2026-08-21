@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { monthKey, todayIso, daysAgoIso, dayLabel, compactNumber } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
-import { walletBalance, isIncome, isExpense, buildTimeSeries } from '../utils/finance';
+import { walletBalance, isIncome, isExpense, buildCategoryTimeSeries, expenseTotalsByCategory } from '../utils/finance';
+import { buildCategorySeries } from '../utils/chartColors';
 import { useBaseRates } from '../hooks/useBaseRates';
 
-const TrendChart = lazy(() => import('../components/TrendChart'));
+const CategoryTrendChart = lazy(() => import('../components/CategoryTrendChart'));
 
 export default function Home() {
   const { transactions, wallets, baseCurrency } = useApp();
@@ -40,14 +41,18 @@ export default function Home() {
     return { income, expense };
   }, [transactions, toBase]);
 
-  // График доход/расход по дням за последние 30 дней (в базовой валюте).
-  const chartData = useMemo(() => {
+  // График расходов по категориям по дням за последние 30 дней (базовая валюта).
+  const { chartData, series } = useMemo(() => {
     const cutoff = daysAgoIso(30);
     const recent = transactions.filter((t) => t.date >= cutoff);
-    return buildTimeSeries(recent, 'day', (t) => toBase(t.amount, t.currency)).map((b) => ({
+    const toDisp = (t) => toBase(t.amount, t.currency);
+    const totals = expenseTotalsByCategory(recent, toDisp);
+    const { top, series: s } = buildCategorySeries(totals);
+    const data = buildCategoryTimeSeries(recent, 'day', toDisp, top).map((b) => ({
       ...b,
       label: dayLabel(b.key),
     }));
+    return { chartData: data, series: s };
   }, [transactions, toBase]);
 
   return (
@@ -86,13 +91,23 @@ export default function Home() {
       </button>
 
       <section>
-        <h2 className="section-title">Доходы и расходы за 30 дней ({baseCurrency})</h2>
+        <h2 className="section-title">Расходы по категориям за 30 дней ({baseCurrency})</h2>
         {chartData.length === 0 ? (
           <p className="muted empty">Пока нет операций. Добавьте первую!</p>
         ) : (
-          <Suspense fallback={<div className="chart"><div className="spinner" /></div>}>
-            <TrendChart data={chartData} formatValue={(v) => formatAmount(v, baseCurrency)} formatAxis={compactNumber} />
-          </Suspense>
+          <>
+            <Suspense fallback={<div className="chart"><div className="spinner" /></div>}>
+              <CategoryTrendChart data={chartData} series={series} formatValue={(v) => formatAmount(v, baseCurrency)} formatAxis={compactNumber} />
+            </Suspense>
+            <ul className="legend">
+              {series.map((s) => (
+                <li key={s.name} className="legend__item">
+                  <span className="legend__dot" style={{ background: s.color }} />
+                  <span className="legend__name">{s.name}</span>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </section>
     </div>
