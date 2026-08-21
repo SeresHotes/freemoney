@@ -2,9 +2,10 @@ import { NavLink } from 'react-router-dom';
 
 const items = [
   { to: '/', label: 'Главная', icon: '🏠', end: true },
-  { to: '/categories', label: 'Категории', icon: '🏷️' },
+  { to: '/wallets', label: 'Кошельки', icon: '👛' },
   { to: '/stats', label: 'Статистика', icon: '📊' },
-  { to: '/settings', label: 'Настройки', icon: '⚙️' },
+  { to: '/categories', label: 'Категории', icon: '🏷️' },
+  { to: '/settings', label: 'Ещё', icon: '⚙️' },
 ];
 
 export default function NavBar() {

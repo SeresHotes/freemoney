@@ -4,71 +4,76 @@ import { AuthError } from '../api/sheets';
 import { initSpreadsheet } from '../api/store';
 import { createGoogleBackend } from '../api/googleBackend';
 import { createLocalBackend, isLocalStoreReady, initLocalStore } from '../api/localBackend';
-import {
-  exportTransactionsCsv,
-  exportCategoriesCsv,
-  importTransactionsCsv,
-  importCategoriesCsv,
-} from '../api/csvPorter';
-import { LS_SPREADSHEET_ID, LS_MODE, IS_CLIENT_ID_CONFIGURED } from '../config';
+import { exportBackup, importBackup } from '../api/backup';
+import { LS_SPREADSHEET_ID, LS_MODE, DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED } from '../config';
+import { newId } from '../utils/format';
 
 const AppContext = createContext(null);
 
-// Статусы приложения:
-//   'loading'     — инициализация
-//   'select-mode' — не выбран способ хранения (Google / локально)
-//   'no-config'   — выбран Google, но не настроен OAuth Client ID
-//   'signed-out'  — нужен вход в Google
-//   'no-sheet'    — вошли в Google, но нет таблицы
-//   'ready'       — всё готово
 export function AppProvider({ children }) {
   const [status, setStatus] = useState('loading');
   const [mode, setMode] = useState(() => localStorage.getItem(LS_MODE) || null);
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [wallets, setWallets] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [baseCurrency, setBaseCurrency] = useState(DEFAULT_BASE_CURRENCY);
   const [error, setError] = useState(null);
 
-  // Бэкенд держим в ref, чтобы колбэки видели актуальный инстанс без пересоздания.
   const backendRef = useRef(null);
 
+  // Загрузка всех данных с нормализацией операций (кошелёк/валюта по умолчанию).
   const loadData = useCallback(async (backend) => {
-    const [cats, txs] = await Promise.all([
+    const [cats, txs, wls, tgs, settings] = await Promise.all([
       backend.fetchCategories(),
       backend.fetchTransactions(),
+      backend.fetchWallets(),
+      backend.fetchTags(),
+      backend.fetchSettings(),
     ]);
+    const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
+    const defaultWallet = wls.find((w) => w.status === 'active') || wls[0];
+    const walletCurrency = Object.fromEntries(wls.map((w) => [w.id, w.currency]));
+    const normalized = txs.map((t) => {
+      const wallet = t.wallet || defaultWallet?.id || '';
+      const currency = t.currency || walletCurrency[wallet] || base;
+      return { ...t, wallet, currency };
+    });
     setCategories(cats);
-    setTransactions(txs);
+    setWallets(wls);
+    setTags(tgs);
+    setBaseCurrency(base);
+    setTransactions(normalized);
   }, []);
+
+  const activateBackend = useCallback(
+    async (backend) => {
+      await backend.ensureSchema();
+      await loadData(backend);
+      backendRef.current = backend;
+      setStatus('ready');
+    },
+    [loadData],
+  );
 
   const activateGoogle = useCallback(async () => {
     const savedId = localStorage.getItem(LS_SPREADSHEET_ID);
     if (savedId) {
-      const backend = createGoogleBackend(savedId);
-      await loadData(backend);
-      backendRef.current = backend;
-      setStatus('ready');
+      await activateBackend(createGoogleBackend(savedId));
     } else {
       setStatus('no-sheet');
     }
-  }, [loadData]);
+  }, [activateBackend]);
 
   const activateLocal = useCallback(async () => {
-    if (!(await isLocalStoreReady())) {
-      await initLocalStore();
-    }
-    const backend = createLocalBackend();
-    await loadData(backend);
-    backendRef.current = backend;
-    setStatus('ready');
-  }, [loadData]);
+    if (!(await isLocalStoreReady())) await initLocalStore();
+    await activateBackend(createLocalBackend());
+  }, [activateBackend]);
 
-  // Стартовая инициализация в зависимости от выбранного ранее режима.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       let savedMode = localStorage.getItem(LS_MODE);
-      // Миграция: у кого уже была подключена Google Таблица (до появления
-      // выбора режима) — автоматически считаем режимом Google.
       if (!savedMode && localStorage.getItem(LS_SPREADSHEET_ID)) {
         savedMode = 'google';
         localStorage.setItem(LS_MODE, savedMode);
@@ -83,15 +88,12 @@ export function AppProvider({ children }) {
           await activateLocal();
           return;
         }
-        // google
         if (!IS_CLIENT_ID_CONFIGURED) {
           setStatus('no-config');
           return;
         }
-        // initAuth нужен для обновления токена; при наличии живого кэша
-        // его сбой не должен ронять восстановление сессии.
         await initAuth().catch(() => {});
-        await ensureToken(); // тихое восстановление сессии из кэша токена
+        await ensureToken();
         if (cancelled) return;
         await activateGoogle();
       } catch (err) {
@@ -104,7 +106,6 @@ export function AppProvider({ children }) {
     };
   }, [activateGoogle, activateLocal]);
 
-  // Выбор режима хранения на стартовом экране.
   const chooseMode = useCallback(
     async (chosen) => {
       setError(null);
@@ -122,7 +123,6 @@ export function AppProvider({ children }) {
     [activateLocal],
   );
 
-  // Сброс к выбору режима (сменить хранилище).
   const resetMode = useCallback(() => {
     signOut();
     localStorage.removeItem(LS_MODE);
@@ -130,6 +130,8 @@ export function AppProvider({ children }) {
     setMode(null);
     setCategories([]);
     setTransactions([]);
+    setWallets([]);
+    setTags([]);
     setStatus('select-mode');
   }, []);
 
@@ -150,6 +152,8 @@ export function AppProvider({ children }) {
     backendRef.current = null;
     setTransactions([]);
     setCategories([]);
+    setWallets([]);
+    setTags([]);
     setStatus('signed-out');
   }, []);
 
@@ -158,31 +162,24 @@ export function AppProvider({ children }) {
       setError(null);
       const id = await initSpreadsheet(title);
       localStorage.setItem(LS_SPREADSHEET_ID, id);
-      const backend = createGoogleBackend(id);
-      await loadData(backend);
-      backendRef.current = backend;
-      setStatus('ready');
+      await activateBackend(createGoogleBackend(id));
     },
-    [loadData],
+    [activateBackend],
   );
 
   const useExistingSheet = useCallback(
     async (id) => {
       setError(null);
-      const backend = createGoogleBackend(id);
-      await loadData(backend); // проверяем доступ, попутно грузим данные
+      await activateBackend(createGoogleBackend(id));
       localStorage.setItem(LS_SPREADSHEET_ID, id);
-      backendRef.current = backend;
-      setStatus('ready');
     },
-    [loadData],
+    [activateBackend],
   );
 
   const refresh = useCallback(async () => {
     if (backendRef.current) await loadData(backendRef.current);
   }, [loadData]);
 
-  // Обёртка мутаций: ловим AuthError (актуально для Google) и просим войти заново.
   const withAuthGuard = useCallback(
     async (fn) => {
       try {
@@ -195,6 +192,7 @@ export function AppProvider({ children }) {
     [handleSignOut],
   );
 
+  // --- Операции -------------------------------------------------------------
   const addTransaction = useCallback(
     (tx) =>
       withAuthGuard(async () => {
@@ -204,6 +202,29 @@ export function AppProvider({ children }) {
     [withAuthGuard],
   );
 
+  const addTransfer = useCallback(
+    ({ fromWalletId, toWalletId, amountOut, amountIn, date, note }) =>
+      withAuthGuard(async () => {
+        const from = wallets.find((w) => w.id === fromWalletId);
+        const to = wallets.find((w) => w.id === toWalletId);
+        const transferId = newId();
+        const out = {
+          id: newId(), date, type: 'transfer_out', amount: amountOut, category: '',
+          note: note || '', tags: [], wallet: fromWalletId, currency: from?.currency || '',
+          origAmount: null, origCurrency: '', transferId,
+        };
+        const inc = {
+          id: newId(), date, type: 'transfer_in', amount: amountIn, category: '',
+          note: note || '', tags: [], wallet: toWalletId, currency: to?.currency || '',
+          origAmount: null, origCurrency: '', transferId,
+        };
+        await backendRef.current.addTransactions([out, inc]);
+        setTransactions((prev) => [...prev, out, inc]);
+      }),
+    [withAuthGuard, wallets],
+  );
+
+  // --- Категории ------------------------------------------------------------
   const addCategory = useCallback(
     (cat) =>
       withAuthGuard(async () => {
@@ -217,9 +238,7 @@ export function AppProvider({ children }) {
     (id, newStatus) =>
       withAuthGuard(async () => {
         await backendRef.current.setCategoryStatus(id, newStatus);
-        setCategories((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)),
-        );
+        setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)));
       }),
     [withAuthGuard],
   );
@@ -230,7 +249,6 @@ export function AppProvider({ children }) {
         const current = categories.find((c) => c.id === id);
         const oldName = current?.name;
         await backendRef.current.updateCategory(id, patch);
-        // Если имя изменилось — переименовываем во всех операциях.
         if (patch.name && oldName && patch.name !== oldName) {
           await backendRef.current.renameCategory(oldName, patch.name);
           setTransactions((prev) =>
@@ -242,26 +260,55 @@ export function AppProvider({ children }) {
     [withAuthGuard, categories],
   );
 
-  // --- CSV ------------------------------------------------------------------
-  const exportTransactions = useCallback(() => exportTransactionsCsv(transactions), [transactions]);
-  const exportCategories = useCallback(() => exportCategoriesCsv(categories), [categories]);
+  // --- Кошельки -------------------------------------------------------------
+  const reloadWallets = async () => setWallets(await backendRef.current.fetchWallets());
 
-  const importTransactions = useCallback(
-    async (text) => {
-      const added = await importTransactionsCsv(text, backendRef.current, transactions);
-      await refresh();
-      return added;
-    },
-    [transactions, refresh],
+  const addWallet = useCallback(
+    (w) => withAuthGuard(async () => { await backendRef.current.addWallet(w); await reloadWallets(); }),
+    [withAuthGuard],
+  );
+  const updateWallet = useCallback(
+    (wallet, patch) => withAuthGuard(async () => { await backendRef.current.updateWallet(wallet, patch); await reloadWallets(); }),
+    [withAuthGuard],
+  );
+  const setWalletStatus = useCallback(
+    (wallet, s) => withAuthGuard(async () => { await backendRef.current.setWalletStatus(wallet, s); await reloadWallets(); }),
+    [withAuthGuard],
   );
 
-  const importCategories = useCallback(
+  // --- Теги -----------------------------------------------------------------
+  const addTag = useCallback(
+    (name) => withAuthGuard(async () => { await backendRef.current.addTag(name); setTags(await backendRef.current.fetchTags()); }),
+    [withAuthGuard],
+  );
+  const deleteTag = useCallback(
+    (name) => withAuthGuard(async () => { await backendRef.current.deleteTag(name); await refresh(); }),
+    [withAuthGuard, refresh],
+  );
+
+  // --- Настройки ------------------------------------------------------------
+  const setBaseCurrencyPref = useCallback(
+    (currency) =>
+      withAuthGuard(async () => {
+        await backendRef.current.setSetting('baseCurrency', currency);
+        setBaseCurrency(currency);
+      }),
+    [withAuthGuard],
+  );
+
+  // --- Резервная копия (единый JSON) ----------------------------------------
+  const exportAll = useCallback(
+    () => exportBackup({ baseCurrency, wallets, categories, tags, transactions }),
+    [baseCurrency, wallets, categories, tags, transactions],
+  );
+
+  const importAll = useCallback(
     async (text) => {
-      const added = await importCategoriesCsv(text, backendRef.current, categories);
+      const result = await importBackup(text, backendRef.current, { wallets, categories, tags, transactions });
       await refresh();
-      return added;
+      return result;
     },
-    [categories, refresh],
+    [wallets, categories, tags, transactions, refresh],
   );
 
   const value = {
@@ -269,6 +316,9 @@ export function AppProvider({ children }) {
     mode,
     categories,
     transactions,
+    wallets,
+    tags,
+    baseCurrency,
     error,
     chooseMode,
     resetMode,
@@ -278,13 +328,18 @@ export function AppProvider({ children }) {
     useExistingSheet,
     refresh,
     addTransaction,
+    addTransfer,
     addCategory,
     setCategoryStatus,
     updateCategory,
-    exportTransactions,
-    exportCategories,
-    importTransactions,
-    importCategories,
+    addWallet,
+    updateWallet,
+    setWalletStatus,
+    addTag,
+    deleteTag,
+    setBaseCurrencyPref,
+    exportAll,
+    importAll,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

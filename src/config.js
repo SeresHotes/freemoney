@@ -15,6 +15,9 @@ export const OAUTH_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 // Название создаваемой Google Таблицы.
 export const SPREADSHEET_TITLE = 'FreeMoney — учёт денег';
 
+// Базовая валюта по умолчанию (для агрегированной статистики).
+export const DEFAULT_BASE_CURRENCY = 'RUB';
+
 // Ключи в localStorage.
 export const LS_SPREADSHEET_ID = 'freemoney:spreadsheetId';
 // Выбранный режим хранения: 'google' | 'local'.

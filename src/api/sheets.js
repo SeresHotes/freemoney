@@ -62,6 +62,21 @@ export async function updateValues(spreadsheetId, range, values) {
   return authFetch(url, { method: 'PUT', body: JSON.stringify({ values }) });
 }
 
+// Получить метаданные таблицы (список листов и т.п.).
+export async function getSpreadsheetMeta(spreadsheetId) {
+  const url = `${SHEETS_API}/${spreadsheetId}?fields=sheets.properties.title`;
+  return authFetch(url);
+}
+
+// Создать лист с заданным заголовком (если его ещё нет — проверяет вызывающий).
+export async function addSheet(spreadsheetId, title) {
+  const url = `${SHEETS_API}/${spreadsheetId}:batchUpdate`;
+  return authFetch(url, {
+    method: 'POST',
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
+  });
+}
+
 // Обновить несколько диапазонов за один запрос.
 // data — массив { range, values }.
 export async function batchUpdateValues(spreadsheetId, data) {

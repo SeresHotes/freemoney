@@ -443,6 +443,63 @@ h2 {
   flex-shrink: 0;
 }
 
+/* --- Multi-currency / wallets --------------------------------------------- */
+.amount-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.amount-row .field__input--amount {
+  flex: 1;
+}
+.amount-row__cur {
+  width: 6.5rem;
+  flex-shrink: 0;
+}
+.conversion {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+.wallet-chips {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  margin-top: 1rem;
+  padding-bottom: 0.25rem;
+}
+.wallet-chip {
+  flex: 0 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 7rem;
+  text-align: left;
+}
+.wallet-chip__name {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.wallet-chip__bal {
+  font-weight: 700;
+}
+.cat-item__right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.wallet-balance {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* --- Gate create ---------------------------------------------------------- */
 .gate__create {
   display: flex;

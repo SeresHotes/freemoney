@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { CURRENCIES } from '../utils/currencies';
 
 const MODE_LABELS = {
   google: '☁️ Google Таблицы',
@@ -8,32 +9,54 @@ const MODE_LABELS = {
 
 export default function Settings() {
   const {
-    mode,
-    transactions,
-    categories,
-    exportTransactions,
-    exportCategories,
-    importTransactions,
-    importCategories,
-    resetMode,
-    refresh,
+    mode, transactions, categories, wallets, tags, baseCurrency,
+    setBaseCurrencyPref, exportAll, importAll, addTag, deleteTag, resetMode, refresh,
   } = useApp();
 
-  const txFileRef = useRef(null);
-  const catFileRef = useRef(null);
+  const fileRef = useRef(null);
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [newTag, setNewTag] = useState('');
 
-  const handleImport = async (file, importer, label) => {
+  const usedTags = useMemo(() => {
+    const set = new Set(tags);
+    for (const t of transactions) (t.tags || []).forEach((x) => set.add(x));
+    return [...set].sort();
+  }, [tags, transactions]);
+
+  const handleImport = async (file) => {
     if (!file) return;
     setBusy(true);
     setMessage(null);
     try {
       const text = await file.text();
-      const added = await importer(text);
-      setMessage(`Импортировано ${label}: ${added}`);
-    } catch (err) {
-      setMessage('Ошибка импорта. Проверьте формат файла.');
+      const r = await importAll(text);
+      setMessage(`Импортировано: кошельков ${r.wallets}, категорий ${r.categories}, тегов ${r.tags}, операций ${r.transactions}`);
+    } catch {
+      setMessage('Ошибка импорта. Проверьте, что это файл резервной копии FreeMoney (.json).');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitTag = async (e) => {
+    e.preventDefault();
+    const name = newTag.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      await addTag(name);
+      setNewTag('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeTag = async (name) => {
+    if (!window.confirm(`Удалить тег «${name}» из списка и всех операций?`)) return;
+    setBusy(true);
+    try {
+      await deleteTag(name);
     } finally {
       setBusy(false);
     }
@@ -41,80 +64,70 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <header className="page__header">
-        <h1>Настройки</h1>
-      </header>
+      <header className="page__header"><h1>Настройки</h1></header>
 
       <section>
-        <h2 className="section-title">Хранилище</h2>
-        <div className="cat-item">
-          <span className="cat-item__name">{MODE_LABELS[mode] || mode}</span>
-          <button className="link-btn-inline" onClick={refresh}>
-            Обновить
-          </button>
-        </div>
-        <p className="muted" style={{ marginTop: '0.5rem' }}>
-          Операций: {transactions.length}, категорий: {categories.length}
-        </p>
-      </section>
-
-      <section>
-        <h2 className="section-title">Экспорт в CSV</h2>
-        <div className="settings-actions">
-          <button className="btn btn--block" onClick={exportTransactions}>
-            ⬇️ Операции
-          </button>
-          <button className="btn btn--block" onClick={exportCategories}>
-            ⬇️ Категории
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="section-title">Импорт из CSV</h2>
+        <h2 className="section-title">Базовая валюта</h2>
         <p className="muted" style={{ marginBottom: '0.5rem' }}>
-          Добавляет записи в текущее хранилище. Дубликаты (по id операции / имени категории)
-          пропускаются.
+          В ней показывается общий капитал и сводная статистика по всем кошелькам.
+        </p>
+        <select
+          className="field__input field__input--select"
+          value={baseCurrency}
+          onChange={(e) => setBaseCurrencyPref(e.target.value)}
+          disabled={busy}
+        >
+          {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+        </select>
+      </section>
+
+      <section>
+        <h2 className="section-title">Резервная копия</h2>
+        <p className="muted" style={{ marginBottom: '0.5rem' }}>
+          Один файл со всеми данными: кошельки, категории, теги, операции, настройки.
         </p>
         <div className="settings-actions">
-          <button className="btn btn--block" disabled={busy} onClick={() => txFileRef.current?.click()}>
-            ⬆️ Операции
-          </button>
-          <button className="btn btn--block" disabled={busy} onClick={() => catFileRef.current?.click()}>
-            ⬆️ Категории
-          </button>
+          <button className="btn btn--block" onClick={exportAll} disabled={busy}>⬇️ Экспорт</button>
+          <button className="btn btn--block" onClick={() => fileRef.current?.click()} disabled={busy}>⬆️ Импорт</button>
         </div>
         <input
-          ref={txFileRef}
+          ref={fileRef}
           type="file"
-          accept=".csv,text/csv"
+          accept=".json,application/json"
           hidden
-          onChange={(e) => {
-            handleImport(e.target.files?.[0], importTransactions, 'операций');
-            e.target.value = '';
-          }}
-        />
-        <input
-          ref={catFileRef}
-          type="file"
-          accept=".csv,text/csv"
-          hidden
-          onChange={(e) => {
-            handleImport(e.target.files?.[0], importCategories, 'категорий');
-            e.target.value = '';
-          }}
+          onChange={(e) => { handleImport(e.target.files?.[0]); e.target.value = ''; }}
         />
         {message && <p className="muted" style={{ marginTop: '0.75rem' }}>{message}</p>}
       </section>
 
       <section>
-        <h2 className="section-title">Прочее</h2>
-        <button className="btn btn--block" onClick={resetMode}>
-          🔄 Сменить способ хранения
-        </button>
-        <p className="muted hint">
-          Данные не удаляются: при возврате к тому же хранилищу они снова появятся.
+        <h2 className="section-title">Теги ({usedTags.length})</h2>
+        <form className="form form--inline" onSubmit={submitTag}>
+          <input className="field__input" type="text" placeholder="Новый тег" value={newTag} onChange={(e) => setNewTag(e.target.value)} />
+          <button className="btn btn--primary" type="submit" disabled={busy}>Добавить</button>
+        </form>
+        {usedTags.length > 0 && (
+          <div className="tag-filter" style={{ marginTop: '0.75rem' }}>
+            {usedTags.map((t) => (
+              <span key={t} className="tag-chip tag-chip--removable" onClick={() => removeTag(t)}>
+                #{t}<span className="tag-chip__x">×</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="section-title">Хранилище</h2>
+        <div className="cat-item">
+          <span className="cat-item__name">{MODE_LABELS[mode] || mode}</span>
+          <button className="link-btn-inline" onClick={refresh} disabled={busy}>Обновить</button>
+        </div>
+        <p className="muted" style={{ marginTop: '0.5rem' }}>
+          Кошельков: {wallets.length}, категорий: {categories.length}, операций: {transactions.length}
         </p>
+        <button className="btn btn--block" style={{ marginTop: '0.75rem' }} onClick={resetMode}>🔄 Сменить способ хранения</button>
+        <p className="muted hint">Данные не удаляются: при возврате к тому же хранилищу они снова появятся.</p>
       </section>
     </div>
   );

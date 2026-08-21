@@ -5,6 +5,8 @@ import NavBar from './components/NavBar';
 import Home from './pages/Home';
 import AddTransaction from './pages/AddTransaction';
 import Categories from './pages/Categories';
+import Wallets from './pages/Wallets';
+import Transfer from './pages/Transfer';
 import Settings from './pages/Settings';
 import {
   LoadingScreen,
@@ -33,6 +35,8 @@ function Shell() {
           <Route path="/" element={<Home />} />
           <Route path="/add/:type" element={<AddTransaction />} />
           <Route path="/categories" element={<Categories />} />
+          <Route path="/wallets" element={<Wallets />} />
+          <Route path="/transfer" element={<Transfer />} />
           <Route
             path="/stats"
             element={
