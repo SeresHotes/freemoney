@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { monthKey, monthLabel, dayLabel, todayIso, compactNumber } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
@@ -15,6 +16,8 @@ import { CATEGORY_COLORS as COLORS, buildCategorySeries } from '../utils/chartCo
 export default function Stats() {
   const { transactions, categories, wallets, tags, baseCurrency } = useApp();
   const { toBase } = useBaseRates(baseCurrency);
+  const navigate = useNavigate();
+  const openCategory = (name) => navigate(`/transactions?category=${encodeURIComponent(name)}`);
 
   const [cats, setCats] = useState([]);
   const [tagSel, setTagSel] = useState([]);
@@ -118,7 +121,7 @@ export default function Stats() {
             />
             <ul className="legend">
               {byCategory.map((c, i) => (
-                <li key={c.name} className="legend__item">
+                <li key={c.name} className="legend__item legend__item--clickable" onClick={() => openCategory(c.name)}>
                   <span className="legend__dot" style={{ background: COLORS[i % COLORS.length] }} />
                   <span className="legend__name">{c.name}</span>
                   <span className="legend__value">{fmt(c.value)}</span>
@@ -143,12 +146,19 @@ export default function Stats() {
           <>
             <CategoryTrendChart data={catTrend} series={series} formatValue={(v) => fmt(v)} formatAxis={compactNumber} />
             <ul className="legend">
-              {series.map((s) => (
-                <li key={s.name} className="legend__item">
-                  <span className="legend__dot" style={{ background: s.color }} />
-                  <span className="legend__name">{s.name}</span>
-                </li>
-              ))}
+              {series.map((s) => {
+                const clickable = s.name !== 'Другое';
+                return (
+                  <li
+                    key={s.name}
+                    className={`legend__item${clickable ? ' legend__item--clickable' : ''}`}
+                    onClick={clickable ? () => openCategory(s.name) : undefined}
+                  >
+                    <span className="legend__dot" style={{ background: s.color }} />
+                    <span className="legend__name">{s.name}</span>
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}

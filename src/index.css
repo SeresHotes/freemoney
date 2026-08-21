@@ -713,6 +713,12 @@ h2 {
   align-items: center;
   gap: 0.5rem;
 }
+.legend__item--clickable {
+  cursor: pointer;
+}
+.legend__item--clickable:active {
+  opacity: 0.6;
+}
 .legend__dot {
   width: 12px;
   height: 12px;

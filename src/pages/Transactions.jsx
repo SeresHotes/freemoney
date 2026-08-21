@@ -2,33 +2,38 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
-import { isIncome } from '../utils/finance';
-import { matchesFilters } from '../utils/finance';
+import { isIncome, matchesFilters } from '../utils/finance';
 import ChipMultiSelect from '../components/ChipMultiSelect';
 
 export default function Transactions() {
   const { transactions, categories, wallets, tags } = useApp();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  // Фильтры храним в URL, чтобы они сохранялись при переходе к операции и назад.
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const initArr = (key) => (searchParams.get(key) ? [searchParams.get(key)] : []);
-  const [query, setQuery] = useState('');
-  const [cats, setCats] = useState(() => initArr('category'));
-  const [tagSel, setTagSel] = useState(() => initArr('tag'));
-  const [wals, setWals] = useState(() => initArr('wallet'));
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const cats = searchParams.getAll('category');
+  const wals = searchParams.getAll('wallet');
+  const tagSel = searchParams.getAll('tag');
+  const query = searchParams.get('q') || '';
+  const from = searchParams.get('from') || '';
+  const to = searchParams.get('to') || '';
+
+  const update = (mutate) => {
+    const next = new URLSearchParams(searchParams);
+    mutate(next);
+    setSearchParams(next, { replace: true });
+  };
+  const setArr = (key, arr) => update((n) => { n.delete(key); arr.forEach((v) => n.append(key, v)); });
+  const setSingle = (key, val) => update((n) => { if (val) n.set(key, val); else n.delete(key); });
+
   const [showFilters, setShowFilters] = useState(
-    () => Boolean(searchParams.get('category') || searchParams.get('tag') || searchParams.get('wallet')),
+    () => cats.length + wals.length + tagSel.length > 0 || Boolean(from || to),
   );
 
   const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
   const walletById = useMemo(() => new Map(wallets.map((w) => [w.id, w])), [wallets]);
 
-  const catOptions = useMemo(
-    () => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })),
-    [categories],
-  );
+  const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [categories]);
   const walletOptions = useMemo(
     () => wallets.filter((w) => w.status === 'active').map((w) => ({ value: w.id, label: w.name })),
     [wallets],
@@ -57,7 +62,7 @@ export default function Transactions() {
   }, [transactions, query, cats, tagSel, wals, from, to]);
 
   const activeCount = cats.length + tagSel.length + wals.length + (from ? 1 : 0) + (to ? 1 : 0);
-  const clear = () => { setQuery(''); setCats([]); setTagSel([]); setWals([]); setFrom(''); setTo(''); };
+  const clear = () => setSearchParams({}, { replace: true });
 
   return (
     <div className="page">
@@ -68,7 +73,7 @@ export default function Transactions() {
         type="text"
         placeholder="Поиск по заметке или сумме"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => setSingle('q', e.target.value)}
       />
 
       <button className="link-btn-inline" style={{ marginTop: '0.6rem' }} onClick={() => setShowFilters((v) => !v)}>
@@ -77,17 +82,17 @@ export default function Transactions() {
 
       {showFilters && (
         <div className="filters">
-          <ChipMultiSelect label="Категории" options={catOptions} selected={cats} onChange={setCats} />
-          <ChipMultiSelect label="Кошельки" options={walletOptions} selected={wals} onChange={setWals} />
+          <ChipMultiSelect label="Категории" options={catOptions} selected={cats} onChange={(a) => setArr('category', a)} />
+          <ChipMultiSelect label="Кошельки" options={walletOptions} selected={wals} onChange={(a) => setArr('wallet', a)} />
           {tagOptions.length > 0 && (
-            <ChipMultiSelect label="Теги" options={tagOptions} selected={tagSel} onChange={setTagSel} />
+            <ChipMultiSelect label="Теги" options={tagOptions} selected={tagSel} onChange={(a) => setArr('tag', a)} />
           )}
           <div className="chipms">
             <span className="chipms__label">Период</span>
             <div className="filters__dates">
-              <input className="field__input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+              <input className="field__input" type="date" value={from} onChange={(e) => setSingle('from', e.target.value)} />
               <span className="muted">—</span>
-              <input className="field__input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              <input className="field__input" type="date" value={to} onChange={(e) => setSingle('to', e.target.value)} />
             </div>
           </div>
           {activeCount > 0 && <button className="link-btn-inline" onClick={clear}>Сбросить фильтры</button>}

@@ -96,7 +96,11 @@ export default function Home() {
             />
             <ul className="legend">
               {byCategory.map((c, i) => (
-                <li key={c.name} className="legend__item">
+                <li
+                  key={c.name}
+                  className="legend__item legend__item--clickable"
+                  onClick={() => navigate(`/transactions?category=${encodeURIComponent(c.name)}`)}
+                >
                   <span className="legend__dot" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
                   <span className="legend__name">{c.name}</span>
                   <span className="legend__value">{formatAmount(c.value, baseCurrency)}</span>
