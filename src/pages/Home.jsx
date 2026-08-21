@@ -1,13 +1,13 @@
 import { lazy, Suspense, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { monthKey, todayIso, daysAgoIso, dayLabel, compactNumber } from '../utils/format';
+import { monthKey, todayIso } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
-import { walletBalance, isIncome, isExpense, buildCategoryTimeSeries, expenseTotalsByCategory } from '../utils/finance';
-import { buildCategorySeries } from '../utils/chartColors';
+import { walletBalance, isIncome, isExpense } from '../utils/finance';
+import { CATEGORY_COLORS } from '../utils/chartColors';
 import { useBaseRates } from '../hooks/useBaseRates';
 
-const CategoryTrendChart = lazy(() => import('../components/CategoryTrendChart'));
+const CategoryDonut = lazy(() => import('../components/CategoryDonut'));
 
 export default function Home() {
   const { transactions, wallets, baseCurrency } = useApp();
@@ -27,32 +27,24 @@ export default function Home() {
     return { sum, hasUnknown };
   }, [activeWallets, transactions, toBase]);
 
-  const month = useMemo(() => {
+  // Данные за текущий месяц: суммы и расходы по категориям (в базовой валюте).
+  const { income, expense, byCategory } = useMemo(() => {
     const key = monthKey(todayIso());
-    let income = 0;
-    let expense = 0;
+    let inc = 0;
+    let exp = 0;
+    const catMap = new Map();
     for (const t of transactions) {
       if (monthKey(t.date) !== key) continue;
       const inBase = toBase(t.amount, t.currency);
       if (inBase == null) continue;
-      if (isIncome(t)) income += inBase;
-      else if (isExpense(t)) expense += inBase;
+      if (isIncome(t)) inc += inBase;
+      else if (isExpense(t)) {
+        exp += inBase;
+        catMap.set(t.category || 'Без категории', (catMap.get(t.category) || 0) + inBase);
+      }
     }
-    return { income, expense };
-  }, [transactions, toBase]);
-
-  // График расходов по категориям по дням за последние 30 дней (базовая валюта).
-  const { chartData, series } = useMemo(() => {
-    const cutoff = daysAgoIso(30);
-    const recent = transactions.filter((t) => t.date >= cutoff);
-    const toDisp = (t) => toBase(t.amount, t.currency);
-    const totals = expenseTotalsByCategory(recent, toDisp);
-    const { top, series: s } = buildCategorySeries(totals);
-    const data = buildCategoryTimeSeries(recent, 'day', toDisp, top).map((b) => ({
-      ...b,
-      label: dayLabel(b.key),
-    }));
-    return { chartData: data, series: s };
+    const cats = [...catMap.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, toBase]);
 
   return (
@@ -66,8 +58,8 @@ export default function Home() {
         <div className="balance-card__value">{formatAmount(netWorth.sum, baseCurrency)}</div>
         {netWorth.hasUnknown && <div className="muted">часть валют без курса не учтена</div>}
         <div className="balance-card__row">
-          <span className="chip chip--income">↑ {formatAmount(month.income, baseCurrency)}</span>
-          <span className="chip chip--expense">↓ {formatAmount(month.expense, baseCurrency)}</span>
+          <span className="chip chip--income">↑ {formatAmount(income, baseCurrency)}</span>
+          <span className="chip chip--expense">↓ {formatAmount(expense, baseCurrency)}</span>
         </div>
       </section>
 
@@ -91,23 +83,27 @@ export default function Home() {
       </button>
 
       <section>
-        <h2 className="section-title">Расходы по категориям за 30 дней ({baseCurrency})</h2>
-        {chartData.length === 0 ? (
-          <p className="muted empty">Пока нет операций. Добавьте первую!</p>
+        <h2 className="section-title">Расходы за месяц ({baseCurrency})</h2>
+        {byCategory.length === 0 ? (
+          <p className="muted empty">Пока нет расходов в этом месяце</p>
         ) : (
-          <>
-            <Suspense fallback={<div className="chart"><div className="spinner" /></div>}>
-              <CategoryTrendChart data={chartData} series={series} formatValue={(v) => formatAmount(v, baseCurrency)} formatAxis={compactNumber} />
-            </Suspense>
+          <Suspense fallback={<div className="chart"><div className="spinner" /></div>}>
+            <CategoryDonut
+              data={byCategory}
+              colors={CATEGORY_COLORS}
+              center={{ expense, income }}
+              formatValue={(v) => formatAmount(v, baseCurrency)}
+            />
             <ul className="legend">
-              {series.map((s) => (
-                <li key={s.name} className="legend__item">
-                  <span className="legend__dot" style={{ background: s.color }} />
-                  <span className="legend__name">{s.name}</span>
+              {byCategory.map((c, i) => (
+                <li key={c.name} className="legend__item">
+                  <span className="legend__dot" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
+                  <span className="legend__name">{c.name}</span>
+                  <span className="legend__value">{formatAmount(c.value, baseCurrency)}</span>
                 </li>
               ))}
             </ul>
-          </>
+          </Suspense>
         )}
       </section>
     </div>

@@ -20,8 +20,28 @@ export function AppProvider({ children }) {
   const [tags, setTags] = useState([]);
   const [baseCurrency, setBaseCurrency] = useState(DEFAULT_BASE_CURRENCY);
   const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   const backendRef = useRef(null);
+
+  // Индикатор загрузки: показываем, только если операция длится дольше секунды.
+  const inflight = useRef(0);
+  const busyTimer = useRef(null);
+  const track = useCallback(async (fn) => {
+    inflight.current += 1;
+    if (inflight.current === 1) {
+      busyTimer.current = setTimeout(() => setBusy(true), 1000);
+    }
+    try {
+      return await fn();
+    } finally {
+      inflight.current -= 1;
+      if (inflight.current === 0) {
+        clearTimeout(busyTimer.current);
+        setBusy(false);
+      }
+    }
+  }, []);
 
   // Загрузка всех данных с нормализацией операций (кошелёк/валюта по умолчанию).
   const loadData = useCallback(async (backend) => {
@@ -197,20 +217,25 @@ export function AppProvider({ children }) {
     [activateBackend],
   );
 
-  const refresh = useCallback(async () => {
-    if (backendRef.current) await loadData(backendRef.current);
-  }, [loadData]);
+  const refresh = useCallback(
+    () => track(async () => {
+      if (backendRef.current) await loadData(backendRef.current);
+    }),
+    [loadData, track],
+  );
 
+  // Обёртка мутаций: индикатор загрузки + перехват AuthError.
   const withAuthGuard = useCallback(
-    async (fn) => {
-      try {
-        return await fn();
-      } catch (err) {
-        if (err instanceof AuthError) handleSignOut();
-        throw err;
-      }
-    },
-    [handleSignOut],
+    (fn) =>
+      track(async () => {
+        try {
+          return await fn();
+        } catch (err) {
+          if (err instanceof AuthError) handleSignOut();
+          throw err;
+        }
+      }),
+    [handleSignOut, track],
   );
 
   // Регистрирует новые теги в управляемом списке (для подсказок).
@@ -363,12 +388,13 @@ export function AppProvider({ children }) {
   );
 
   const importAll = useCallback(
-    async (text) => {
-      const result = await importBackup(text, backendRef.current, { wallets, categories, tags, transactions });
-      await refresh();
-      return result;
-    },
-    [wallets, categories, tags, transactions, refresh],
+    (text) =>
+      track(async () => {
+        const result = await importBackup(text, backendRef.current, { wallets, categories, tags, transactions });
+        await loadData(backendRef.current);
+        return result;
+      }),
+    [wallets, categories, tags, transactions, track, loadData],
   );
 
   const value = {
@@ -380,6 +406,7 @@ export function AppProvider({ children }) {
     tags,
     baseCurrency,
     error,
+    busy,
     chooseMode,
     resetMode,
     signIn: handleSignIn,

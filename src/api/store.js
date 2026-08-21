@@ -17,6 +17,7 @@ import {
   getValues,
   getValuesBatch,
   appendRow,
+  appendRows,
   updateValues,
   batchUpdateValues,
   getSpreadsheetMeta,
@@ -91,6 +92,19 @@ export async function ensureSchema(id) {
       ['baseCurrency', DEFAULT_BASE_CURRENCY],
     ]);
   }
+
+  // Разово обновляем шапки столбцов (после добавления новых полей они устарели).
+  const hdrKey = `freemoney:hdr:${id}`;
+  if (!localStorage.getItem(hdrKey)) {
+    await batchUpdateValues(id, [
+      { range: `${SHEET_TX}!A1:L1`, values: [TX_HEADER] },
+      { range: `${SHEET_CAT}!A1:D1`, values: [CAT_HEADER] },
+      { range: `${SHEET_WALLET}!A1:E1`, values: [WALLET_HEADER] },
+      { range: `${SHEET_TAG}!A1`, values: [TAG_HEADER] },
+      { range: `${SHEET_SETTINGS}!A1:B1`, values: [SETTINGS_HEADER] },
+    ]);
+    localStorage.setItem(hdrKey, '1');
+  }
 }
 
 export async function findExistingSpreadsheets() {
@@ -144,11 +158,10 @@ export async function addTransaction(id, tx) {
   await appendRow(id, `${SHEET_TX}!A1`, txToRow(tx));
 }
 
-// Добавить несколько транзакций одним запросом (перевод = 2 ноги).
+// Добавить несколько транзакций одним запросом (перевод, импорт).
 export async function addTransactions(id, txs) {
-  for (const tx of txs) {
-    await appendRow(id, `${SHEET_TX}!A1`, txToRow(tx));
-  }
+  if (!txs.length) return;
+  await appendRows(id, `${SHEET_TX}!A1`, txs.map(txToRow));
 }
 
 async function findTxRow(id, txId) {

@@ -22,6 +22,19 @@ import {
 // Статистика тянет recharts — грузим её отдельным чанком по требованию.
 const Stats = lazy(() => import('./pages/Stats'));
 
+function BusyOverlay() {
+  const { busy } = useApp();
+  if (!busy) return null;
+  return (
+    <div className="busy-overlay">
+      <div className="busy-overlay__box">
+        <div className="spinner" />
+        <span>Загрузка…</span>
+      </div>
+    </div>
+  );
+}
+
 function Shell() {
   const { status } = useApp();
 
@@ -58,6 +71,7 @@ function Shell() {
         </Routes>
       </main>
       <NavBar />
+      <BusyOverlay />
     </div>
   );
 }

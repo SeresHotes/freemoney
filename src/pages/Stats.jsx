@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { useApp } from '../context/AppContext';
 import { monthKey, monthLabel, dayLabel, todayIso, compactNumber } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
@@ -10,6 +9,7 @@ import {
 import { useBaseRates } from '../hooks/useBaseRates';
 import ChipMultiSelect from '../components/ChipMultiSelect';
 import CategoryTrendChart from '../components/CategoryTrendChart';
+import CategoryDonut from '../components/CategoryDonut';
 import { CATEGORY_COLORS as COLORS, buildCategorySeries } from '../utils/chartColors';
 
 export default function Stats() {
@@ -110,16 +110,12 @@ export default function Stats() {
           <p className="muted empty">Нет расходов за этот месяц</p>
         ) : (
           <>
-            <div className="chart">
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                    {byCategory.map((entry, i) => <Cell key={entry.name} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => fmt(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <CategoryDonut
+              data={byCategory}
+              colors={COLORS}
+              center={{ expense, income }}
+              formatValue={(v) => fmt(v)}
+            />
             <ul className="legend">
               {byCategory.map((c, i) => (
                 <li key={c.name} className="legend__item">

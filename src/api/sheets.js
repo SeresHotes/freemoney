@@ -99,6 +99,15 @@ export async function appendRow(spreadsheetId, range, values) {
   return authFetch(url, { method: 'POST', body: JSON.stringify({ values: [values] }) });
 }
 
+// Дописать несколько строк одним запросом.
+export async function appendRows(spreadsheetId, range, rows) {
+  if (!rows.length) return {};
+  const url =
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}` +
+    ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS';
+  return authFetch(url, { method: 'POST', body: JSON.stringify({ values: rows }) });
+}
+
 // Перезаписать значения конкретного диапазона.
 export async function updateValues(spreadsheetId, range, values) {
   const url =
