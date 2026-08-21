@@ -111,7 +111,7 @@ export default function Categories() {
         <h2 className="section-title">Активные ({active.length})</h2>
         <ul className="cat-list">
           {active.map((c) => (
-            <li key={c.row} className="cat-item">
+            <li key={c.id} className="cat-item">
               <div className="cat-item__main">
                 <span className="cat-item__icon">{c.icon}</span>
                 <span className="cat-item__name">{c.name}</span>
@@ -120,7 +120,7 @@ export default function Categories() {
               <button
                 className="link-btn cat-item__action"
                 disabled={busy}
-                onClick={() => changeStatus(c.row, 'archived')}
+                onClick={() => changeStatus(c.id, 'archived')}
                 title="В архив"
               >
                 🗑️
@@ -138,7 +138,7 @@ export default function Categories() {
           <ul className="cat-list cat-list--archived">
             {archived.length === 0 && <p className="muted">Архив пуст</p>}
             {archived.map((c) => (
-              <li key={c.row} className="cat-item cat-item--archived">
+              <li key={c.id} className="cat-item cat-item--archived">
                 <div className="cat-item__main">
                   <span className="cat-item__icon">{c.icon}</span>
                   <span className="cat-item__name">{c.name}</span>
@@ -147,7 +147,7 @@ export default function Categories() {
                 <button
                   className="link-btn cat-item__action"
                   disabled={busy}
-                  onClick={() => changeStatus(c.row, 'active')}
+                  onClick={() => changeStatus(c.id, 'active')}
                   title="Восстановить"
                 >
                   ♻️

@@ -4,6 +4,7 @@ const items = [
   { to: '/', label: 'Главная', icon: '🏠', end: true },
   { to: '/categories', label: 'Категории', icon: '🏷️' },
   { to: '/stats', label: 'Статистика', icon: '📊' },
+  { to: '/settings', label: 'Настройки', icon: '⚙️' },
 ];
 
 export default function NavBar() {

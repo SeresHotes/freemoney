@@ -5,11 +5,13 @@ import NavBar from './components/NavBar';
 import Home from './pages/Home';
 import AddTransaction from './pages/AddTransaction';
 import Categories from './pages/Categories';
+import Settings from './pages/Settings';
 import {
   LoadingScreen,
   NoConfigScreen,
   SignInScreen,
   NoSheetScreen,
+  ModeSelectScreen,
 } from './pages/Gate';
 
 // Статистика тянет recharts — грузим её отдельным чанком по требованию.
@@ -19,6 +21,7 @@ function Shell() {
   const { status } = useApp();
 
   if (status === 'loading') return <LoadingScreen />;
+  if (status === 'select-mode') return <ModeSelectScreen />;
   if (status === 'no-config') return <NoConfigScreen />;
   if (status === 'signed-out') return <SignInScreen />;
   if (status === 'no-sheet') return <NoSheetScreen />;
@@ -38,6 +41,7 @@ function Shell() {
               </Suspense>
             }
           />
+          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

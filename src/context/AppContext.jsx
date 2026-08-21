@@ -1,169 +1,250 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { initAuth, signIn, signOut, ensureToken } from '../auth/googleAuth';
 import { AuthError } from '../api/sheets';
+import { initSpreadsheet } from '../api/store';
+import { createGoogleBackend } from '../api/googleBackend';
+import { createLocalBackend, isLocalStoreReady, initLocalStore } from '../api/localBackend';
 import {
-  initSpreadsheet,
-  fetchTransactions,
-  fetchCategories,
-  addTransaction as apiAddTransaction,
-  addCategory as apiAddCategory,
-  setCategoryStatus as apiSetCategoryStatus,
-} from '../api/store';
-import { LS_SPREADSHEET_ID, IS_CLIENT_ID_CONFIGURED } from '../config';
+  exportTransactionsCsv,
+  exportCategoriesCsv,
+  importTransactionsCsv,
+  importCategoriesCsv,
+} from '../api/csvPorter';
+import { LS_SPREADSHEET_ID, LS_MODE, IS_CLIENT_ID_CONFIGURED } from '../config';
 
 const AppContext = createContext(null);
 
-// Возможные состояния приложения:
-//   'loading'    — идёт инициализация
-//   'no-config'  — не настроен OAuth Client ID
-//   'signed-out' — нужен вход
-//   'no-sheet'   — вошли, но нет таблицы (создать/выбрать)
-//   'ready'      — всё готово, данные загружены
+// Статусы приложения:
+//   'loading'     — инициализация
+//   'select-mode' — не выбран способ хранения (Google / локально)
+//   'no-config'   — выбран Google, но не настроен OAuth Client ID
+//   'signed-out'  — нужен вход в Google
+//   'no-sheet'    — вошли в Google, но нет таблицы
+//   'ready'       — всё готово
 export function AppProvider({ children }) {
   const [status, setStatus] = useState('loading');
-  const [spreadsheetId, setSpreadsheetId] = useState(
-    () => localStorage.getItem(LS_SPREADSHEET_ID) || null,
-  );
+  const [mode, setMode] = useState(() => localStorage.getItem(LS_MODE) || null);
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [error, setError] = useState(null);
 
-  const loadData = useCallback(async (id) => {
-    const [cats, txs] = await Promise.all([fetchCategories(id), fetchTransactions(id)]);
+  // Бэкенд держим в ref, чтобы колбэки видели актуальный инстанс без пересоздания.
+  const backendRef = useRef(null);
+
+  const loadData = useCallback(async (backend) => {
+    const [cats, txs] = await Promise.all([
+      backend.fetchCategories(),
+      backend.fetchTransactions(),
+    ]);
     setCategories(cats);
     setTransactions(txs);
   }, []);
 
-  // Стартовая инициализация.
+  const activateGoogle = useCallback(async () => {
+    const savedId = localStorage.getItem(LS_SPREADSHEET_ID);
+    if (savedId) {
+      const backend = createGoogleBackend(savedId);
+      await loadData(backend);
+      backendRef.current = backend;
+      setStatus('ready');
+    } else {
+      setStatus('no-sheet');
+    }
+  }, [loadData]);
+
+  const activateLocal = useCallback(async () => {
+    if (!(await isLocalStoreReady())) {
+      await initLocalStore();
+    }
+    const backend = createLocalBackend();
+    await loadData(backend);
+    backendRef.current = backend;
+    setStatus('ready');
+  }, [loadData]);
+
+  // Стартовая инициализация в зависимости от выбранного ранее режима.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!IS_CLIENT_ID_CONFIGURED) {
-        setStatus('no-config');
+      const savedMode = localStorage.getItem(LS_MODE);
+      if (!savedMode) {
+        setStatus('select-mode');
         return;
       }
       try {
-        await initAuth();
-        await ensureToken(); // тихая попытка восстановить сессию
-        if (cancelled) return;
-        const savedId = localStorage.getItem(LS_SPREADSHEET_ID);
-        if (savedId) {
-          await loadData(savedId);
-          if (cancelled) return;
-          setSpreadsheetId(savedId);
-          setStatus('ready');
-        } else {
-          setStatus('no-sheet');
+        if (savedMode === 'local') {
+          await activateLocal();
+          return;
         }
+        // google
+        if (!IS_CLIENT_ID_CONFIGURED) {
+          setStatus('no-config');
+          return;
+        }
+        await initAuth();
+        await ensureToken(); // тихое восстановление сессии из кэша токена
+        if (cancelled) return;
+        await activateGoogle();
       } catch (err) {
         if (cancelled) return;
-        // Тихий вход не удался или токен протух — просим авторизоваться.
-        setStatus('signed-out');
+        setStatus(savedMode === 'google' ? 'signed-out' : 'select-mode');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [loadData]);
+  }, [activateGoogle, activateLocal]);
+
+  // Выбор режима хранения на стартовом экране.
+  const chooseMode = useCallback(
+    async (chosen) => {
+      setError(null);
+      localStorage.setItem(LS_MODE, chosen);
+      setMode(chosen);
+      if (chosen === 'local') {
+        setStatus('loading');
+        await activateLocal();
+      } else if (!IS_CLIENT_ID_CONFIGURED) {
+        setStatus('no-config');
+      } else {
+        setStatus('signed-out');
+      }
+    },
+    [activateLocal],
+  );
+
+  // Сброс к выбору режима (сменить хранилище).
+  const resetMode = useCallback(() => {
+    signOut();
+    localStorage.removeItem(LS_MODE);
+    backendRef.current = null;
+    setMode(null);
+    setCategories([]);
+    setTransactions([]);
+    setStatus('select-mode');
+  }, []);
 
   const handleSignIn = useCallback(async () => {
     setError(null);
     try {
       await initAuth();
       await signIn();
-      const savedId = localStorage.getItem(LS_SPREADSHEET_ID);
-      if (savedId) {
-        await loadData(savedId);
-        setSpreadsheetId(savedId);
-        setStatus('ready');
-      } else {
-        setStatus('no-sheet');
-      }
+      await activateGoogle();
     } catch (err) {
       setError('Не удалось войти. Попробуйте ещё раз.');
       setStatus('signed-out');
     }
-  }, [loadData]);
+  }, [activateGoogle]);
 
   const handleSignOut = useCallback(() => {
     signOut();
+    backendRef.current = null;
     setTransactions([]);
     setCategories([]);
     setStatus('signed-out');
   }, []);
 
-  const createSheet = useCallback(async (title) => {
-    setError(null);
-    const id = await initSpreadsheet(title);
-    localStorage.setItem(LS_SPREADSHEET_ID, id);
-    setSpreadsheetId(id);
-    await loadData(id);
-    setStatus('ready');
-    return id;
-  }, [loadData]);
+  const createSheet = useCallback(
+    async (title) => {
+      setError(null);
+      const id = await initSpreadsheet(title);
+      localStorage.setItem(LS_SPREADSHEET_ID, id);
+      const backend = createGoogleBackend(id);
+      await loadData(backend);
+      backendRef.current = backend;
+      setStatus('ready');
+    },
+    [loadData],
+  );
 
   const useExistingSheet = useCallback(
     async (id) => {
       setError(null);
-      await loadData(id); // проверяем доступ, попутно грузим данные
+      const backend = createGoogleBackend(id);
+      await loadData(backend); // проверяем доступ, попутно грузим данные
       localStorage.setItem(LS_SPREADSHEET_ID, id);
-      setSpreadsheetId(id);
+      backendRef.current = backend;
       setStatus('ready');
     },
     [loadData],
   );
 
   const refresh = useCallback(async () => {
-    if (spreadsheetId) await loadData(spreadsheetId);
-  }, [spreadsheetId, loadData]);
+    if (backendRef.current) await loadData(backendRef.current);
+  }, [loadData]);
 
-  // Обёртка мутаций: ловим AuthError и сбрасываем на экран входа.
-  const withAuthGuard = useCallback(async (fn) => {
-    try {
-      return await fn();
-    } catch (err) {
-      if (err instanceof AuthError) {
-        handleSignOut();
+  // Обёртка мутаций: ловим AuthError (актуально для Google) и просим войти заново.
+  const withAuthGuard = useCallback(
+    async (fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        if (err instanceof AuthError) handleSignOut();
+        throw err;
       }
-      throw err;
-    }
-  }, [handleSignOut]);
+    },
+    [handleSignOut],
+  );
 
   const addTransaction = useCallback(
     (tx) =>
       withAuthGuard(async () => {
-        await apiAddTransaction(spreadsheetId, tx);
+        await backendRef.current.addTransaction(tx);
         setTransactions((prev) => [...prev, tx]);
       }),
-    [spreadsheetId, withAuthGuard],
+    [withAuthGuard],
   );
 
   const addCategory = useCallback(
     (cat) =>
       withAuthGuard(async () => {
-        await apiAddCategory(spreadsheetId, cat);
-        await loadData(spreadsheetId); // перечитываем, чтобы получить корректный row
+        await backendRef.current.addCategory(cat);
+        setCategories(await backendRef.current.fetchCategories());
       }),
-    [spreadsheetId, withAuthGuard, loadData],
+    [withAuthGuard],
   );
 
   const setCategoryStatus = useCallback(
-    (row, newStatus) =>
+    (id, newStatus) =>
       withAuthGuard(async () => {
-        await apiSetCategoryStatus(spreadsheetId, row, newStatus);
+        await backendRef.current.setCategoryStatus(id, newStatus);
         setCategories((prev) =>
-          prev.map((c) => (c.row === row ? { ...c, status: newStatus } : c)),
+          prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)),
         );
       }),
-    [spreadsheetId, withAuthGuard],
+    [withAuthGuard],
+  );
+
+  // --- CSV ------------------------------------------------------------------
+  const exportTransactions = useCallback(() => exportTransactionsCsv(transactions), [transactions]);
+  const exportCategories = useCallback(() => exportCategoriesCsv(categories), [categories]);
+
+  const importTransactions = useCallback(
+    async (text) => {
+      const added = await importTransactionsCsv(text, backendRef.current, transactions);
+      await refresh();
+      return added;
+    },
+    [transactions, refresh],
+  );
+
+  const importCategories = useCallback(
+    async (text) => {
+      const added = await importCategoriesCsv(text, backendRef.current, categories);
+      await refresh();
+      return added;
+    },
+    [categories, refresh],
   );
 
   const value = {
     status,
-    spreadsheetId,
+    mode,
     categories,
     transactions,
     error,
+    chooseMode,
+    resetMode,
     signIn: handleSignIn,
     signOut: handleSignOut,
     createSheet,
@@ -172,6 +253,10 @@ export function AppProvider({ children }) {
     addTransaction,
     addCategory,
     setCategoryStatus,
+    exportTransactions,
+    exportCategories,
+    importTransactions,
+    importCategories,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

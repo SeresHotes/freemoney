@@ -10,6 +10,43 @@ function parseSpreadsheetId(input) {
   return match ? match[1] : trimmed;
 }
 
+export function ModeSelectScreen() {
+  const { chooseMode } = useApp();
+  const [busy, setBusy] = useState(false);
+
+  const pick = async (mode) => {
+    setBusy(true);
+    try {
+      await chooseMode(mode);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="gate">
+      <div className="gate__box">
+        <h1 className="gate__title">💰 FreeMoney</h1>
+        <p className="muted">Где хранить данные?</p>
+
+        <button className="btn btn--primary btn--block" disabled={busy} onClick={() => pick('google')}>
+          ☁️ Google Таблицы
+        </button>
+        <p className="muted mode-hint">
+          Синхронизация между устройствами, данные в вашей Google Таблице. Нужен вход через Google.
+        </p>
+
+        <button className="btn btn--block" disabled={busy} onClick={() => pick('local')}>
+          📱 Локально в браузере
+        </button>
+        <p className="muted mode-hint">
+          Без входа и интернета, данные хранятся на этом устройстве. Экспорт/импорт в CSV — в настройках.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function LoadingScreen() {
   return (
     <div className="gate">
@@ -22,6 +59,7 @@ export function LoadingScreen() {
 }
 
 export function NoConfigScreen() {
+  const { resetMode } = useApp();
   return (
     <div className="gate">
       <div className="gate__box">
@@ -34,13 +72,16 @@ export function NoConfigScreen() {
           Как получить Client ID и куда его вписать — подробно расписано в файле
           <code> README.md</code> проекта (раздел «Настройка Google OAuth»).
         </p>
+        <button className="link-btn-inline" onClick={resetMode}>
+          ← Использовать локальное хранилище
+        </button>
       </div>
     </div>
   );
 }
 
 export function SignInScreen() {
-  const { signIn, error } = useApp();
+  const { signIn, resetMode, error } = useApp();
   const [busy, setBusy] = useState(false);
 
   const handle = async () => {
@@ -62,6 +103,9 @@ export function SignInScreen() {
           Данные хранятся только в вашей Google Таблице. Приложение получает
           доступ лишь к файлам, которые создаёт само.
         </p>
+        <button className="link-btn-inline" onClick={resetMode}>
+          ← Другой способ хранения
+        </button>
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import {
   listAppSpreadsheets,
 } from './sheets';
 import { SPREADSHEET_TITLE } from '../config';
+import { DEFAULT_CATEGORIES, DEFAULT_ICON } from './defaults';
 
 export const SHEET_TX = 'Transactions';
 export const SHEET_CAT = 'Categories';
@@ -24,22 +25,13 @@ export const SHEET_CAT = 'Categories';
 const TX_HEADER = ['id', 'date', 'type', 'amount', 'category', 'note', 'tags'];
 const CAT_HEADER = ['name', 'kind', 'status', 'icon'];
 
-// Иконка по умолчанию для категорий без заданного эмодзи.
-export const DEFAULT_ICON = '🏷️';
-
-// Базовые категории при создании таблицы.
-const DEFAULT_CATEGORIES = [
-  ['Зарплата', 'income', 'active', '💼'],
-  ['Прочий доход', 'income', 'active', '💰'],
-  ['Продукты', 'expense', 'active', '🛒'],
-  ['Кафе и рестораны', 'expense', 'active', '🍔'],
-  ['Транспорт', 'expense', 'active', '🚕'],
-  ['Жильё', 'expense', 'active', '🏠'],
-  ['Развлечения', 'expense', 'active', '🎬'],
-  ['Здоровье', 'expense', 'active', '💊'],
-  ['Одежда', 'expense', 'active', '👕'],
-  ['Прочее', 'both', 'active', '🏷️'],
-];
+// Базовые категории в виде строк листа Categories.
+const DEFAULT_CATEGORY_ROWS = DEFAULT_CATEGORIES.map((c) => [
+  c.name,
+  c.kind,
+  'active',
+  c.icon,
+]);
 
 // Создать новую таблицу с двумя листами, шапками и базовыми категориями.
 // title — желаемое имя таблицы (по умолчанию SPREADSHEET_TITLE).
@@ -51,7 +43,7 @@ export async function initSpreadsheet(title = SPREADSHEET_TITLE) {
   ]);
   const id = spreadsheet.spreadsheetId;
   await updateValues(id, `${SHEET_TX}!A1`, [TX_HEADER]);
-  await updateValues(id, `${SHEET_CAT}!A1`, [CAT_HEADER, ...DEFAULT_CATEGORIES]);
+  await updateValues(id, `${SHEET_CAT}!A1`, [CAT_HEADER, ...DEFAULT_CATEGORY_ROWS]);
   return id;
 }
 

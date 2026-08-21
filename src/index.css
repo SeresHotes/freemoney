@@ -447,6 +447,15 @@ h2 {
 .gate__create .field__input {
   text-align: center;
 }
+.mode-hint {
+  margin: 0 0 0.5rem;
+  text-align: left;
+}
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
 
 /* --- Categories ----------------------------------------------------------- */
 .cat-item {
