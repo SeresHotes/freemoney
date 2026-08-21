@@ -2,48 +2,63 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { newId, todayIso } from '../utils/format';
-import { CURRENCIES, currencySymbol } from '../utils/currencies';
+import { CURRENCIES } from '../utils/currencies';
 import { getRate } from '../api/rates';
 
 export default function AddTransaction() {
-  const { type } = useParams(); // 'expense' | 'income'
+  const params = useParams();
   const navigate = useNavigate();
-  const { categories, transactions, wallets, tags: knownTags, addTransaction } = useApp();
+  const {
+    categories, transactions, wallets, tags: knownTags,
+    addTransaction, updateTransaction, deleteTransaction,
+  } = useApp();
 
+  const editing = Boolean(params.id);
+  const editingTx = editing ? transactions.find((t) => t.id === params.id) : null;
+  const type = editing ? editingTx?.type : params.type; // 'expense' | 'income'
   const isExpense = type === 'expense';
+
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
+  const currencyOf = (id) => wallets.find((w) => w.id === id)?.currency || '';
 
   const available = useMemo(
     () => categories.filter((c) => c.status === 'active' && (c.kind === type || c.kind === 'both')),
     [categories, type],
   );
 
-  const [walletId, setWalletId] = useState(activeWallets[0]?.id || '');
-  const walletCurrency = activeWallets.find((w) => w.id === walletId)?.currency || '';
+  const [walletId, setWalletId] = useState(
+    () => editingTx?.wallet || activeWallets[0]?.id || '',
+  );
+  const walletCurrency = currencyOf(walletId);
 
-  const [amount, setAmount] = useState('');
-  const [entryCurrency, setEntryCurrency] = useState(walletCurrency);
-  const [walletAmount, setWalletAmount] = useState('');
-  const [walletAmountTouched, setWalletAmountTouched] = useState(false);
+  const [amount, setAmount] = useState(() =>
+    editingTx ? String(editingTx.origAmount ?? editingTx.amount) : '',
+  );
+  const [entryCurrency, setEntryCurrency] = useState(
+    () => editingTx?.origCurrency || editingTx?.currency || currencyOf(walletId),
+  );
+  const [walletAmount, setWalletAmount] = useState(() =>
+    editingTx?.origCurrency ? String(editingTx.amount) : '',
+  );
+  const [walletAmountTouched, setWalletAmountTouched] = useState(Boolean(editingTx?.origCurrency));
   const [rateInfo, setRateInfo] = useState(null);
 
-  const [category, setCategory] = useState('');
-  const [date, setDate] = useState(todayIso());
-  const [note, setNote] = useState('');
-  const [tags, setTags] = useState([]);
+  const [category, setCategory] = useState(() => editingTx?.category || '');
+  const [date, setDate] = useState(() => editingTx?.date || todayIso());
+  const [note, setNote] = useState(() => editingTx?.note || '');
+  const [tags, setTags] = useState(() => editingTx?.tags || []);
   const [tagDraft, setTagDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  // При смене кошелька приравниваем валюту ввода к валюте кошелька.
-  useEffect(() => {
-    setEntryCurrency(walletCurrency);
+  const changeWallet = (id) => {
+    setWalletId(id);
+    setEntryCurrency(currencyOf(id));
     setWalletAmountTouched(false);
-  }, [walletCurrency]);
+  };
 
   const crossCurrency = entryCurrency && walletCurrency && entryCurrency !== walletCurrency;
 
-  // Автоподсказка суммы в валюте кошелька по историческому курсу на дату.
   useEffect(() => {
     if (!crossCurrency || !amount) {
       setRateInfo(null);
@@ -51,19 +66,15 @@ export default function AddTransaction() {
     }
     let cancelled = false;
     getRate(entryCurrency, walletCurrency, date).then((rate) => {
-      if (cancelled || rate == null) {
-        if (!cancelled) setRateInfo({ error: true });
-        return;
-      }
+      if (cancelled) return;
+      if (rate == null) { setRateInfo({ error: true }); return; }
       setRateInfo({ rate });
       if (!walletAmountTouched) {
         const converted = Number(String(amount).replace(',', '.')) * rate;
         setWalletAmount(converted ? converted.toFixed(2) : '');
       }
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [crossCurrency, amount, entryCurrency, walletCurrency, date, walletAmountTouched]);
 
   const allTags = useMemo(() => {
@@ -87,30 +98,42 @@ export default function AddTransaction() {
   };
   const removeTag = (tag) => setTags((prev) => prev.filter((t) => t !== tag));
   const handleTagKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addTag(tagDraft);
-    } else if (e.key === 'Backspace' && !tagDraft && tags.length) {
-      removeTag(tags[tags.length - 1]);
-    }
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagDraft); }
+    else if (e.key === 'Backspace' && !tagDraft && tags.length) removeTag(tags[tags.length - 1]);
   };
+
+  // Перевод редактируем/удаляем отдельно — здесь только регулярные операции.
+  if (editing && (!editingTx || editingTx.type.startsWith('transfer'))) {
+    return (
+      <div className="page">
+        <header className="page__header page__header--with-back">
+          <button className="link-btn" onClick={() => navigate(-1)}>←</button>
+          <h1>Операция</h1>
+        </header>
+        {!editingTx ? (
+          <p className="muted">Операция не найдена.</p>
+        ) : (
+          <>
+            <p className="muted">Перевод между кошельками нельзя отредактировать — только удалить.</p>
+            <button
+              className="btn btn--block btn--expense"
+              onClick={async () => { await deleteTransaction(editingTx.id); navigate(-1); }}
+            >
+              Удалить перевод
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
-    if (!walletId) {
-      setFormError('Выберите кошелёк');
-      return;
-    }
+    if (!walletId) { setFormError('Выберите кошелёк'); return; }
     const value = Number(String(amount).replace(',', '.'));
-    if (!value || value <= 0) {
-      setFormError('Введите сумму больше нуля');
-      return;
-    }
-    if (!category) {
-      setFormError('Выберите категорию');
-      return;
-    }
+    if (!value || value <= 0) { setFormError('Введите сумму больше нуля'); return; }
+    if (!category) { setFormError('Выберите категорию'); return; }
 
     let finalAmount = value;
     let origAmount = null;
@@ -126,24 +149,31 @@ export default function AddTransaction() {
     }
 
     const finalTags = tagDraft.trim() && !tags.includes(tagDraft.trim()) ? [...tags, tagDraft.trim()] : tags;
+    const tx = {
+      id: editingTx?.id || newId(),
+      date, type, amount: finalAmount, category, note: note.trim(), tags: finalTags,
+      wallet: walletId, currency: walletCurrency, origAmount, origCurrency,
+      transferId: '',
+    };
     setSaving(true);
     try {
-      await addTransaction({
-        id: newId(),
-        date,
-        type,
-        amount: finalAmount,
-        category,
-        note: note.trim(),
-        tags: finalTags,
-        wallet: walletId,
-        currency: walletCurrency,
-        origAmount,
-        origCurrency,
-      });
-      navigate('/');
+      if (editing) await updateTransaction(tx);
+      else await addTransaction(tx);
+      navigate(-1);
     } catch (err) {
-      setFormError('Не удалось сохранить. Проверьте соединение и попробуйте снова.');
+      setFormError('Не удалось сохранить. Попробуйте снова.');
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Удалить операцию?')) return;
+    setSaving(true);
+    try {
+      await deleteTransaction(editingTx.id);
+      navigate(-1);
+    } catch {
+      setFormError('Не удалось удалить.');
       setSaving(false);
     }
   };
@@ -152,39 +182,23 @@ export default function AddTransaction() {
     <div className="page">
       <header className="page__header page__header--with-back">
         <button className="link-btn" onClick={() => navigate(-1)} aria-label="Назад">←</button>
-        <h1>{isExpense ? 'Новый расход' : 'Новый доход'}</h1>
+        <h1>{editing ? 'Редактировать' : isExpense ? 'Новый расход' : 'Новый доход'}</h1>
       </header>
 
       <form className="form" onSubmit={handleSubmit}>
         <label className="field">
           <span className="field__label">Кошелёк</span>
-          <select className="field__input field__input--select" value={walletId} onChange={(e) => setWalletId(e.target.value)}>
-            {activeWallets.map((w) => (
-              <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>
-            ))}
+          <select className="field__input field__input--select" value={walletId} onChange={(e) => changeWallet(e.target.value)}>
+            {activeWallets.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>)}
           </select>
         </label>
 
         <label className="field">
           <span className="field__label">Сумма</span>
           <div className="amount-row">
-            <input
-              className="field__input field__input--amount"
-              type="text"
-              inputMode="decimal"
-              placeholder="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              autoFocus
-            />
-            <select
-              className="field__input field__input--select amount-row__cur"
-              value={entryCurrency}
-              onChange={(e) => { setEntryCurrency(e.target.value); setWalletAmountTouched(false); }}
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>{c.code}</option>
-              ))}
+            <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus={!editing} />
+            <select className="field__input field__input--select amount-row__cur" value={entryCurrency} onChange={(e) => { setEntryCurrency(e.target.value); setWalletAmountTouched(false); }}>
+              {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
             </select>
           </div>
         </label>
@@ -193,40 +207,22 @@ export default function AddTransaction() {
           <label className="field conversion">
             <span className="field__label">
               Списать с кошелька, {walletCurrency}
-              {rateInfo?.rate && (
-                <span className="muted"> · курс 1 {entryCurrency} ≈ {rateInfo.rate.toFixed(4)} {walletCurrency}</span>
-              )}
+              {rateInfo?.rate && <span className="muted"> · курс 1 {entryCurrency} ≈ {rateInfo.rate.toFixed(4)} {walletCurrency}</span>}
               {rateInfo?.error && <span className="form-error"> · курс не загрузился, впишите вручную</span>}
             </span>
-            <input
-              className="field__input"
-              type="text"
-              inputMode="decimal"
-              placeholder={`Сумма в ${walletCurrency}`}
-              value={walletAmount}
-              onChange={(e) => { setWalletAmount(e.target.value); setWalletAmountTouched(true); }}
-            />
+            <input className="field__input" type="text" inputMode="decimal" placeholder={`Сумма в ${walletCurrency}`} value={walletAmount} onChange={(e) => { setWalletAmount(e.target.value); setWalletAmountTouched(true); }} />
           </label>
         )}
 
         <label className="field">
           <span className="field__label">Категория</span>
           {available.length === 0 ? (
-            <p className="muted">
-              Нет активных категорий этого типа.{' '}
-              <button type="button" className="link-btn-inline" onClick={() => navigate('/categories')}>Добавить</button>
-            </p>
+            <p className="muted">Нет активных категорий этого типа. <button type="button" className="link-btn-inline" onClick={() => navigate('/categories')}>Добавить</button></p>
           ) : (
             <div className="category-grid">
               {available.map((c) => (
-                <button
-                  type="button"
-                  key={c.name}
-                  className={`category-chip${category === c.name ? ' category-chip--active' : ''}`}
-                  onClick={() => setCategory(c.name)}
-                >
-                  <span className="category-chip__icon">{c.icon}</span>
-                  {c.name}
+                <button type="button" key={c.name} className={`category-chip${category === c.name ? ' category-chip--active' : ''}`} onClick={() => setCategory(c.name)}>
+                  <span className="category-chip__icon">{c.icon}</span>{c.name}
                 </button>
               ))}
             </div>
@@ -242,25 +238,13 @@ export default function AddTransaction() {
           <span className="field__label">Теги (необязательно)</span>
           <div className="tag-input">
             {tags.map((t) => (
-              <span key={t} className="tag-chip tag-chip--removable" onClick={() => removeTag(t)}>
-                #{t}<span className="tag-chip__x">×</span>
-              </span>
+              <span key={t} className="tag-chip tag-chip--removable" onClick={() => removeTag(t)}>#{t}<span className="tag-chip__x">×</span></span>
             ))}
-            <input
-              className="tag-input__field"
-              type="text"
-              placeholder={tags.length ? '' : 'работа, отпуск…'}
-              value={tagDraft}
-              onChange={(e) => setTagDraft(e.target.value)}
-              onKeyDown={handleTagKeyDown}
-              onBlur={() => tagDraft.trim() && addTag(tagDraft)}
-            />
+            <input className="tag-input__field" type="text" placeholder={tags.length ? '' : 'работа, отпуск…'} value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={handleTagKeyDown} onBlur={() => tagDraft.trim() && addTag(tagDraft)} />
           </div>
           {suggestions.length > 0 && (
             <div className="tag-suggestions">
-              {suggestions.map((t) => (
-                <button type="button" key={t} className="tag-chip tag-chip--suggestion" onClick={() => addTag(t)}>#{t}</button>
-              ))}
+              {suggestions.map((t) => <button type="button" key={t} className="tag-chip tag-chip--suggestion" onClick={() => addTag(t)}>#{t}</button>)}
             </div>
           )}
         </label>
@@ -275,6 +259,11 @@ export default function AddTransaction() {
         <button type="submit" className={`btn btn--block ${isExpense ? 'btn--expense' : 'btn--income'}`} disabled={saving}>
           {saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
+        {editing && (
+          <button type="button" className="btn btn--block btn--danger" onClick={handleDelete} disabled={saving}>
+            Удалить операцию
+          </button>
+        )}
       </form>
     </div>
   );

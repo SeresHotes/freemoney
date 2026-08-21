@@ -146,6 +146,25 @@ export async function addTransactions(id, txs) {
   }
 }
 
+async function findTxRow(id, txId) {
+  const ids = await getValues(id, `${SHEET_TX}!A2:A`);
+  const index = ids.findIndex((r) => r[0] === txId);
+  return index < 0 ? null : index + 2;
+}
+
+export async function updateTransaction(id, tx) {
+  const row = await findTxRow(id, tx.id);
+  if (row == null) throw new Error('Операция не найдена');
+  await updateValues(id, `${SHEET_TX}!A${row}:L${row}`, [txToRow(tx)]);
+}
+
+// Удаление = очистка строки (пустые строки отфильтровываются при чтении).
+export async function deleteTransaction(id, txId) {
+  const row = await findTxRow(id, txId);
+  if (row == null) return;
+  await updateValues(id, `${SHEET_TX}!A${row}:L${row}`, [Array(12).fill('')]);
+}
+
 // --- Категории --------------------------------------------------------------
 
 export async function fetchCategories(id) {

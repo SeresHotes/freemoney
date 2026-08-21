@@ -156,6 +156,11 @@ h2 {
   background: var(--accent);
   color: #071b33;
 }
+.btn--danger {
+  background: transparent;
+  color: var(--expense);
+  border: 1px solid var(--expense);
+}
 .link-btn {
   background: none;
   border: none;
@@ -195,6 +200,30 @@ h2 {
 }
 .tx-item {
   gap: 0.75rem;
+}
+.tx-item--clickable,
+.cat-item--clickable {
+  cursor: pointer;
+}
+.tx-item--clickable:active,
+.cat-item--clickable:active {
+  filter: brightness(1.1);
+}
+
+/* --- Filters (transactions) ----------------------------------------------- */
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.filters__dates {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.filters__dates .field__input {
+  flex: 1;
 }
 .tx-item__cat-icon {
   font-size: 1.4rem;

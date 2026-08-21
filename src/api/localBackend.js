@@ -141,6 +141,18 @@ export function createLocalBackend() {
       db.close();
     },
 
+    updateTransaction: async (t) => {
+      const db = await openDb();
+      await put(db, STORE_TX, { ...t, tags: t.tags || [] });
+      db.close();
+    },
+
+    deleteTransaction: async (txId) => {
+      const db = await openDb();
+      await reqToPromise(store(db, STORE_TX, 'readwrite').delete(txId));
+      db.close();
+    },
+
     addCategory: async ({ name, kind, icon }) => {
       const db = await openDb();
       const existing = await getAll(db, STORE_CAT);

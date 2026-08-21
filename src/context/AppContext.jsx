@@ -224,6 +224,29 @@ export function AppProvider({ children }) {
     [withAuthGuard, wallets],
   );
 
+  const updateTransaction = useCallback(
+    (tx) =>
+      withAuthGuard(async () => {
+        await backendRef.current.updateTransaction(tx);
+        setTransactions((prev) => prev.map((t) => (t.id === tx.id ? tx : t)));
+      }),
+    [withAuthGuard],
+  );
+
+  // Удаление операции; для перевода удаляются обе связанные ноги.
+  const deleteTransaction = useCallback(
+    (id) =>
+      withAuthGuard(async () => {
+        const tx = transactions.find((t) => t.id === id);
+        const ids = tx?.transferId
+          ? transactions.filter((t) => t.transferId === tx.transferId).map((t) => t.id)
+          : [id];
+        for (const legId of ids) await backendRef.current.deleteTransaction(legId);
+        setTransactions((prev) => prev.filter((t) => !ids.includes(t.id)));
+      }),
+    [withAuthGuard, transactions],
+  );
+
   // --- Категории ------------------------------------------------------------
   const addCategory = useCallback(
     (cat) =>
@@ -329,6 +352,8 @@ export function AppProvider({ children }) {
     refresh,
     addTransaction,
     addTransfer,
+    updateTransaction,
+    deleteTransaction,
     addCategory,
     setCategoryStatus,
     updateCategory,

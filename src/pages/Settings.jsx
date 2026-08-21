@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES } from '../utils/currencies';
 
@@ -13,6 +14,7 @@ export default function Settings() {
     setBaseCurrencyPref, exportAll, importAll, addTag, deleteTag, resetMode, refresh,
   } = useApp();
 
+  const navigate = useNavigate();
   const fileRef = useRef(null);
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -65,6 +67,14 @@ export default function Settings() {
   return (
     <div className="page">
       <header className="page__header"><h1>Настройки</h1></header>
+
+      <section>
+        <h2 className="section-title">Разделы</h2>
+        <div className="settings-actions">
+          <button className="btn btn--block" onClick={() => navigate('/categories')}>🏷️ Категории</button>
+          <button className="btn btn--block" onClick={() => navigate('/wallets')}>👛 Кошельки</button>
+        </div>
+      </section>
 
       <section>
         <h2 className="section-title">Базовая валюта</h2>

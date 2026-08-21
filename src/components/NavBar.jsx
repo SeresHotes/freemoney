@@ -2,9 +2,9 @@ import { NavLink } from 'react-router-dom';
 
 const items = [
   { to: '/', label: 'Главная', icon: '🏠', end: true },
+  { to: '/transactions', label: 'Операции', icon: '📋' },
   { to: '/wallets', label: 'Кошельки', icon: '👛' },
   { to: '/stats', label: 'Статистика', icon: '📊' },
-  { to: '/categories', label: 'Категории', icon: '🏷️' },
   { to: '/settings', label: 'Ещё', icon: '⚙️' },
 ];
 

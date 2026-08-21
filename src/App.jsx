@@ -4,7 +4,9 @@ import { AppProvider, useApp } from './context/AppContext';
 import NavBar from './components/NavBar';
 import Home from './pages/Home';
 import AddTransaction from './pages/AddTransaction';
+import Transactions from './pages/Transactions';
 import Categories from './pages/Categories';
+import CategoryEdit from './pages/CategoryEdit';
 import Wallets from './pages/Wallets';
 import Transfer from './pages/Transfer';
 import Settings from './pages/Settings';
@@ -34,7 +36,11 @@ function Shell() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/add/:type" element={<AddTransaction />} />
+          <Route path="/edit/:id" element={<AddTransaction />} />
+          <Route path="/transactions" element={<Transactions />} />
           <Route path="/categories" element={<Categories />} />
+          <Route path="/categories/new" element={<CategoryEdit />} />
+          <Route path="/categories/:id/edit" element={<CategoryEdit />} />
           <Route path="/wallets" element={<Wallets />} />
           <Route path="/transfer" element={<Transfer />} />
           <Route

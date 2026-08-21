@@ -10,6 +10,8 @@ import {
   fetchSettings,
   addTransaction,
   addTransactions,
+  updateTransaction,
+  deleteTransaction,
   addCategory,
   setCategoryStatus,
   updateCategory,
@@ -48,6 +50,8 @@ export function createGoogleBackend(spreadsheetId) {
 
     addTransaction: (tx) => addTransaction(spreadsheetId, tx),
     addTransactions: (txs) => addTransactions(spreadsheetId, txs),
+    updateTransaction: (tx) => updateTransaction(spreadsheetId, tx),
+    deleteTransaction: (txId) => deleteTransaction(spreadsheetId, txId),
 
     addCategory: (cat) => addCategory(spreadsheetId, cat),
     setCategoryStatus: (id, status) => setCategoryStatus(spreadsheetId, id, status),
