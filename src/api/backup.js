@@ -24,7 +24,8 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
 // Импорт бэкапа: добавляет отсутствующее, сопоставляя кошельки по имени
 // (id могут отличаться между устройствами). Возвращает счётчики добавленного.
 export async function importBackup(text, backend, current) {
-  const data = JSON.parse(text);
+  // Убираем BOM (наш экспорт добавляет его для Excel) перед разбором JSON.
+  const data = JSON.parse(text.replace(/^﻿/, ''));
   if (data.app !== 'freemoney') throw new Error('Не файл резервной копии FreeMoney');
 
   const result = { wallets: 0, categories: 0, tags: 0, transactions: 0 };
