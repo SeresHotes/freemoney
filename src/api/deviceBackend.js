@@ -45,13 +45,13 @@ async function writeRows(file, header, rows) {
 
 // --- Сериализация сущностей -------------------------------------------------
 const txToRow = (t) => [
-  t.id, t.time ? `${t.date} ${t.time}` : (t.date || ''), t.type, t.amount, t.category || '', t.note || '', (t.tags || []).join(', '),
+  t.id, t.date ? `${t.date} ${t.time || '00:00'}` : '', t.type, t.amount, t.category || '', t.note || '', (t.tags || []).join(', '),
   t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
 ];
 const rowToTx = (r) => {
   const dt = r[1] || '';
   return {
-    id: r[0], date: dt.slice(0, 10), time: dt.length > 10 ? dt.slice(11, 16) : '',
+    id: r[0], date: dt.slice(0, 10), time: dt.length > 10 ? dt.slice(11, 16) : '00:00',
     type: r[2] || 'expense', amount: Number(r[3]) || 0,
     category: r[4] || '', note: r[5] || '',
     tags: (r[6] || '').split(',').map((s) => s.trim()).filter(Boolean),

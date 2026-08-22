@@ -132,8 +132,8 @@ function mapTxRows(rows) {
       // Колонка datetime: «YYYY-MM-DD HH:MM» либо просто «YYYY-MM-DD».
       const dt = r[1] || '';
       const date = dt.slice(0, 10);
-      // Время из datetime, либо из старой отдельной колонки (обратная совместимость).
-      const time = dt.length > 10 ? dt.slice(11, 16) : (r[12] || '');
+      // Время из datetime, либо из старой колонки; если нет — 00:00.
+      const time = dt.length > 10 ? dt.slice(11, 16) : (r[12] || '00:00');
       return {
         id: r[0],
         date,
@@ -158,7 +158,7 @@ export async function fetchTransactions(id) {
 }
 
 function txToRow(t) {
-  const datetime = t.time ? `${t.date} ${t.time}` : (t.date || '');
+  const datetime = t.date ? `${t.date} ${t.time || '00:00'}` : '';
   return [
     t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
     t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
