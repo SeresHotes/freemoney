@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
+import { monthKey, monthLabel } from '../utils/format';
 import { isIncome, matchesFilters } from '../utils/finance';
 import ChipMultiSelect from '../components/ChipMultiSelect';
 
@@ -72,6 +73,45 @@ export default function Transactions() {
   const activeCount = types.length + cats.length + tagSel.length + wals.length + (from ? 1 : 0) + (to ? 1 : 0);
   const clear = () => setSearchParams({}, { replace: true });
 
+  // Группировка по месяцам (filtered уже отсортирован по убыванию даты).
+  const groups = useMemo(() => {
+    const map = new Map();
+    for (const t of filtered) {
+      const k = monthKey(t.date) || '—';
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(t);
+    }
+    return [...map.entries()];
+  }, [filtered]);
+
+  const renderRow = (t) => {
+    const transfer = t.type.startsWith('transfer');
+    const adjust = t.type.startsWith('adjust');
+    const positive = isIncome(t) || t.type === 'transfer_in' || t.type === 'adjust_in';
+    const icon = transfer ? '⇄' : adjust ? '⚖️' : iconByCategory.get(t.category) || '🏷️';
+    const title = transfer ? 'Перевод' : adjust ? 'Корректировка' : t.category || 'Без категории';
+    return (
+      <li key={t.id} className="tx-item tx-item--clickable" onClick={() => navigate(`/edit/${t.id}`)}>
+        <span className="tx-item__cat-icon">{icon}</span>
+        <div className="tx-item__main">
+          <span className="tx-item__category">{title}</span>
+          <span className="tx-item__note">
+            {walletById.get(t.wallet)?.name}
+            {t.origAmount ? ` · ${formatAmount(t.origAmount, t.origCurrency)}` : ''}
+            {t.note ? ` · ${t.note}` : ''}
+          </span>
+          {t.tags?.length > 0 && (
+            <span className="tx-item__tags">{t.tags.map((x) => <span key={x} className="tag-chip tag-chip--mini">#{x}</span>)}</span>
+          )}
+        </div>
+        <div className="tx-item__right">
+          <span className={`tx-item__amount tx-item__amount--${positive ? 'income' : 'expense'}`}>{positive ? '+' : '−'}{formatAmount(t.amount, t.currency)}</span>
+          <span className="tx-item__date">{t.date}</span>
+        </div>
+      </li>
+    );
+  };
+
   return (
     <div className="page">
       <header className="page__header"><h1>Операции</h1></header>
@@ -113,35 +153,12 @@ export default function Transactions() {
       {filtered.length === 0 ? (
         <p className="muted empty">Ничего не найдено</p>
       ) : (
-        <ul className="tx-list">
-          {filtered.map((t) => {
-            const transfer = t.type.startsWith('transfer');
-            const adjust = t.type.startsWith('adjust');
-            const positive = isIncome(t) || t.type === 'transfer_in' || t.type === 'adjust_in';
-            const icon = transfer ? '⇄' : adjust ? '⚖️' : iconByCategory.get(t.category) || '🏷️';
-            const title = transfer ? 'Перевод' : adjust ? 'Корректировка' : t.category || 'Без категории';
-            return (
-              <li key={t.id} className="tx-item tx-item--clickable" onClick={() => navigate(`/edit/${t.id}`)}>
-                <span className="tx-item__cat-icon">{icon}</span>
-                <div className="tx-item__main">
-                  <span className="tx-item__category">{title}</span>
-                  <span className="tx-item__note">
-                    {walletById.get(t.wallet)?.name}
-                    {t.origAmount ? ` · ${formatAmount(t.origAmount, t.origCurrency)}` : ''}
-                    {t.note ? ` · ${t.note}` : ''}
-                  </span>
-                  {t.tags?.length > 0 && (
-                    <span className="tx-item__tags">{t.tags.map((x) => <span key={x} className="tag-chip tag-chip--mini">#{x}</span>)}</span>
-                  )}
-                </div>
-                <div className="tx-item__right">
-                  <span className={`tx-item__amount tx-item__amount--${positive ? 'income' : 'expense'}`}>{positive ? '+' : '−'}{formatAmount(t.amount, t.currency)}</span>
-                  <span className="tx-item__date">{t.date}</span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        groups.map(([month, items]) => (
+          <section key={month} className="tx-group">
+            <h3 className="tx-month">{month === '—' ? 'Без даты' : monthLabel(month)}</h3>
+            <ul className="tx-list">{items.map(renderRow)}</ul>
+          </section>
+        ))
       )}
     </div>
   );

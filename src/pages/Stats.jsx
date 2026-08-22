@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { monthKey, monthLabel, dayLabel, todayIso, compactNumber } from '../utils/format';
+import { monthKey, monthLabel, dayLabel, todayIso, compactNumber, monthRange } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import {
   isIncome, isExpense, matchesFilters,
@@ -17,7 +17,19 @@ export default function Stats() {
   const { transactions, categories, wallets, tags, baseCurrency } = useApp();
   const { toBase } = useBaseRates(baseCurrency);
   const navigate = useNavigate();
-  const openCategory = (name) => navigate(`/transactions?category=${encodeURIComponent(name)}`);
+  // Переход к операциям: категория + активные фильтры статистики (+ месяц для диаграммы).
+  const openCategory = (name, withMonth) => {
+    const p = new URLSearchParams();
+    p.append('category', name);
+    wals.forEach((w) => p.append('wallet', w));
+    tagSel.forEach((t) => p.append('tag', t));
+    if (withMonth) {
+      const { from, to } = monthRange(selectedMonth);
+      p.set('from', from);
+      p.set('to', to);
+    }
+    navigate(`/transactions?${p.toString()}`);
+  };
 
   const [cats, setCats] = useState([]);
   const [tagSel, setTagSel] = useState([]);
@@ -121,7 +133,7 @@ export default function Stats() {
             />
             <ul className="legend">
               {byCategory.map((c, i) => (
-                <li key={c.name} className="legend__item legend__item--clickable" onClick={() => openCategory(c.name)}>
+                <li key={c.name} className="legend__item legend__item--clickable" onClick={() => openCategory(c.name, true)}>
                   <span className="legend__dot" style={{ background: COLORS[i % COLORS.length] }} />
                   <span className="legend__name">{c.name}</span>
                   <span className="legend__value">{fmt(c.value)}</span>

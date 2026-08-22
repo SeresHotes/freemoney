@@ -22,6 +22,14 @@ export function monthKey(isoDate) {
   return (isoDate || '').slice(0, 7);
 }
 
+// Диапазон дат месяца по ключу "YYYY-MM": { from: '...-01', to: '...-31' }.
+export function monthRange(key) {
+  if (!key) return { from: '', to: '' };
+  const [year, month] = key.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  return { from: `${key}-01`, to: `${key}-${String(lastDay).padStart(2, '0')}` };
+}
+
 // Человекочитаемое название месяца: "2026-08" -> "август 2026".
 export function monthLabel(key) {
   if (!key) return '';
