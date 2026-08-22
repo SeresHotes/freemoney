@@ -231,6 +231,16 @@ h2 {
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
+.datetime-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.datetime-row .field__input {
+  flex: 1;
+}
+.datetime-row__time {
+  max-width: 40%;
+}
 .filters__dates {
   display: flex;
   align-items: center;

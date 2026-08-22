@@ -7,7 +7,7 @@ import { createLocalBackend, isLocalStoreReady, initLocalStore } from '../api/lo
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
 import { LS_SPREADSHEET_ID, LS_MODE, DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED } from '../config';
-import { newId, todayIso } from '../utils/format';
+import { newId, todayIso, nowTime } from '../utils/format';
 import { walletBalance } from '../utils/finance';
 
 const AppContext = createContext(null);
@@ -266,15 +266,16 @@ export function AppProvider({ children }) {
         const from = wallets.find((w) => w.id === fromWalletId);
         const to = wallets.find((w) => w.id === toWalletId);
         const transferId = newId();
+        const time = nowTime();
         const out = {
           id: newId(), date, type: 'transfer_out', amount: amountOut, category: '',
           note: note || '', tags: [], wallet: fromWalletId, currency: from?.currency || '',
-          origAmount: null, origCurrency: '', transferId,
+          origAmount: null, origCurrency: '', transferId, time,
         };
         const inc = {
           id: newId(), date, type: 'transfer_in', amount: amountIn, category: '',
           note: note || '', tags: [], wallet: toWalletId, currency: to?.currency || '',
-          origAmount: null, origCurrency: '', transferId,
+          origAmount: null, origCurrency: '', transferId, time,
         };
         await backendRef.current.addTransactions([out, inc]);
         setTransactions((prev) => [...prev, out, inc]);
@@ -368,6 +369,7 @@ export function AppProvider({ children }) {
         const tx = {
           id: newId(),
           date: todayIso(),
+          time: nowTime(),
           type: diff > 0 ? 'adjust_in' : 'adjust_out',
           amount: Math.abs(diff),
           category: '',

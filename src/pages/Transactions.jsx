@@ -67,7 +67,11 @@ export default function Transactions() {
           isNumeric && (String(t.amount).includes(qNum) || String(t.origAmount ?? '').includes(qNum));
         return noteHit || amountHit;
       })
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+      .sort((a, b) => {
+        const ka = `${a.date} ${a.time || ''}`;
+        const kb = `${b.date} ${b.time || ''}`;
+        return ka < kb ? 1 : ka > kb ? -1 : 0;
+      });
   }, [transactions, query, types, cats, tagSel, wals, from, to]);
 
   const activeCount = types.length + cats.length + tagSel.length + wals.length + (from ? 1 : 0) + (to ? 1 : 0);
@@ -106,7 +110,7 @@ export default function Transactions() {
         </div>
         <div className="tx-item__right">
           <span className={`tx-item__amount tx-item__amount--${positive ? 'income' : 'expense'}`}>{positive ? '+' : '−'}{formatAmount(t.amount, t.currency)}</span>
-          <span className="tx-item__date">{t.date}</span>
+          <span className="tx-item__date">{t.time ? `${t.date} ${t.time}` : t.date}</span>
         </div>
       </li>
     );

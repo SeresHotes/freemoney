@@ -18,7 +18,7 @@ const FILES = {
   settings: 'settings.csv',
 };
 
-const TX_COLS = ['id', 'date', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId'];
+const TX_COLS = ['id', 'date', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'time'];
 const CAT_COLS = ['id', 'name', 'kind', 'status', 'icon'];
 const WALLET_COLS = ['id', 'name', 'currency', 'status', 'order'];
 
@@ -47,13 +47,14 @@ async function writeRows(file, header, rows) {
 const txToRow = (t) => [
   t.id, t.date, t.type, t.amount, t.category || '', t.note || '', (t.tags || []).join(', '),
   t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
+  t.time || '',
 ];
 const rowToTx = (r) => ({
   id: r[0], date: r[1] || '', type: r[2] || 'expense', amount: Number(r[3]) || 0,
   category: r[4] || '', note: r[5] || '',
   tags: (r[6] || '').split(',').map((s) => s.trim()).filter(Boolean),
   wallet: r[7] || '', currency: r[8] || '', origAmount: r[9] ? Number(r[9]) : null,
-  origCurrency: r[10] || '', transferId: r[11] || '',
+  origCurrency: r[10] || '', transferId: r[11] || '', time: r[12] || '',
 });
 const catToRow = (c) => [c.id, c.name, c.kind, c.status, c.icon || DEFAULT_ICON];
 const rowToCat = (r, i) => ({ id: r[0], name: r[1], kind: r[2] || 'both', status: r[3] || 'active', icon: r[4] || DEFAULT_ICON, order: i });

@@ -17,6 +17,12 @@ export function todayIso() {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
+// Текущее локальное время в формате HH:MM.
+export function nowTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 // Ключ месяца YYYY-MM из ISO-даты.
 export function monthKey(isoDate) {
   return (isoDate || '').slice(0, 7);

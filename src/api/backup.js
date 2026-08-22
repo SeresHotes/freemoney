@@ -16,6 +16,7 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
       id: t.id, date: t.date, type: t.type, amount: t.amount, category: t.category,
       note: t.note, tags: t.tags, wallet: t.wallet, currency: t.currency,
       origAmount: t.origAmount, origCurrency: t.origCurrency, transferId: t.transferId,
+      time: t.time || '',
     })),
   };
   downloadFile('freemoney-backup.json', JSON.stringify(payload, null, 2), 'application/json');

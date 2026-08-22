@@ -36,7 +36,7 @@ export const SHEET_SETTINGS = 'Settings';
 
 const TX_HEADER = [
   'id', 'date', 'type', 'amount', 'category', 'note', 'tags',
-  'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId',
+  'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'time',
 ];
 const CAT_HEADER = ['name', 'kind', 'status', 'icon'];
 const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order'];
@@ -94,10 +94,10 @@ export async function ensureSchema(id) {
   }
 
   // Разово обновляем шапки столбцов (после добавления новых полей они устарели).
-  const hdrKey = `freemoney:hdr:${id}`;
+  const hdrKey = `freemoney:hdr2:${id}`;
   if (!localStorage.getItem(hdrKey)) {
     await batchUpdateValues(id, [
-      { range: `${SHEET_TX}!A1:L1`, values: [TX_HEADER] },
+      { range: `${SHEET_TX}!A1:M1`, values: [TX_HEADER] },
       { range: `${SHEET_CAT}!A1:D1`, values: [CAT_HEADER] },
       { range: `${SHEET_WALLET}!A1:E1`, values: [WALLET_HEADER] },
       { range: `${SHEET_TAG}!A1`, values: [TAG_HEADER] },
@@ -139,11 +139,12 @@ function mapTxRows(rows) {
       origAmount: r[9] ? Number(r[9]) : null,
       origCurrency: r[10] || '',
       transferId: r[11] || '',
+      time: r[12] || '',
     }));
 }
 
 export async function fetchTransactions(id) {
-  const rows = await getValues(id, `${SHEET_TX}!A2:L`);
+  const rows = await getValues(id, `${SHEET_TX}!A2:M`);
   return mapTxRows(rows);
 }
 
@@ -151,6 +152,7 @@ function txToRow(t) {
   return [
     t.id, t.date, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
     t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
+    t.time || '',
   ];
 }
 
@@ -173,14 +175,14 @@ async function findTxRow(id, txId) {
 export async function updateTransaction(id, tx) {
   const row = await findTxRow(id, tx.id);
   if (row == null) throw new Error('Операция не найдена');
-  await updateValues(id, `${SHEET_TX}!A${row}:L${row}`, [txToRow(tx)]);
+  await updateValues(id, `${SHEET_TX}!A${row}:M${row}`, [txToRow(tx)]);
 }
 
 // Удаление = очистка строки (пустые строки отфильтровываются при чтении).
 export async function deleteTransaction(id, txId) {
   const row = await findTxRow(id, txId);
   if (row == null) return;
-  await updateValues(id, `${SHEET_TX}!A${row}:L${row}`, [Array(12).fill('')]);
+  await updateValues(id, `${SHEET_TX}!A${row}:M${row}`, [Array(13).fill('')]);
 }
 
 // --- Категории --------------------------------------------------------------
@@ -218,7 +220,7 @@ export async function updateCategory(id, rowNumber, { name, kind, icon }) {
 }
 
 export async function renameCategoryInTransactions(id, oldName, newName) {
-  const rows = await getValues(id, `${SHEET_TX}!A2:L`);
+  const rows = await getValues(id, `${SHEET_TX}!A2:M`);
   const data = [];
   rows.forEach((r, index) => {
     if (r[4] === oldName) data.push({ range: `${SHEET_TX}!E${index + 2}`, values: [[newName]] });
@@ -300,7 +302,7 @@ export async function fetchSettings(id) {
 // Одно чтение всех данных сразу (экономит квоту API).
 export async function fetchAll(id) {
   const [txRows, catRows, walletRows, tagRows, settingsRows] = await getValuesBatch(id, [
-    `${SHEET_TX}!A2:L`,
+    `${SHEET_TX}!A2:M`,
     `${SHEET_CAT}!A2:D`,
     `${SHEET_WALLET}!A2:E`,
     `${SHEET_TAG}!A2:A`,

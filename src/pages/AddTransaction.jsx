@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { newId, todayIso } from '../utils/format';
+import { newId, todayIso, nowTime } from '../utils/format';
 import { CURRENCIES } from '../utils/currencies';
 import { getRate } from '../api/rates';
 
@@ -45,6 +45,7 @@ export default function AddTransaction() {
 
   const [category, setCategory] = useState(() => editingTx?.category || '');
   const [date, setDate] = useState(() => editingTx?.date || todayIso());
+  const [time, setTime] = useState(() => editingTx?.time || nowTime());
   const [note, setNote] = useState(() => editingTx?.note || '');
   const [tags, setTags] = useState(() => editingTx?.tags || []);
   const [tagDraft, setTagDraft] = useState('');
@@ -152,7 +153,7 @@ export default function AddTransaction() {
     const finalTags = tagDraft.trim() && !tags.includes(tagDraft.trim()) ? [...tags, tagDraft.trim()] : tags;
     const tx = {
       id: editingTx?.id || newId(),
-      date, type, amount: finalAmount, category, note: note.trim(), tags: finalTags,
+      date, time, type, amount: finalAmount, category, note: note.trim(), tags: finalTags,
       wallet: walletId, currency: walletCurrency, origAmount, origCurrency,
       transferId: '',
     };
@@ -230,10 +231,13 @@ export default function AddTransaction() {
           )}
         </label>
 
-        <label className="field">
-          <span className="field__label">Дата</span>
-          <input className="field__input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
+        <div className="field">
+          <span className="field__label">Дата и время</span>
+          <div className="datetime-row">
+            <input className="field__input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input className="field__input datetime-row__time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </div>
+        </div>
 
         <label className="field">
           <span className="field__label">Теги (необязательно)</span>
