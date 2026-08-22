@@ -1,7 +1,8 @@
 // Высокоуровневая модель данных поверх Google Sheets.
 //
 // Листы:
-//   Transactions: id|date|type|amount|category|note|tags|wallet|currency|origAmount|origCurrency|transferId
+//   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|origAmount|origCurrency|transferId
+//     datetime — «YYYY-MM-DD HH:MM» или «YYYY-MM-DD» (в приложении хранится как date + time)
 //     type    — 'expense' | 'income' | 'transfer_out' | 'transfer_in'
 //     amount  — сумма в валюте кошелька
 //     wallet  — id кошелька; currency — валюта кошелька (денормализовано)
@@ -35,8 +36,8 @@ export const SHEET_TAG = 'Tags';
 export const SHEET_SETTINGS = 'Settings';
 
 const TX_HEADER = [
-  'id', 'date', 'type', 'amount', 'category', 'note', 'tags',
-  'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'time',
+  'id', 'datetime', 'type', 'amount', 'category', 'note', 'tags',
+  'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId',
 ];
 const CAT_HEADER = ['name', 'kind', 'status', 'icon'];
 const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order'];
@@ -94,10 +95,11 @@ export async function ensureSchema(id) {
   }
 
   // Разово обновляем шапки столбцов (после добавления новых полей они устарели).
-  const hdrKey = `freemoney:hdr2:${id}`;
+  const hdrKey = `freemoney:hdr3:${id}`;
   if (!localStorage.getItem(hdrKey)) {
     await batchUpdateValues(id, [
-      { range: `${SHEET_TX}!A1:M1`, values: [TX_HEADER] },
+      // 13-й столбец очищаем от старого заголовка time.
+      { range: `${SHEET_TX}!A1:M1`, values: [[...TX_HEADER, '']] },
       { range: `${SHEET_CAT}!A1:D1`, values: [CAT_HEADER] },
       { range: `${SHEET_WALLET}!A1:E1`, values: [WALLET_HEADER] },
       { range: `${SHEET_TAG}!A1`, values: [TAG_HEADER] },
@@ -126,21 +128,28 @@ function serializeTags(tags) {
 function mapTxRows(rows) {
   return rows
     .filter((r) => r[0])
-    .map((r) => ({
-      id: r[0],
-      date: r[1] || '',
-      type: r[2] || 'expense',
-      amount: Number(r[3]) || 0,
-      category: r[4] || '',
-      note: r[5] || '',
-      tags: parseTags(r[6]),
-      wallet: r[7] || '',
-      currency: r[8] || '',
-      origAmount: r[9] ? Number(r[9]) : null,
-      origCurrency: r[10] || '',
-      transferId: r[11] || '',
-      time: r[12] || '',
-    }));
+    .map((r) => {
+      // Колонка datetime: «YYYY-MM-DD HH:MM» либо просто «YYYY-MM-DD».
+      const dt = r[1] || '';
+      const date = dt.slice(0, 10);
+      // Время из datetime, либо из старой отдельной колонки (обратная совместимость).
+      const time = dt.length > 10 ? dt.slice(11, 16) : (r[12] || '');
+      return {
+        id: r[0],
+        date,
+        time,
+        type: r[2] || 'expense',
+        amount: Number(r[3]) || 0,
+        category: r[4] || '',
+        note: r[5] || '',
+        tags: parseTags(r[6]),
+        wallet: r[7] || '',
+        currency: r[8] || '',
+        origAmount: r[9] ? Number(r[9]) : null,
+        origCurrency: r[10] || '',
+        transferId: r[11] || '',
+      };
+    });
 }
 
 export async function fetchTransactions(id) {
@@ -149,10 +158,10 @@ export async function fetchTransactions(id) {
 }
 
 function txToRow(t) {
+  const datetime = t.time ? `${t.date} ${t.time}` : (t.date || '');
   return [
-    t.id, t.date, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
+    t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
     t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
-    t.time || '',
   ];
 }
 
@@ -175,7 +184,8 @@ async function findTxRow(id, txId) {
 export async function updateTransaction(id, tx) {
   const row = await findTxRow(id, tx.id);
   if (row == null) throw new Error('Операция не найдена');
-  await updateValues(id, `${SHEET_TX}!A${row}:M${row}`, [txToRow(tx)]);
+  // Пишем 13 значений (последнее пустое), чтобы очистить старую колонку time (M).
+  await updateValues(id, `${SHEET_TX}!A${row}:M${row}`, [[...txToRow(tx), '']]);
 }
 
 // Удаление = очистка строки (пустые строки отфильтровываются при чтении).
