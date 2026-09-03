@@ -48,7 +48,6 @@ export default function AddTransaction() {
   const [time, setTime] = useState(() => editingTx?.time || nowTime());
   const [note, setNote] = useState(() => editingTx?.note || '');
   const [tags, setTags] = useState(() => editingTx?.tags || []);
-  const [tagDraft, setTagDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -78,38 +77,47 @@ export default function AddTransaction() {
     return () => { cancelled = true; };
   }, [crossCurrency, amount, entryCurrency, walletCurrency, date, walletAmountTouched]);
 
-  // Подсказки — только из управляемого списка тегов (удалённые не показываются).
-  const allTags = useMemo(() => [...knownTags].sort(), [knownTags]);
+  // Теги — управляемый словарь: выбираем готовые чипами, новые заводятся на странице «Теги».
+  const allTags = useMemo(() => [...knownTags].sort((a, b) => a.localeCompare(b, 'ru')), [knownTags]);
 
-  const suggestions = useMemo(() => {
-    const draft = tagDraft.trim().toLowerCase();
-    return allTags
-      .filter((t) => !tags.includes(t))
-      .filter((t) => !draft || t.toLowerCase().includes(draft))
-      .slice(0, 8);
-  }, [allTags, tags, tagDraft]);
+  // Порядок недавнего использования: тег, засветившийся в свежих операциях, идёт раньше.
+  const recentTags = useMemo(() => {
+    const sorted = [...transactions].sort((a, b) => {
+      const ka = `${a.date} ${a.time || ''}`;
+      const kb = `${b.date} ${b.time || ''}`;
+      return ka < kb ? 1 : ka > kb ? -1 : 0;
+    });
+    const seen = new Set();
+    const order = [];
+    for (const tx of sorted) {
+      for (const t of tx.tags || []) {
+        if (!seen.has(t) && knownTags.includes(t)) { seen.add(t); order.push(t); }
+      }
+    }
+    return order;
+  }, [transactions, knownTags]);
 
-  // Разрешаем проставить только существующий тег (новые заводятся на странице «Теги»).
-  const resolveTag = (raw) => {
-    const value = raw.trim().toLowerCase();
-    if (!value) return null;
-    return knownTags.find((t) => t.toLowerCase() === value) || null;
+  const RECENT_LIMIT = 10;
+  // Свёрнутый вид: выбранные всегда видны, дальше — недавние (или весь словарь, если истории нет).
+  const dedup = (list) => {
+    const seen = new Set();
+    const out = [];
+    for (const t of list) { if (!seen.has(t)) { seen.add(t); out.push(t); } }
+    return out;
   };
-  const addTag = (tag) => {
-    if (tag && !tags.includes(tag)) setTags((prev) => [...prev, tag]);
-    setTagDraft('');
-  };
-  const commitDraft = () => {
-    const exact = resolveTag(tagDraft);
-    if (exact) addTag(exact);
-    else if (suggestions.length) addTag(suggestions[0]);
-    else setTagDraft('');
-  };
-  const removeTag = (tag) => setTags((prev) => prev.filter((t) => t !== tag));
-  const handleTagKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commitDraft(); }
-    else if (e.key === 'Backspace' && !tagDraft && tags.length) removeTag(tags[tags.length - 1]);
-  };
+  const collapsedTags = useMemo(() => {
+    const base = recentTags.length ? recentTags : allTags;
+    const merged = dedup([...tags, ...base]);
+    return merged.slice(0, Math.max(RECENT_LIMIT, tags.length));
+  }, [recentTags, allTags, tags]);
+  const expandedTags = useMemo(() => dedup([...tags, ...allTags]), [allTags, tags]);
+
+  const [showAllTags, setShowAllTags] = useState(false);
+  const shownTags = showAllTags ? expandedTags : collapsedTags;
+  const hasMoreTags = expandedTags.length > collapsedTags.length;
+
+  const toggleTag = (tag) =>
+    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
 
   // Переводы и корректировки правим/удаляем отдельно — здесь только обычные операции.
   const special = editingTx && (editingTx.type.startsWith('transfer') || editingTx.type.startsWith('adjust'));
@@ -161,11 +169,9 @@ export default function AddTransaction() {
       origCurrency = entryCurrency;
     }
 
-    const pending = resolveTag(tagDraft);
-    const finalTags = pending && !tags.includes(pending) ? [...tags, pending] : tags;
     const tx = {
       id: editingTx?.id || newId(),
-      date, time, type, amount: finalAmount, category, note: note.trim(), tags: finalTags,
+      date, time, type, amount: finalAmount, category, note: note.trim(), tags,
       wallet: walletId, currency: walletCurrency, origAmount, origCurrency,
       transferId: '',
     };
@@ -251,20 +257,32 @@ export default function AddTransaction() {
           </div>
         </div>
 
-        <label className="field">
+        <div className="field">
           <span className="field__label">Теги (необязательно)</span>
-          <div className="tag-input">
-            {tags.map((t) => (
-              <span key={t} className="tag-chip tag-chip--removable" onClick={() => removeTag(t)}>#{t}<span className="tag-chip__x">×</span></span>
-            ))}
-            <input className="tag-input__field" type="text" placeholder={tags.length ? '' : 'выберите из готовых'} value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={handleTagKeyDown} onBlur={() => { if (tagDraft.trim()) commitDraft(); }} />
-          </div>
-          {suggestions.length > 0 && (
-            <div className="tag-suggestions">
-              {suggestions.map((t) => <button type="button" key={t} className="tag-chip tag-chip--suggestion" onClick={() => addTag(t)}>#{t}</button>)}
-            </div>
+          {expandedTags.length === 0 ? (
+            <p className="muted">Тегов пока нет. <button type="button" className="link-btn-inline" onClick={() => navigate('/tags')}>Создать</button></p>
+          ) : (
+            <>
+              <div className="tag-picker">
+                {shownTags.map((t) => (
+                  <button
+                    type="button"
+                    key={t}
+                    className={`tag-chip tag-chip--pick${tags.includes(t) ? ' tag-chip--active' : ''}`}
+                    onClick={() => toggleTag(t)}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              {hasMoreTags && (
+                <button type="button" className="link-btn-inline tag-picker__toggle" onClick={() => setShowAllTags((v) => !v)}>
+                  {showAllTags ? 'Свернуть' : 'Показать все теги'}
+                </button>
+              )}
+            </>
           )}
-        </label>
+        </div>
 
         <label className="field">
           <span className="field__label">Заметка (необязательно)</span>

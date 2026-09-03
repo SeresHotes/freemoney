@@ -50,7 +50,7 @@ export default function Transactions() {
   const tagOptions = useMemo(() => {
     const set = new Set(tags);
     for (const t of transactions) (t.tags || []).forEach((x) => set.add(x));
-    return [...set].sort().map((t) => ({ value: t, label: `#${t}` }));
+    return [...set].sort().map((t) => ({ value: t, label: t }));
   }, [tags, transactions]);
 
   const filtered = useMemo(() => {
@@ -105,7 +105,7 @@ export default function Transactions() {
             {t.note ? ` · ${t.note}` : ''}
           </span>
           {t.tags?.length > 0 && (
-            <span className="tx-item__tags">{t.tags.map((x) => <span key={x} className="tag-chip tag-chip--mini">#{x}</span>)}</span>
+            <span className="tx-item__tags">{t.tags.map((x) => <span key={x} className="tag-chip tag-chip--mini">{x}</span>)}</span>
           )}
         </div>
         <div className="tx-item__right">

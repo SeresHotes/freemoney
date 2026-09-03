@@ -469,6 +469,22 @@ h2 {
   background: transparent;
   color: var(--muted);
 }
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.tag-chip--pick {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.9rem;
+}
+.tag-picker__toggle {
+  align-self: flex-start;
+  margin-top: 0.6rem;
+}
 .tag-chip--mini {
   padding: 0.1rem 0.45rem;
   font-size: 0.72rem;

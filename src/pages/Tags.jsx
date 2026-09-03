@@ -58,7 +58,7 @@ export default function Tags() {
           <ul className="cat-list">
             {sorted.map((t) => (
               <li key={t} className="cat-item cat-item--clickable" onClick={() => navigate(`/transactions?tag=${encodeURIComponent(t)}`)}>
-                <span className="cat-item__name">#{t}</span>
+                <span className="cat-item__name">{t}</span>
                 <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); remove(t); }} title="Удалить">🗑️</button>
               </li>
             ))}
