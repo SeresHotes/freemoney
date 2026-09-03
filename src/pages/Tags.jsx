@@ -53,7 +53,7 @@ export default function Tags() {
       <section>
         <h2 className="section-title">Все теги ({sorted.length})</h2>
         {sorted.length === 0 ? (
-          <p className="muted empty">Тегов пока нет. Они появятся, когда вы добавите их к операциям, или создайте здесь.</p>
+          <p className="muted empty">Тегов пока нет. Создайте их здесь, а затем проставляйте в операциях.</p>
         ) : (
           <ul className="cat-list">
             {sorted.map((t) => (
