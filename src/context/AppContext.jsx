@@ -390,6 +390,21 @@ export function AppProvider({ children }) {
     }),
     [withAuthGuard],
   );
+  // Переименование тега применяется и к списку, и ко всем операциям.
+  const renameTag = useCallback(
+    (oldName, newName) => withAuthGuard(async () => {
+      await backendRef.current.renameTag(oldName, newName);
+      setTags((prev) => [...new Set(prev.map((t) => (t === oldName ? newName : t)))]);
+      setTransactions((prev) =>
+        prev.map((t) => (
+          (t.tags || []).includes(oldName)
+            ? { ...t, tags: [...new Set(t.tags.map((x) => (x === oldName ? newName : x)))] }
+            : t
+        )),
+      );
+    }),
+    [withAuthGuard],
+  );
 
   // --- Настройки ------------------------------------------------------------
   const setBaseCurrencyPref = useCallback(
@@ -447,6 +462,7 @@ export function AppProvider({ children }) {
     setWalletBalance,
     addTag,
     deleteTag,
+    renameTag,
     setBaseCurrencyPref,
     exportAll,
     importAll,

@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 export default function Tags() {
-  const { tags, addTag, deleteTag } = useApp();
+  const { tags, addTag, deleteTag, renameTag } = useApp();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(null); // редактируемый тег
+  const [editValue, setEditValue] = useState('');
+  const [editError, setEditError] = useState(null);
 
   const sorted = [...tags].sort((a, b) => a.localeCompare(b, 'ru'));
 
@@ -37,6 +40,30 @@ export default function Tags() {
     }
   };
 
+  const startEdit = (tag) => { setEditing(tag); setEditValue(tag); setEditError(null); };
+  const cancelEdit = () => { setEditing(null); setEditValue(''); setEditError(null); };
+
+  const saveEdit = async () => {
+    const value = editValue.trim();
+    if (!value) { setEditError('Введите имя'); return; }
+    if (value === editing) { cancelEdit(); return; }
+    if (tags.includes(value)) { setEditError('Такой тег уже есть'); return; }
+    setBusy(true);
+    try {
+      await renameTag(editing, value);
+      cancelEdit();
+    } catch {
+      setEditError('Не удалось переименовать');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const editKeyDown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveEdit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+  };
+
   return (
     <div className="page">
       <header className="page__header page__header--with-back">
@@ -57,15 +84,32 @@ export default function Tags() {
         ) : (
           <ul className="cat-list">
             {sorted.map((t) => (
-              <li key={t} className="cat-item cat-item--clickable" onClick={() => navigate(`/transactions?tag=${encodeURIComponent(t)}`)}>
-                <span className="cat-item__name">{t}</span>
-                <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); remove(t); }} title="Удалить">🗑️</button>
-              </li>
+              editing === t ? (
+                <li key={t} className="cat-item">
+                  <input
+                    className="field__input cat-item__edit"
+                    type="text"
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={editKeyDown}
+                  />
+                  <button className="link-btn cat-item__action" disabled={busy} onClick={saveEdit} title="Сохранить">✓</button>
+                  <button className="link-btn cat-item__action" disabled={busy} onClick={cancelEdit} title="Отмена">✕</button>
+                </li>
+              ) : (
+                <li key={t} className="cat-item cat-item--clickable" onClick={() => navigate(`/transactions?tag=${encodeURIComponent(t)}`)}>
+                  <span className="cat-item__name">{t}</span>
+                  <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); startEdit(t); }} title="Переименовать">✏️</button>
+                  <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); remove(t); }} title="Удалить">🗑️</button>
+                </li>
+              )
             ))}
           </ul>
         )}
+        {editError && <p className="form-error">{editError}</p>}
         <p className="muted hint">
-          Удаление убирает тег из подсказок при создании операции. Уже проставленные теги в операциях остаются.
+          Переименование меняет тег во всех операциях. Удаление убирает тег из подсказок при создании операции — уже проставленные теги в операциях остаются.
         </p>
       </section>
     </div>
