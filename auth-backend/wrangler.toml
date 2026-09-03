@@ -1,0 +1,16 @@
+name = "freemoney-auth"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Публичные переменные. GOOGLE_CLIENT_SECRET задаётся отдельно как secret:
+#   npx wrangler secret put GOOGLE_CLIENT_SECRET
+[vars]
+GOOGLE_CLIENT_ID = "359046395945-a6i7m2od5ldi63dtgigu1dobkmobreh8.apps.googleusercontent.com"
+APP_URL = "https://sereshotes.github.io/freemoney/"
+ALLOWED_ORIGIN = "https://sereshotes.github.io"
+
+# Хранилище сессий (refresh-токены). id подставить после создания:
+#   npx wrangler kv namespace create SESSIONS
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "PASTE_KV_NAMESPACE_ID_HERE"

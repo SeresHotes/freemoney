@@ -32,6 +32,8 @@ jobs:
         env:
           # Client ID задаётся секретом репозитория (Settings → Secrets → Actions).
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          # Адрес мини-бэкенда авторизации (переменная репозитория, необязательно).
+          VITE_AUTH_BACKEND_URL: ${{ vars.VITE_AUTH_BACKEND_URL }}
           # Путь публикации = /<имя-репозитория>/
           BASE_PATH: /${{ github.event.repository.name }}/
         run: npm run build

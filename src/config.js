@@ -12,6 +12,11 @@ export const GOOGLE_CLIENT_ID =
 // которые создало само приложение. Полный доступ к Google Drive не запрашивается.
 export const OAUTH_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
+// Адрес мини-бэкенда авторизации (Cloudflare Worker). Если задан —
+// используется authorization code flow с refresh-токеном (редкий вход).
+// Если пусто — старый браузерный token flow (вход ~раз в час).
+export const AUTH_BACKEND = (import.meta.env.VITE_AUTH_BACKEND_URL || '').replace(/\/$/, '');
+
 // Название создаваемой Google Таблицы.
 export const SPREADSHEET_TITLE = 'FreeMoney — учёт денег';
 
