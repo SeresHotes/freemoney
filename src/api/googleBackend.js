@@ -22,6 +22,7 @@ import {
   setWalletStatus,
   addTag,
   deleteTag,
+  renameTag,
   setSetting,
 } from './store';
 
@@ -72,6 +73,7 @@ export function createGoogleBackend(spreadsheetId) {
 
     addTag: (name) => addTag(spreadsheetId, name),
     deleteTag: (name) => deleteTag(spreadsheetId, name),
+    renameTag: (oldName, newName) => renameTag(spreadsheetId, oldName, newName),
 
     setSetting: (key, value) => setSetting(spreadsheetId, key, value),
   };

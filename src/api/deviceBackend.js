@@ -147,6 +147,16 @@ export function createDeviceBackend() {
 
     addTag: async (name) => { const l = await loadTags(); if (!l.includes(name)) { l.push(name); await saveTags(l); } },
     deleteTag: async (name) => { const l = await loadTags(); await saveTags(l.filter((t) => t !== name)); },
+    renameTag: async (oldName, newName) => {
+      const l = await loadTags();
+      await saveTags([...new Set(l.map((t) => (t === oldName ? newName : t)))]);
+      const txs = await loadTx();
+      await saveTx(txs.map((t) => (
+        (t.tags || []).includes(oldName)
+          ? { ...t, tags: [...new Set(t.tags.map((x) => (x === oldName ? newName : x)))] }
+          : t
+      )));
+    },
 
     setSetting: async (key, value) => { const s = await loadSettings(); s[key] = value; await saveSettings(s); },
   };

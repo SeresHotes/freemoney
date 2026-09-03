@@ -246,6 +246,22 @@ export function createLocalBackend() {
       db.close();
     },
 
+    renameTag: async (oldName, newName) => {
+      const db = await openDb();
+      const tagStore = store(db, STORE_TAG, 'readwrite');
+      await reqToPromise(tagStore.delete(oldName));
+      await reqToPromise(tagStore.put({ name: newName }));
+      const s = store(db, STORE_TX, 'readwrite');
+      const all = await reqToPromise(s.getAll());
+      for (const t of all) {
+        if ((t.tags || []).includes(oldName)) {
+          t.tags = [...new Set(t.tags.map((x) => (x === oldName ? newName : x)))];
+          await reqToPromise(s.put(t));
+        }
+      }
+      db.close();
+    },
+
     setSetting: async (key, value) => {
       const db = await openDb();
       await put(db, STORE_SETTINGS, { key, value });

@@ -294,6 +294,24 @@ export async function deleteTag(id, name) {
   }
 }
 
+// Переименование тега: и в списке подсказок, и во всех операциях.
+export async function renameTag(id, oldName, newName) {
+  const nextTags = [...new Set((await fetchTags(id)).map((t) => (t === oldName ? newName : t)))];
+  await updateValues(id, `${SHEET_TAG}!A2:A1000`, Array.from({ length: 999 }, () => ['']));
+  if (nextTags.length) {
+    await updateValues(id, `${SHEET_TAG}!A2`, nextTags.map((t) => [t]));
+  }
+  const rows = await getValues(id, `${SHEET_TX}!A2:M`);
+  const data = [];
+  rows.forEach((r, index) => {
+    const rowTags = parseTags(r[6]);
+    if (!rowTags.includes(oldName)) return;
+    const renamed = [...new Set(rowTags.map((t) => (t === oldName ? newName : t)))];
+    data.push({ range: `${SHEET_TX}!G${index + 2}`, values: [[serializeTags(renamed)]] });
+  });
+  if (data.length) await batchUpdateValues(id, data);
+}
+
 // --- Настройки --------------------------------------------------------------
 
 function mapSettingsRows(rows) {
