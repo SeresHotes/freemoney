@@ -13,4 +13,4 @@ ALLOWED_ORIGIN = "https://sereshotes.github.io"
 #   npx wrangler kv namespace create SESSIONS
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "PASTE_KV_NAMESPACE_ID_HERE"
+id = "91b50d6098f2418aa5116a3a058c16fa"
