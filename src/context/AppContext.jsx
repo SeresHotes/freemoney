@@ -239,25 +239,16 @@ export function AppProvider({ children }) {
     [handleSignOut, track],
   );
 
-  // Регистрирует новые теги в управляемом списке (для подсказок).
-  const registerTags = useCallback(
-    async (list) => {
-      const missing = (list || []).filter((t) => !tags.includes(t));
-      for (const name of missing) await backendRef.current.addTag(name);
-      if (missing.length) setTags((prev) => [...new Set([...prev, ...missing])]);
-    },
-    [tags],
-  );
-
   // --- Операции -------------------------------------------------------------
+  // Теги создаются и удаляются только на странице «Теги»; операции лишь
+  // проставляют уже существующие теги, новые здесь не заводятся.
   const addTransaction = useCallback(
     (tx) =>
       withAuthGuard(async () => {
         await backendRef.current.addTransaction(tx);
-        await registerTags(tx.tags);
         setTransactions((prev) => [...prev, tx]);
       }),
-    [withAuthGuard, registerTags],
+    [withAuthGuard],
   );
 
   const addTransfer = useCallback(
@@ -287,10 +278,9 @@ export function AppProvider({ children }) {
     (tx) =>
       withAuthGuard(async () => {
         await backendRef.current.updateTransaction(tx);
-        await registerTags(tx.tags);
         setTransactions((prev) => prev.map((t) => (t.id === tx.id ? tx : t)));
       }),
-    [withAuthGuard, registerTags],
+    [withAuthGuard],
   );
 
   // Удаление операции; для перевода удаляются обе связанные ноги.

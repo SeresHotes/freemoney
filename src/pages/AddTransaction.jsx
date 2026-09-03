@@ -89,14 +89,25 @@ export default function AddTransaction() {
       .slice(0, 8);
   }, [allTags, tags, tagDraft]);
 
-  const addTag = (raw) => {
-    const value = raw.trim();
-    if (value && !tags.includes(value)) setTags((prev) => [...prev, value]);
+  // Разрешаем проставить только существующий тег (новые заводятся на странице «Теги»).
+  const resolveTag = (raw) => {
+    const value = raw.trim().toLowerCase();
+    if (!value) return null;
+    return knownTags.find((t) => t.toLowerCase() === value) || null;
+  };
+  const addTag = (tag) => {
+    if (tag && !tags.includes(tag)) setTags((prev) => [...prev, tag]);
     setTagDraft('');
+  };
+  const commitDraft = () => {
+    const exact = resolveTag(tagDraft);
+    if (exact) addTag(exact);
+    else if (suggestions.length) addTag(suggestions[0]);
+    else setTagDraft('');
   };
   const removeTag = (tag) => setTags((prev) => prev.filter((t) => t !== tag));
   const handleTagKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagDraft); }
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commitDraft(); }
     else if (e.key === 'Backspace' && !tagDraft && tags.length) removeTag(tags[tags.length - 1]);
   };
 
@@ -150,7 +161,8 @@ export default function AddTransaction() {
       origCurrency = entryCurrency;
     }
 
-    const finalTags = tagDraft.trim() && !tags.includes(tagDraft.trim()) ? [...tags, tagDraft.trim()] : tags;
+    const pending = resolveTag(tagDraft);
+    const finalTags = pending && !tags.includes(pending) ? [...tags, pending] : tags;
     const tx = {
       id: editingTx?.id || newId(),
       date, time, type, amount: finalAmount, category, note: note.trim(), tags: finalTags,
@@ -245,7 +257,7 @@ export default function AddTransaction() {
             {tags.map((t) => (
               <span key={t} className="tag-chip tag-chip--removable" onClick={() => removeTag(t)}>#{t}<span className="tag-chip__x">×</span></span>
             ))}
-            <input className="tag-input__field" type="text" placeholder={tags.length ? '' : 'работа, отпуск…'} value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={handleTagKeyDown} onBlur={() => tagDraft.trim() && addTag(tagDraft)} />
+            <input className="tag-input__field" type="text" placeholder={tags.length ? '' : 'выберите из готовых'} value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={handleTagKeyDown} onBlur={() => { if (tagDraft.trim()) commitDraft(); }} />
           </div>
           {suggestions.length > 0 && (
             <div className="tag-suggestions">
