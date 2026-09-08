@@ -42,6 +42,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // Prod-SW имеет scope /<repo>/, который включает /<repo>/dev/. Без этого
+        // denylist его navigateFallback отдавал бы prod-оболочку при заходе на
+        // /dev/, и dev-версия не грузилась бы. Исключаем /dev/ из фолбэка —
+        // навигации туда идут в сеть, где их подхватывает уже свой dev-SW.
+        navigateFallbackDenylist: [/\/dev\//],
         // Запросы к Google API никогда не кэшируем — всегда идём в сеть.
         runtimeCaching: [
           {
