@@ -877,3 +877,26 @@ code {
     transform: rotate(360deg);
   }
 }
+
+/* Индикатор dev-канала и ссылка на соседний канал (prod/dev). */
+.channel-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  vertical-align: middle;
+  color: #fff;
+  background: #ea580c;
+  border-radius: 0.4rem;
+}
+.channel-switch {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+.channel-switch:hover {
+  text-decoration: underline;
+}

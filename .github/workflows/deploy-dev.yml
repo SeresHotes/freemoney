@@ -1,0 +1,49 @@
+name: Deploy dev channel
+
+# Стабильный dev-канал на том же домене Pages: /<repo>/dev/.
+# Тот же origin, что и prod, поэтому вход через Google работает без правок
+# в Google Cloud Console. Ставится второй PWA-иконкой рядом с prod.
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (dev, base /<repo>/dev/)
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_AUTH_BACKEND_URL: ${{ vars.VITE_AUTH_BACKEND_URL }}
+          # Публикуем в подкаталог /dev/ того же сайта.
+          BASE_PATH: /${{ github.event.repository.name }}/dev/
+          VITE_CHANNEL: dev
+        run: npm run build
+
+      - name: Publish dev to gh-pages /dev
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: dev
+          # keep_files: не трогаем корень (prod) при выкладке dev.
+          keep_files: true
+          commit_message: "deploy dev ${{ github.sha }}"
