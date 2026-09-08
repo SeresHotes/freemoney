@@ -274,6 +274,84 @@ export function AppProvider({ children }) {
     [withAuthGuard, wallets],
   );
 
+  // Долг = движение денег между рабочим и долговым кошельком (пара transfer-ног).
+  // cashDirection 'out' — деньги ушли из кошелька (дал в долг / погасил свой);
+  // 'in' — деньги пришли (мне вернули / я занял). Знак баланса долгового кошелька
+  // копит состояние: «+» вам должны, «−» должны вы.
+  const recordDebt = useCallback(
+    ({ counterpartyId, newCounterpartyName, cashDirection, workWalletId, amountWork, amountDebt, date, note }) =>
+      withAuthGuard(async () => {
+        const work = wallets.find((w) => w.id === workWalletId);
+        let debtId = counterpartyId;
+        let debtWallet = wallets.find((w) => w.id === debtId);
+        // Новый контрагент — создаём долговой кошелёк в валюте рабочего.
+        if (!debtId && newCounterpartyName) {
+          await backendRef.current.addWallet({
+            name: newCounterpartyName,
+            currency: work?.currency || DEFAULT_BASE_CURRENCY,
+            kind: 'debt',
+            rate: 0,
+          });
+          const fresh = await backendRef.current.fetchWallets();
+          setWallets(fresh);
+          debtWallet = fresh.find((w) => w.kind === 'debt' && w.name === newCounterpartyName);
+          debtId = debtWallet?.id;
+        }
+        if (!debtId || !workWalletId) throw new Error('Нужны контрагент и кошелёк');
+
+        const workCurrency = work?.currency || '';
+        const debtCurrency = debtWallet?.currency || workCurrency;
+        const amtWork = Number(amountWork);
+        const amtDebt = Number(amountDebt) || amtWork;
+        const transferId = newId();
+        const time = nowTime();
+        const leg = (type, wallet, currency, amount) => ({
+          id: newId(), date, type, amount, category: '', note: note || '',
+          tags: [], wallet, currency, origAmount: null, origCurrency: '', transferId, time,
+        });
+        const legs = cashDirection === 'out'
+          ? [leg('transfer_out', workWalletId, workCurrency, amtWork),
+             leg('transfer_in', debtId, debtCurrency, amtDebt)]
+          : [leg('transfer_out', debtId, debtCurrency, amtDebt),
+             leg('transfer_in', workWalletId, workCurrency, amtWork)];
+        await backendRef.current.addTransactions(legs);
+        setTransactions((prev) => [...prev, ...legs]);
+      }),
+    [withAuthGuard, wallets],
+  );
+
+  // Начислить проценты на баланс кошелька по его ставке. Прирост считается от
+  // текущего баланса со знаком: положительный баланс → доход, отрицательный
+  // (долг, который должны вы) → расход. Категория «Проценты» заводится сама.
+  const accrueInterest = useCallback(
+    (wallet) =>
+      withAuthGuard(async () => {
+        const rate = Number(wallet.rate) || 0;
+        const balance = walletBalance(transactions, wallet.id);
+        const delta = (balance * rate) / 100;
+        if (Math.abs(delta) < 0.005) return null;
+
+        const INTEREST_CATEGORY = 'Проценты';
+        if (!categories.some((c) => c.name === INTEREST_CATEGORY)) {
+          await backendRef.current.addCategory({ name: INTEREST_CATEGORY, kind: 'both', icon: '📈' });
+          setCategories(await backendRef.current.fetchCategories());
+        }
+
+        const tx = {
+          id: newId(), date: todayIso(), time: nowTime(),
+          type: delta >= 0 ? 'income' : 'expense',
+          amount: Math.abs(delta), category: INTEREST_CATEGORY,
+          note: `Проценты ${rate}%`, tags: [],
+          wallet: wallet.id, currency: wallet.currency,
+          origAmount: null, origCurrency: '', transferId: '',
+        };
+        await backendRef.current.addTransaction(tx);
+        setTransactions((prev) => [...prev, tx]);
+        return { amount: tx.amount, type: tx.type };
+      }),
+    [withAuthGuard, transactions, categories],
+  );
+
   const updateTransaction = useCallback(
     (tx) =>
       withAuthGuard(async () => {
@@ -436,6 +514,8 @@ export function AppProvider({ children }) {
     refresh,
     addTransaction,
     addTransfer,
+    recordDebt,
+    accrueInterest,
     updateTransaction,
     deleteTransaction,
     addCategory,

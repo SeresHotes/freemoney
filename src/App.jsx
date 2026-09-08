@@ -10,6 +10,7 @@ import CategoryEdit from './pages/CategoryEdit';
 import Tags from './pages/Tags';
 import Wallets from './pages/Wallets';
 import Transfer from './pages/Transfer';
+import Debt from './pages/Debt';
 import Settings from './pages/Settings';
 import {
   LoadingScreen,
@@ -57,6 +58,7 @@ function Shell() {
           <Route path="/categories/:id/edit" element={<CategoryEdit />} />
           <Route path="/wallets" element={<Wallets />} />
           <Route path="/transfer" element={<Transfer />} />
+          <Route path="/debt" element={<Debt />} />
           <Route path="/tags" element={<Tags />} />
           <Route
             path="/stats"

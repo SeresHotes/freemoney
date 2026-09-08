@@ -9,7 +9,7 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
     app: 'freemoney',
     version: VERSION,
     baseCurrency,
-    wallets: wallets.map((w) => ({ id: w.id, name: w.name, currency: w.currency, status: w.status })),
+    wallets: wallets.map((w) => ({ id: w.id, name: w.name, currency: w.currency, status: w.status, kind: w.kind || 'cash', rate: w.rate || 0 })),
     categories: categories.map((c) => ({ name: c.name, kind: c.kind, status: c.status, icon: c.icon })),
     tags,
     transactions: transactions.map((t) => ({
@@ -38,7 +38,7 @@ export async function importBackup(text, backend, current) {
 
   for (const w of data.wallets || []) {
     if (!walletIdByName.has(w.name)) {
-      await backend.addWallet({ name: w.name, currency: w.currency });
+      await backend.addWallet({ name: w.name, currency: w.currency, kind: w.kind, rate: w.rate });
       result.wallets += 1;
       wallets = await backend.fetchWallets();
       const created = wallets.find((x) => x.name === w.name);

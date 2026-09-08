@@ -6,6 +6,10 @@ export function isIncome(t) {
 export function isExpense(t) {
   return t.type === 'expense';
 }
+// Долговой кошелёк-контрагент: положительный баланс — вам должны, отрицательный — должны вы.
+export function isDebtWallet(w) {
+  return w?.kind === 'debt';
+}
 // Реальный доход/расход (переводы между кошельками сюда не входят).
 export function isRealFlow(t) {
   return t.type === 'income' || t.type === 'expense';

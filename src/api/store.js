@@ -9,7 +9,9 @@
 //     origAmount/origCurrency — если операция введена в другой валюте
 //     transferId — связывает две ноги перевода между кошельками
 //   Categories:   name|kind|status|icon
-//   Wallets:      id|name|currency|status|order
+//   Wallets:      id|name|currency|status|order|kind|rate
+//     kind — 'cash' (обычный) | 'debt' (долговой кошелёк на контрагента)
+//     rate — ставка для ручного начисления процентов, % (0 = не начисляем)
 //   Tags:         name
 //   Settings:     key|value
 
@@ -40,14 +42,14 @@ const TX_HEADER = [
   'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId',
 ];
 const CAT_HEADER = ['name', 'kind', 'status', 'icon'];
-const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order'];
+const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate'];
 const TAG_HEADER = ['name'];
 const SETTINGS_HEADER = ['key', 'value'];
 
 const DEFAULT_CATEGORY_ROWS = DEFAULT_CATEGORIES.map((c) => [c.name, c.kind, 'active', c.icon]);
 
 function defaultWalletRow() {
-  return [newId(), 'Основной', DEFAULT_BASE_CURRENCY, 'active', 0];
+  return [newId(), 'Основной', DEFAULT_BASE_CURRENCY, 'active', 0, 'cash', 0];
 }
 
 // --- Создание и схема -------------------------------------------------------
@@ -95,13 +97,13 @@ export async function ensureSchema(id) {
   }
 
   // Разово обновляем шапки столбцов (после добавления новых полей они устарели).
-  const hdrKey = `freemoney:hdr3:${id}`;
+  const hdrKey = `freemoney:hdr4:${id}`;
   if (!localStorage.getItem(hdrKey)) {
     await batchUpdateValues(id, [
       // 13-й столбец очищаем от старого заголовка time.
       { range: `${SHEET_TX}!A1:M1`, values: [[...TX_HEADER, '']] },
       { range: `${SHEET_CAT}!A1:D1`, values: [CAT_HEADER] },
-      { range: `${SHEET_WALLET}!A1:E1`, values: [WALLET_HEADER] },
+      { range: `${SHEET_WALLET}!A1:G1`, values: [WALLET_HEADER] },
       { range: `${SHEET_TAG}!A1`, values: [TAG_HEADER] },
       { range: `${SHEET_SETTINGS}!A1:B1`, values: [SETTINGS_HEADER] },
     ]);
@@ -250,23 +252,28 @@ function mapWalletRows(rows) {
       currency: r[2] || DEFAULT_BASE_CURRENCY,
       status: r[3] || 'active',
       order: Number(r[4]) || 0,
+      kind: r[5] || 'cash',
+      rate: Number(r[6]) || 0,
     }));
 }
 
 export async function fetchWallets(id) {
-  const rows = await getValues(id, `${SHEET_WALLET}!A2:E`);
+  const rows = await getValues(id, `${SHEET_WALLET}!A2:G`);
   return mapWalletRows(rows);
 }
 
-export async function addWallet(id, { name, currency }) {
+export async function addWallet(id, { name, currency, kind, rate }) {
   const existing = await fetchWallets(id);
   await appendRow(id, `${SHEET_WALLET}!A1`, [
-    newId(), name, currency, 'active', existing.length,
+    newId(), name, currency, 'active', existing.length, kind || 'cash', rate || 0,
   ]);
 }
 
-export async function updateWallet(id, rowNumber, { name, currency }) {
-  await updateValues(id, `${SHEET_WALLET}!B${rowNumber}:C${rowNumber}`, [[name, currency]]);
+export async function updateWallet(id, rowNumber, { name, currency, kind, rate }) {
+  await batchUpdateValues(id, [
+    { range: `${SHEET_WALLET}!B${rowNumber}:C${rowNumber}`, values: [[name, currency]] },
+    { range: `${SHEET_WALLET}!F${rowNumber}:G${rowNumber}`, values: [[kind || 'cash', rate || 0]] },
+  ]);
 }
 
 export async function setWalletStatus(id, rowNumber, status) {
@@ -314,7 +321,7 @@ export async function fetchAll(id) {
   const [txRows, catRows, walletRows, tagRows, settingsRows] = await getValuesBatch(id, [
     `${SHEET_TX}!A2:M`,
     `${SHEET_CAT}!A2:D`,
-    `${SHEET_WALLET}!A2:E`,
+    `${SHEET_WALLET}!A2:G`,
     `${SHEET_TAG}!A2:A`,
     `${SHEET_SETTINGS}!A2:B`,
   ]);
