@@ -5,15 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Публикуем в ветку gh-pages (peaceiris). Нужен доступ на запись в репозиторий.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# Разрешаем один одновременный деплой.
+# Prod и dev пишут в одну ветку gh-pages — сериализуем, чтобы не было гонки.
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: gh-pages
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -28,7 +27,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Build
+      - name: Build (prod, base /<repo>/)
         env:
           # Client ID задаётся секретом репозитория (Settings → Secrets → Actions).
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
@@ -36,18 +35,15 @@ jobs:
           VITE_AUTH_BACKEND_URL: ${{ vars.VITE_AUTH_BACKEND_URL }}
           # Путь публикации = /<имя-репозитория>/
           BASE_PATH: /${{ github.event.repository.name }}/
+          # Канал сборки (влияет на имя PWA и бейдж в приложении).
+          VITE_CHANNEL: prod
         run: npm run build
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Publish prod to gh-pages root
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          # keep_files: не стираем каталог dev/ при выкладке prod.
+          keep_files: true
+          commit_message: "deploy prod ${{ github.sha }}"

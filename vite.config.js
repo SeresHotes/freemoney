@@ -8,6 +8,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 // или поправьте значение по умолчанию ниже.
 const base = process.env.BASE_PATH || '/freemoney/';
 
+// Канал сборки: 'prod' (по умолчанию) или 'dev'. Задаётся в CI (VITE_CHANNEL).
+// Для dev меняем имя и тему PWA, чтобы иконка на телефоне отличалась от prod,
+// а отдельный base (/…/dev/) даёт свой scope установленного приложения.
+const channel = process.env.VITE_CHANNEL || 'prod';
+const isDev = channel === 'dev';
+
 export default defineConfig({
   base,
   plugins: [
@@ -16,10 +22,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'FreeMoney — учёт денег',
-        short_name: 'FreeMoney',
+        name: isDev ? 'FreeMoney dev' : 'FreeMoney — учёт денег',
+        short_name: isDev ? 'FM dev' : 'FreeMoney',
         description: 'Учёт доходов и расходов с хранением в Google Таблицах',
-        theme_color: '#0f172a',
+        theme_color: isDev ? '#7c2d12' : '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'portrait',

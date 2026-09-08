@@ -23,6 +23,16 @@ export const SPREADSHEET_TITLE = 'FreeMoney — учёт денег';
 // Базовая валюта по умолчанию (для агрегированной статистики).
 export const DEFAULT_BASE_CURRENCY = 'RUB';
 
+// Канал сборки: 'prod' | 'dev' (задаётся VITE_CHANNEL в CI).
+export const CHANNEL = import.meta.env.VITE_CHANNEL || 'prod';
+export const IS_DEV_CHANNEL = CHANNEL === 'dev';
+// Абсолютный путь на «соседний» канал для быстрого переключения.
+// base у dev — /<repo>/dev/, у prod — /<repo>/. Отрезаем/добавляем хвост dev/.
+const appBase = import.meta.env.BASE_URL || '/';
+export const OTHER_CHANNEL_URL = IS_DEV_CHANNEL
+  ? appBase.replace(/dev\/$/, '')
+  : `${appBase}dev/`;
+
 // Ключи в localStorage.
 export const LS_SPREADSHEET_ID = 'freemoney:spreadsheetId';
 // Выбранный режим хранения: 'google' | 'local'.
