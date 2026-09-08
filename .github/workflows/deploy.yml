@@ -33,8 +33,8 @@ jobs:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           # Адрес мини-бэкенда авторизации (переменная репозитория, необязательно).
           VITE_AUTH_BACKEND_URL: ${{ vars.VITE_AUTH_BACKEND_URL }}
-          # Путь публикации = /<имя-репозитория>/
-          BASE_PATH: /${{ github.event.repository.name }}/
+          # Кастомный домен: приложение в корне freemoney.sereshotes.dev
+          BASE_PATH: /
           # Канал сборки (влияет на имя PWA и бейдж в приложении).
           VITE_CHANNEL: prod
         run: npm run build
@@ -46,4 +46,6 @@ jobs:
           publish_dir: ./dist
           # keep_files: не стираем каталог dev/ при выкладке prod.
           keep_files: true
+          # Кастомный домен GitHub Pages (пишет файл CNAME в корень gh-pages).
+          cname: freemoney.sereshotes.dev
           commit_message: "deploy prod ${{ github.sha }}"

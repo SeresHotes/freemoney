@@ -14,8 +14,10 @@ routes = [
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET
 [vars]
 GOOGLE_CLIENT_ID = "359046395945-a6i7m2od5ldi63dtgigu1dobkmobreh8.apps.googleusercontent.com"
-APP_URL = "https://sereshotes.github.io/freemoney/"
-ALLOWED_ORIGIN = "https://sereshotes.github.io"
+# APP_URL — fallback-возврат, если ?return не передан. Основной возврат идёт по ?return.
+APP_URL = "https://freemoney.sereshotes.dev/"
+# Разрешённые origin (CORS и возврат после логина) — старый и новый домены.
+ALLOWED_ORIGIN = "https://sereshotes.github.io,https://freemoney.sereshotes.dev"
 
 # Хранилище сессий (refresh-токены). id подставить после создания:
 #   npx wrangler kv namespace create SESSIONS

@@ -139,8 +139,9 @@ export async function initAuth() {
 // Явный вход по клику.
 export function signIn() {
   if (AUTH_BACKEND) {
-    // Полный редирект на бэкенд → Google → возврат с sid. Промис не резолвится.
-    window.location.href = `${AUTH_BACKEND}/auth/login`;
+    // Полный редирект на бэкенд → Google → возврат с sid на текущий адрес/канал.
+    const ret = window.location.origin + import.meta.env.BASE_URL;
+    window.location.href = `${AUTH_BACKEND}/auth/login?return=${encodeURIComponent(ret)}`;
     return new Promise(() => {});
   }
   return requestGisToken({ prompt: 'consent' });

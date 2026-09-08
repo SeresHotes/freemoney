@@ -33,8 +33,8 @@ jobs:
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_AUTH_BACKEND_URL: ${{ vars.VITE_AUTH_BACKEND_URL }}
-          # Публикуем в подкаталог /dev/ того же сайта.
-          BASE_PATH: /${{ github.event.repository.name }}/dev/
+          # Публикуем в подкаталог /dev/ того же сайта (кастомный домен в корне).
+          BASE_PATH: /dev/
           VITE_CHANNEL: dev
         run: npm run build
 

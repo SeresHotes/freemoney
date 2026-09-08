@@ -24,7 +24,7 @@ const SESSION_TTL = 60 * 60 * 24 * 30; // 30 дней в KV (refresh-токен 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const cors = corsHeaders(env);
+    const cors = corsHeaders(env, request);
 
     if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
 
@@ -96,7 +96,25 @@ function redirectUri(url) {
   return `${url.origin}/auth/callback`;
 }
 
+// Разрешённые origin приложения (для CORS и возврата после логина).
+function allowedOrigins(env) {
+  return (env.ALLOWED_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+// Куда вернуть пользователя после логина: ?return=... (если origin разрешён),
+// иначе APP_URL. Защищает от open-redirect.
+function safeReturnUrl(url, env) {
+  const ret = url.searchParams.get('return');
+  if (ret) {
+    try {
+      if (allowedOrigins(env).includes(new URL(ret).origin)) return ret;
+    } catch { /* невалидный URL */ }
+  }
+  return env.APP_URL;
+}
+
 function login(url, env) {
+  const returnUrl = safeReturnUrl(url, env);
   const params = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri(url),
@@ -105,13 +123,33 @@ function login(url, env) {
     access_type: 'offline', // чтобы получить refresh-токен
     prompt: 'consent', // гарантированно выдать refresh-токен
     include_granted_scopes: 'true',
+    state: btoa(returnUrl), // куда вернуться после callback
   });
   return Response.redirect(`${GOOGLE_AUTH}?${params}`, 302);
 }
 
+// Добавить query-параметр к URL (учитывая, что там уже может быть '?').
+function appendQuery(target, key, value) {
+  const sep = target.includes('?') ? '&' : '?';
+  return `${target}${sep}${key}=${encodeURIComponent(value)}`;
+}
+
+// Куда вернуться из callback: берём из state, но проверяем origin по allowlist.
+function returnFromState(url, env) {
+  const state = url.searchParams.get('state');
+  if (state) {
+    try {
+      const decoded = atob(state);
+      if (allowedOrigins(env).includes(new URL(decoded).origin)) return decoded;
+    } catch { /* игнорируем */ }
+  }
+  return env.APP_URL;
+}
+
 async function callback(url, env) {
+  const returnUrl = returnFromState(url, env);
   const code = url.searchParams.get('code');
-  if (!code) return Response.redirect(`${env.APP_URL}?auth=error`, 302);
+  if (!code) return Response.redirect(appendQuery(returnUrl, 'auth', 'error'), 302);
 
   const body = new URLSearchParams({
     code,
@@ -127,14 +165,14 @@ async function callback(url, env) {
   });
   const data = await resp.json();
   if (!data.refresh_token) {
-    return Response.redirect(`${env.APP_URL}?auth=error`, 302);
+    return Response.redirect(appendQuery(returnUrl, 'auth', 'error'), 302);
   }
 
   const sid = crypto.randomUUID() + crypto.randomUUID();
   await env.SESSIONS.put(sid, JSON.stringify({ refresh_token: data.refresh_token }), {
     expirationTtl: SESSION_TTL,
   });
-  return Response.redirect(`${env.APP_URL}?sid=${sid}`, 302);
+  return Response.redirect(appendQuery(returnUrl, 'sid', sid), 302);
 }
 
 async function issueToken(url, env, cors) {
@@ -171,9 +209,13 @@ async function logout(url, env, cors) {
   return json({ ok: true }, 200, cors);
 }
 
-function corsHeaders(env) {
+function corsHeaders(env, request) {
+  const allowed = allowedOrigins(env);
+  const origin = request?.headers?.get('Origin') || '';
+  const allow = allowed.includes(origin) ? origin : (allowed[0] || '*');
   return {
-    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
+    'Access-Control-Allow-Origin': allow,
+    'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
