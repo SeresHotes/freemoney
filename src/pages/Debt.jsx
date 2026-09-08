@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { todayIso } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
@@ -9,8 +9,10 @@ import { getRate } from '../api/rates';
 const NEW = '__new__';
 
 export default function Debt() {
-  const { wallets, transactions, recordDebt } = useApp();
+  const { wallets, transactions, recordDebt, updateTransfer, deleteTransaction } = useApp();
   const navigate = useNavigate();
+  const { transferId } = useParams();
+  const editing = Boolean(transferId);
 
   const cashWallets = useMemo(
     () => wallets.filter((w) => w.status === 'active' && !isDebtWallet(w)),
@@ -21,12 +23,17 @@ export default function Debt() {
     [wallets],
   );
 
+  const legs = useMemo(
+    () => (editing ? transactions.filter((t) => t.transferId === transferId) : []),
+    [editing, transferId, transactions],
+  );
+
   // 'out' — деньги ушли из кошелька (дал в долг / погасил свой);
   // 'in'  — деньги пришли в кошелёк (мне вернули / я занял).
   const [direction, setDirection] = useState('out');
-  const [counterpartyId, setCounterpartyId] = useState(debtWallets[0]?.id || NEW);
+  const [counterpartyId, setCounterpartyId] = useState(NEW);
   const [newName, setNewName] = useState('');
-  const [workWalletId, setWorkWalletId] = useState(cashWallets[0]?.id || '');
+  const [workWalletId, setWorkWalletId] = useState('');
   const [amountWork, setAmountWork] = useState('');
   const [amountDebt, setAmountDebt] = useState('');
   const [amountDebtTouched, setAmountDebtTouched] = useState(false);
@@ -34,17 +41,42 @@ export default function Debt() {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [ready, setReady] = useState(false);
 
-  const isNew = counterpartyId === NEW || debtWallets.length === 0;
+  // Инициализация: из пары (правка) либо дефолтами (создание).
+  useEffect(() => {
+    if (ready) return;
+    if (editing) {
+      if (legs.length < 2) return; // ждём загрузки операций
+      const outLeg = legs.find((t) => t.type === 'transfer_out');
+      const inLeg = legs.find((t) => t.type === 'transfer_in');
+      const outIsDebt = wallets.find((w) => w.id === outLeg.wallet)?.kind === 'debt';
+      const debtLeg = outIsDebt ? outLeg : inLeg;
+      const cashLeg = outIsDebt ? inLeg : outLeg;
+      setDirection(outIsDebt ? 'in' : 'out'); // долг списывает → деньги пришли
+      setCounterpartyId(debtLeg.wallet);
+      setWorkWalletId(cashLeg.wallet);
+      setAmountWork(String(cashLeg.amount));
+      setAmountDebt(String(debtLeg.amount));
+      setAmountDebtTouched(true);
+      setDate(outLeg.date);
+      setNote(outLeg.note || '');
+    } else {
+      setCounterpartyId(debtWallets[0]?.id || NEW);
+      setWorkWalletId(cashWallets[0]?.id || '');
+    }
+    setReady(true);
+  }, [editing, legs, wallets, debtWallets, cashWallets, ready]);
+
+  const isNew = !editing && (counterpartyId === NEW || debtWallets.length === 0);
   const work = cashWallets.find((w) => w.id === workWalletId);
-  const counterparty = debtWallets.find((w) => w.id === counterpartyId);
-  // Валюта контрагента: у существующего — своя; у нового наследуется от кошелька.
+  const counterparty = wallets.find((w) => w.id === counterpartyId);
   const debtCurrency = isNew ? work?.currency : counterparty?.currency;
   const different = work && debtCurrency && work.currency !== debtCurrency;
 
-  // Подсказка суммы в валюте контрагента по курсу, если валюты разные.
+  // Подсказка суммы в валюте долга по курсу, если валюты разные.
   useEffect(() => {
-    if (!different || !amountWork) return;
+    if (!different || !amountWork || amountDebtTouched) return;
     let cancelled = false;
     getRate(work.currency, debtCurrency, date).then((rate) => {
       if (cancelled || rate == null || amountDebtTouched) return;
@@ -62,25 +94,45 @@ export default function Debt() {
     e.preventDefault();
     setFormError(null);
     if (!workWalletId) { setFormError('Выберите кошелёк'); return; }
-    if (isNew && !newName.trim()) { setFormError('Введите имя контрагента'); return; }
+    if (isNew && !newName.trim()) { setFormError('Введите имя'); return; }
     const work_ = Number(String(amountWork).replace(',', '.'));
     if (!work_ || work_ <= 0) { setFormError('Введите сумму'); return; }
     const debt_ = Number(String(amountDebt).replace(',', '.')) || work_;
     setSaving(true);
     try {
-      await recordDebt({
-        counterpartyId: isNew ? null : counterpartyId,
-        newCounterpartyName: isNew ? newName.trim() : null,
-        cashDirection: direction,
-        workWalletId,
-        amountWork: work_,
-        amountDebt: debt_,
-        date,
-        note: note.trim(),
-      });
+      if (editing) {
+        // out — кошелёк→долг; in — долг→кошелёк.
+        const legsPayload = direction === 'out'
+          ? { outWalletId: workWalletId, inWalletId: counterpartyId, amountOut: work_, amountIn: debt_ }
+          : { outWalletId: counterpartyId, inWalletId: workWalletId, amountOut: debt_, amountIn: work_ };
+        await updateTransfer({ transferId, ...legsPayload, date, note: note.trim() });
+      } else {
+        await recordDebt({
+          counterpartyId: isNew ? null : counterpartyId,
+          newCounterpartyName: isNew ? newName.trim() : null,
+          cashDirection: direction,
+          workWalletId,
+          amountWork: work_,
+          amountDebt: debt_,
+          date,
+          note: note.trim(),
+        });
+      }
       navigate('/');
     } catch {
       setFormError('Не удалось записать долг');
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!window.confirm('Удалить эту запись долга?')) return;
+    setSaving(true);
+    try {
+      await deleteTransaction(legs[0]?.id);
+      navigate('/');
+    } catch {
+      setFormError('Не удалось удалить');
       setSaving(false);
     }
   };
@@ -89,7 +141,7 @@ export default function Debt() {
     <div className="page">
       <header className="page__header page__header--with-back">
         <button className="link-btn" onClick={() => navigate(-1)} aria-label="Назад">←</button>
-        <h1>Долг</h1>
+        <h1>{editing ? 'Правка долга' : 'Долг'}</h1>
       </header>
 
       <form className="form" onSubmit={submit}>
@@ -102,24 +154,25 @@ export default function Debt() {
         </label>
 
         <label className="field">
-          <span className="field__label">Контрагент</span>
+          <span className="field__label">Кому / от кого</span>
           <select
             className="field__input field__input--select"
             value={isNew ? NEW : counterpartyId}
             onChange={(e) => { setCounterpartyId(e.target.value); setAmountDebtTouched(false); }}
+            disabled={editing}
           >
             {debtWallets.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name} · {formatAmount(walletBalance(transactions, w.id), w.currency)}
               </option>
             ))}
-            <option value={NEW}>➕ Новый контрагент…</option>
+            {!editing && <option value={NEW}>➕ Новый…</option>}
           </select>
         </label>
 
         {isNew && (
           <label className="field">
-            <span className="field__label">Имя контрагента</span>
+            <span className="field__label">Имя</span>
             <input className="field__input" type="text" placeholder="Например: Петя" value={newName} onChange={(e) => setNewName(e.target.value)} />
           </label>
         )}
@@ -139,7 +192,7 @@ export default function Debt() {
         {different && (
           <label className="field">
             <span className="field__label">
-              Сумма в валюте контрагента, {debtCurrency}
+              Сумма в валюте долга, {debtCurrency}
               <span className="muted"> · можно поправить</span>
             </span>
             <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amountDebt} onChange={(e) => { setAmountDebt(e.target.value); setAmountDebtTouched(true); }} />
@@ -158,11 +211,16 @@ export default function Debt() {
 
         <p className="muted" style={{ fontSize: '0.8rem' }}>
           Общий капитал не меняется — деньги переходят между кошельком и долгом.
-          Баланс контрагента: «+» вам должны, «−» должны вы.
+          Баланс: «+» вам должны, «−» должны вы.
         </p>
 
         {formError && <p className="form-error">{formError}</p>}
-        <button type="submit" className="btn btn--block btn--primary" disabled={saving}>{saving ? 'Записываю…' : 'Записать'}</button>
+        <button type="submit" className="btn btn--block btn--primary" disabled={saving}>{saving ? 'Сохраняю…' : editing ? 'Сохранить' : 'Записать'}</button>
+        {editing && (
+          <button type="button" className="btn btn--block" style={{ marginTop: '0.5rem' }} onClick={remove} disabled={saving}>
+            🗑️ Удалить
+          </button>
+        )}
       </form>
     </div>
   );

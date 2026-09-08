@@ -97,3 +97,29 @@ export function walletBalance(transactions, walletId) {
   }
   return balance;
 }
+
+// Хронологический ключ операции (дата + время) для сортировки в пределах кошелька.
+function txOrderKey(t) {
+  return `${t.date} ${t.time || '00:00'}`;
+}
+
+// Баланс долгового кошелька ДО указанной операции (по хронологии) — нужен, чтобы
+// понять, растёт долг по модулю (дал/взял) или гасится (возврат/погашение).
+export function debtBalanceBefore(transactions, walletId, beforeTx) {
+  const key = txOrderKey(beforeTx);
+  let balance = 0;
+  for (const t of transactions) {
+    if (t.wallet !== walletId || t.id === beforeTx.id) continue;
+    if (txOrderKey(t) > key) continue;
+    if (t.type === 'income' || t.type === 'transfer_in' || t.type === 'adjust_in') balance += t.amount;
+    else if (t.type === 'expense' || t.type === 'transfer_out' || t.type === 'adjust_out') balance -= t.amount;
+  }
+  return balance;
+}
+
+// Человеческая подпись операции долга. cashOut — деньги ушли из моего кошелька
+// (кошелёк→долг); balBefore — баланс долгового кошелька до операции.
+export function debtRowLabel(cashOut, balBefore) {
+  if (cashOut) return balBefore < 0 ? 'Погашение долга' : 'Дал в долг';
+  return balBefore > 0 ? 'Возврат долга' : 'Взял в долг';
+}

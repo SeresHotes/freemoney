@@ -85,6 +85,9 @@ export default function Home() {
         <button className="btn btn--block" onClick={() => navigate('/debt')}>
           🤝 Долг
         </button>
+        <button className="btn btn--block" onClick={() => navigate('/interest')}>
+          📈 Проценты
+        </button>
       </div>
 
       <section>

@@ -320,13 +320,43 @@ export function AppProvider({ children }) {
     [withAuthGuard, wallets],
   );
 
-  // Начислить проценты на баланс кошелька по его ставке. Прирост считается от
-  // текущего баланса со знаком: положительный баланс → доход, отрицательный
-  // (долг, который должны вы) → расход. Категория «Проценты» заводится сама.
-  const accrueInterest = useCallback(
-    (wallet) =>
+  // Правка перевода/долга: переписываем обе ноги пары одним действием.
+  // Универсально по кошелькам out/in — годится и для обычного перевода, и для
+  // долга (экран сам решает, какой кошелёк списывает, а какой зачисляет).
+  const updateTransfer = useCallback(
+    ({ transferId, outWalletId, inWalletId, amountOut, amountIn, date, note }) =>
       withAuthGuard(async () => {
-        const rate = Number(wallet.rate) || 0;
+        const legs = transactions.filter((t) => t.transferId === transferId);
+        const outLeg = legs.find((t) => t.type === 'transfer_out');
+        const inLeg = legs.find((t) => t.type === 'transfer_in');
+        if (!outLeg || !inLeg) throw new Error('Перевод не найден');
+        const outW = wallets.find((w) => w.id === outWalletId);
+        const inW = wallets.find((w) => w.id === inWalletId);
+        const newOut = {
+          ...outLeg, wallet: outWalletId, currency: outW?.currency || outLeg.currency,
+          amount: Number(amountOut), date, note: note || '',
+        };
+        const newIn = {
+          ...inLeg, wallet: inWalletId, currency: inW?.currency || inLeg.currency,
+          amount: Number(amountIn), date, note: note || '',
+        };
+        await backendRef.current.updateTransaction(newOut);
+        await backendRef.current.updateTransaction(newIn);
+        setTransactions((prev) =>
+          prev.map((t) => (t.id === newOut.id ? newOut : t.id === newIn.id ? newIn : t)),
+        );
+      }),
+    [withAuthGuard, transactions, wallets],
+  );
+
+  // Начислить проценты на баланс кошелька. Ставка — явная (ratePercent) либо, если
+  // не передана, дефолтная из кошелька. Прирост считается от текущего баланса со
+  // знаком: положительный баланс → доход, отрицательный (долг, который должны вы)
+  // → расход. Категория «Проценты» заводится сама.
+  const accrueInterest = useCallback(
+    (wallet, ratePercent, date) =>
+      withAuthGuard(async () => {
+        const rate = Number(ratePercent ?? wallet.rate) || 0;
         const balance = walletBalance(transactions, wallet.id);
         const delta = (balance * rate) / 100;
         if (Math.abs(delta) < 0.005) return null;
@@ -338,7 +368,7 @@ export function AppProvider({ children }) {
         }
 
         const tx = {
-          id: newId(), date: todayIso(), time: nowTime(),
+          id: newId(), date: date || todayIso(), time: nowTime(),
           type: delta >= 0 ? 'income' : 'expense',
           amount: Math.abs(delta), category: INTEREST_CATEGORY,
           note: `Проценты ${rate}%`, tags: [],
@@ -514,6 +544,7 @@ export function AppProvider({ children }) {
     refresh,
     addTransaction,
     addTransfer,
+    updateTransfer,
     recordDebt,
     accrueInterest,
     updateTransaction,
