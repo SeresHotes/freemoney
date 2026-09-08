@@ -35,6 +35,7 @@ export default {
       if (url.pathname === '/auth/logout') return logout(url, env, cors);
       if (url.pathname === '/' ) return html(HOMEPAGE, env);
       if (url.pathname === '/privacy') return html(PRIVACY, env);
+      if (url.pathname === '/terms') return html(TERMS, env);
     } catch (e) {
       return json({ error: 'server_error', detail: String(e) }, 500, cors);
     }
@@ -89,6 +90,31 @@ h1{font-size:1.6rem}h2{font-size:1.15rem;margin-top:1.5em}a{color:#60a5fa}</styl
 
 <h2>Изменения</h2>
 <p>Актуальная версия политики всегда доступна по этому адресу.</p>
+</body></html>`;
+
+const TERMS = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeMoney — Условия использования</title>
+<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;background:#0f172a;color:#f1f5f9;line-height:1.6}
+h1{font-size:1.6rem}h2{font-size:1.15rem;margin-top:1.5em}a{color:#60a5fa}</style>
+</head><body>
+<h1>Условия использования FreeMoney</h1>
+<p>Обновлено: 2026.</p>
+
+<h2>О сервисе</h2>
+<p>FreeMoney — бесплатное персональное приложение для учёта личных доходов и расходов, разработанное частным лицом. Контакт: <a href="mailto:sereshotes@gmail.com">sereshotes@gmail.com</a>.</p>
+
+<h2>Использование</h2>
+<p>Приложение предоставляется «как есть» (as is), без каких-либо гарантий. Вы используете его на свой риск. Приложение предназначено для личного учёта финансов и не является финансовой, бухгалтерской или инвестиционной консультацией.</p>
+
+<h2>Ваши данные</h2>
+<p>Все ваши данные хранятся в вашей собственной Google Таблице (в вашем аккаунте Google). Вы полностью контролируете их и можете удалить в любой момент. Подробнее — в <a href="/privacy">Политике конфиденциальности</a>.</p>
+
+<h2>Ответственность</h2>
+<p>Автор не несёт ответственности за возможные потери данных, неточности расчётов или иной ущерб, связанный с использованием приложения. Резервное копирование данных — на стороне пользователя (в приложении есть экспорт).</p>
+
+<h2>Изменения</h2>
+<p>Условия могут обновляться; актуальная версия всегда доступна по этому адресу.</p>
 </body></html>`;
 
 // redirect_uri вычисляем из адреса воркера — его же регистрируем в Google Cloud.
