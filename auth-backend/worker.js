@@ -33,12 +33,63 @@ export default {
       if (url.pathname === '/auth/callback') return callback(url, env);
       if (url.pathname === '/auth/token') return issueToken(url, env, cors);
       if (url.pathname === '/auth/logout') return logout(url, env, cors);
+      if (url.pathname === '/' ) return html(HOMEPAGE, env);
+      if (url.pathname === '/privacy') return html(PRIVACY, env);
     } catch (e) {
       return json({ error: 'server_error', detail: String(e) }, 500, cors);
     }
-    return new Response('FreeMoney auth backend', { headers: cors });
+    return new Response('Not found', { status: 404, headers: cors });
   },
 };
+
+function html(body, env) {
+  return new Response(body, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+const HOMEPAGE = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeMoney — учёт денег</title>
+<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;background:#0f172a;color:#f1f5f9;line-height:1.6}
+a{color:#60a5fa}h1{font-size:1.8rem}.card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:20px;margin:20px 0}</style>
+</head><body>
+<h1>💰 FreeMoney</h1>
+<p>Простое приложение для учёта личных доходов и расходов. Данные хранятся в вашей собственной Google Таблице — у приложения нет своего сервера с вашими финансами.</p>
+<div class="card">
+<p><b>Открыть приложение:</b> <a href="https://sereshotes.github.io/freemoney/">sereshotes.github.io/freemoney</a></p>
+</div>
+<p><a href="/privacy">Политика конфиденциальности</a></p>
+</body></html>`;
+
+const PRIVACY = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeMoney — Политика конфиденциальности</title>
+<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;background:#0f172a;color:#f1f5f9;line-height:1.6}
+h1{font-size:1.6rem}h2{font-size:1.15rem;margin-top:1.5em}a{color:#60a5fa}</style>
+</head><body>
+<h1>Политика конфиденциальности FreeMoney</h1>
+<p>Обновлено: 2026.</p>
+
+<h2>Кто мы</h2>
+<p>FreeMoney — персональное приложение для учёта доходов и расходов, разработанное частным лицом. Контакт: <a href="mailto:sereshotes@gmail.com">sereshotes@gmail.com</a>.</p>
+
+<h2>Какие данные мы используем</h2>
+<p>Приложению для работы требуется доступ к Google Drive в объёме scope <code>drive.file</code> — это доступ <b>только к тем файлам, которые создало само приложение</b> (ваша таблица учёта). Приложение не имеет доступа к остальным файлам вашего Google Drive.</p>
+
+<h2>Где хранятся данные</h2>
+<p>Все ваши финансовые данные (операции, категории, кошельки) хранятся <b>в вашей собственной Google Таблице</b>, в вашем аккаунте Google. Мы не храним и не передаём эти данные на своих серверах.</p>
+
+<h2>Вспомогательный сервер авторизации</h2>
+<p>Чтобы вам не приходилось входить каждый час, вспомогательный сервер (на Cloudflare) хранит только токен обновления Google, необходимый для продления доступа. Через него не проходят ваши финансовые данные. Токен можно отозвать в любой момент в настройках вашего аккаунта Google (Сторонние приложения) или выйдя из приложения.</p>
+
+<h2>Передача третьим лицам</h2>
+<p>Мы не продаём, не передаём и не публикуем ваши данные. Данные не используются для рекламы или аналитики.</p>
+
+<h2>Удаление данных</h2>
+<p>Вы можете в любой момент удалить свою Google Таблицу и отозвать доступ приложения в настройках Google-аккаунта. После этого у приложения не остаётся никакого доступа к вашим данным.</p>
+
+<h2>Изменения</h2>
+<p>Актуальная версия политики всегда доступна по этому адресу.</p>
+</body></html>`;
 
 // redirect_uri вычисляем из адреса воркера — его же регистрируем в Google Cloud.
 function redirectUri(url) {
