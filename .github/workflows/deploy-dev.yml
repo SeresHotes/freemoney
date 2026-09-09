@@ -1,23 +1,23 @@
-name: Deploy dev channel
+name: Deploy dev channel (Cloudflare Pages)
 
-# Стабильный dev-канал на том же домене Pages: /<repo>/dev/.
-# Тот же origin, что и prod, поэтому вход через Google работает без правок
-# в Google Cloud Console. Ставится второй PWA-иконкой рядом с prod.
+# Dev-канал живёт на отдельном поддомене dev.freemoney.sereshotes.dev
+# (Cloudflare Pages, проект freemoney-dev) — отдельный origin, поэтому нет
+# конфликта service worker с prod. base сборки — корень «/».
+#
+# Требуется секрет репозитория CLOUDFLARE_API_TOKEN с правами Pages:Edit
+# (Settings → Secrets and variables → Actions). account_id — публичный.
+# Без секрета можно катить вручную:
+#   npm ci && VITE_CHANNEL=dev BASE_PATH=/ VITE_GOOGLE_CLIENT_ID=... \
+#     VITE_AUTH_BACKEND_URL=https://auth.sereshotes.dev npm run build
+#   npx wrangler pages deploy dist --project-name freemoney-dev --branch main
 
 on:
   push:
     branches: [dev]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
-concurrency:
-  group: gh-pages
-  cancel-in-progress: false
-
 jobs:
-  build:
+  build-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,21 +29,17 @@ jobs:
 
       - run: npm ci
 
-      - name: Build (dev, base /<repo>/dev/)
+      - name: Build (dev, base /)
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_AUTH_BACKEND_URL: ${{ vars.VITE_AUTH_BACKEND_URL }}
-          # Публикуем в подкаталог /dev/ того же сайта (кастомный домен в корне).
-          BASE_PATH: /dev/
+          BASE_PATH: /
           VITE_CHANNEL: dev
         run: npm run build
 
-      - name: Publish dev to gh-pages /dev
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          destination_dir: dev
-          # keep_files: не трогаем корень (prod) при выкладке dev.
-          keep_files: true
-          commit_message: "deploy dev ${{ github.sha }}"
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 98f57f1329b9fed2bb0ab7dabc4599d3
+          command: pages deploy dist --project-name freemoney-dev --branch main
