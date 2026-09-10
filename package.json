@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "icons": "node scripts/gen-icons.mjs",
+    "screenshots": "node scripts/gen-screenshots.mjs",
     "build:app": "BASE_PATH=/ vite build",
     "cap:sync": "npm run build:app && cap sync",
     "cap:android": "cap open android"
