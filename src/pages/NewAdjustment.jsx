@@ -1,32 +1,57 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance } from '../utils/finance';
 
-// Быстрая корректировка баланса с главной: выбираем кошелёк, вводим реальный
-// баланс — приложение создаёт операцию-корректировку на разницу.
+const fmt = (n) => (Number.isFinite(n) ? String(Number(n.toFixed(2))) : '');
+const parse = (s) => Number(String(s).replace(',', '.'));
+
+// Быстрая корректировка с главной. Два связанных поля — «итоговый баланс» и
+// «изменение»: правка одного пересчитывает второе. Валюта берётся от кошелька.
 export default function NewAdjustment() {
   const navigate = useNavigate();
   const { wallets, transactions, setWalletBalance } = useApp();
 
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
   const [walletId, setWalletId] = useState(() => activeWallets[0]?.id || '');
-  const [balanceInput, setBalanceInput] = useState('');
+  const wallet = wallets.find((w) => w.id === walletId);
+  const currency = wallet?.currency || '';
+  const base = wallet ? walletBalance(transactions, wallet.id) : 0;
+
+  const [finalStr, setFinalStr] = useState('');
+  const [changeStr, setChangeStr] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const wallet = wallets.find((w) => w.id === walletId);
-  const current = wallet ? walletBalance(transactions, wallet.id) : 0;
+  // При смене кошелька стартуем от его текущего баланса, изменение — ноль.
+  useEffect(() => {
+    if (!wallet) return;
+    setFinalStr(fmt(base));
+    setChangeStr('0');
+  }, [walletId]);
+
+  const onFinalChange = (v) => {
+    setFinalStr(v);
+    const n = parse(v);
+    setChangeStr(v.trim() === '' || Number.isNaN(n) ? '' : fmt(n - base));
+  };
+  const onChangeChange = (v) => {
+    setChangeStr(v);
+    const n = parse(v);
+    setFinalStr(v.trim() === '' || Number.isNaN(n) ? '' : fmt(base + n));
+  };
+
+  const change = parse(changeStr);
+  const hasChange = changeStr.trim() !== '' && !Number.isNaN(change);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
     if (!wallet) { setFormError('Выберите кошелёк'); return; }
-    const raw = balanceInput.trim();
-    if (raw === '') { setFormError('Введите реальный баланс'); return; }
-    const target = Number(raw.replace(',', '.'));
-    if (Number.isNaN(target)) { setFormError('Введите число'); return; }
+    const target = parse(finalStr);
+    if (finalStr.trim() === '' || Number.isNaN(target)) { setFormError('Введите итоговый баланс'); return; }
+    if (Math.abs(target - base) < 0.005) { setFormError('Баланс не изменился'); return; }
 
     setSaving(true);
     try {
@@ -67,22 +92,39 @@ export default function NewAdjustment() {
           </select>
         </label>
 
+        <div className="field">
+          <span className="field__label">Сейчас в приложении</span>
+          <p className="muted">{formatAmount(base, currency)}</p>
+        </div>
+
+        <label className="field">
+          <span className="field__label">Итоговый баланс, {currency}</span>
+          <input
+            className="field__input field__input--amount"
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={finalStr}
+            onChange={(e) => onFinalChange(e.target.value)}
+            autoFocus
+          />
+        </label>
+
         <label className="field">
           <span className="field__label">
-            Реальный баланс сейчас · сейчас в приложении: {formatAmount(current, wallet.currency)}
+            Изменение баланса, {currency}
+            {hasChange && Math.abs(change) >= 0.005 && (
+              <span className="muted"> · {change > 0 ? 'пополнение' : 'списание'}</span>
+            )}
           </span>
           <input
             className="field__input field__input--amount"
             type="text"
             inputMode="decimal"
-            placeholder={`Сумма в ${wallet.currency}`}
-            value={balanceInput}
-            onChange={(e) => setBalanceInput(e.target.value)}
-            autoFocus
+            placeholder="0"
+            value={changeStr}
+            onChange={(e) => onChangeChange(e.target.value)}
           />
-          <span className="muted" style={{ fontSize: '0.78rem' }}>
-            Создастся операция-корректировка на разницу.
-          </span>
         </label>
 
         {formError && <p className="form-error">{formError}</p>}
