@@ -17,10 +17,12 @@ export function todayIso() {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
-// Текущее локальное время в формате HH:MM.
+// Текущее локальное время в формате HH:MM:SS (секунды — чтобы операции, созданные
+// в одну минуту, сохраняли порядок при сортировке).
 export function nowTime() {
   const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 // Ключ месяца YYYY-MM из ISO-даты.

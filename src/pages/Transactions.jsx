@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
 import { monthKey, monthLabel } from '../utils/format';
-import { isIncome, matchesFilters } from '../utils/finance';
+import { isIncome, matchesFilters, isDebtWallet, debtBalanceBefore, debtRowLabel } from '../utils/finance';
 import ChipMultiSelect from '../components/ChipMultiSelect';
 
 const TYPE_OPTIONS = [
@@ -42,6 +42,20 @@ export default function Transactions() {
   const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
   const walletById = useMemo(() => new Map(wallets.map((w) => [w.id, w])), [wallets]);
 
+  // Пары ног перевода/долга по transferId — берём из полного списка, чтобы
+  // показать обе стороны (A → B) даже когда фильтр по кошельку оставил одну ногу.
+  const pairs = useMemo(() => {
+    const m = new Map();
+    for (const t of transactions) {
+      if (!t.transferId) continue;
+      if (!m.has(t.transferId)) m.set(t.transferId, {});
+      const p = m.get(t.transferId);
+      if (t.type === 'transfer_out') p.out = t;
+      else if (t.type === 'transfer_in') p.in = t;
+    }
+    return m;
+  }, [transactions]);
+
   const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [categories]);
   const walletOptions = useMemo(
     () => wallets.filter((w) => w.status === 'active').map((w) => ({ value: w.id, label: w.name })),
@@ -77,6 +91,20 @@ export default function Transactions() {
   const activeCount = types.length + cats.length + tagSel.length + wals.length + (from ? 1 : 0) + (to ? 1 : 0);
   const clear = () => setSearchParams({}, { replace: true });
 
+  // Число видимых строк: пара ног перевода/долга считается как одна.
+  const displayedCount = useMemo(() => {
+    const seen = new Set();
+    let n = 0;
+    for (const t of filtered) {
+      if ((t.type === 'transfer_out' || t.type === 'transfer_in') && t.transferId) {
+        if (seen.has(t.transferId)) continue;
+        seen.add(t.transferId);
+      }
+      n += 1;
+    }
+    return n;
+  }, [filtered]);
+
   // Группировка по месяцам (filtered уже отсортирован по убыванию даты).
   const groups = useMemo(() => {
     const map = new Map();
@@ -88,12 +116,74 @@ export default function Transactions() {
     return [...map.entries()];
   }, [filtered]);
 
-  const renderRow = (t) => {
-    const transfer = t.type.startsWith('transfer');
+  // Перевод/долг — одна строка на пару. Обычный перевод: «A → B» нейтрально.
+  // Долг: своя иконка и подпись (дал/взял/возврат/погашение), сумма — со стороны
+  // моего кошелька (ушло «−», пришло «+»).
+  const renderPairRow = (t) => {
+    const pair = pairs.get(t.transferId) || {};
+    const outLeg = pair.out;
+    const inLeg = pair.in;
+    const outW = outLeg ? walletById.get(outLeg.wallet) : null;
+    const inW = inLeg ? walletById.get(inLeg.wallet) : null;
+    const isDebt = isDebtWallet(outW) || isDebtWallet(inW);
+
+    let icon;
+    let title;
+    let subtitle;
+    let amountText;
+    let amountClass = null;
+    let to;
+
+    if (isDebt) {
+      const cashOut = isDebtWallet(inW); // деньги ушли из кошелька (out) в долг (in)
+      const debtLeg = cashOut ? inLeg : outLeg;
+      const debtW = cashOut ? inW : outW;
+      const cashLeg = cashOut ? outLeg : inLeg;
+      const balBefore = debtLeg ? debtBalanceBefore(transactions, debtW.id, debtLeg) : 0;
+      const amt = cashLeg ? cashLeg.amount : debtLeg?.amount || 0;
+      const cur = cashLeg ? cashLeg.currency : debtLeg?.currency;
+      icon = '🤝';
+      title = debtRowLabel(cashOut, balBefore);
+      subtitle = debtW?.name || '';
+      amountClass = cashOut ? 'expense' : 'income';
+      amountText = `${cashOut ? '−' : '+'}${formatAmount(amt, cur)}`;
+      to = `/debt/${t.transferId}`;
+    } else {
+      const sameVal = outLeg && inLeg && outLeg.currency === inLeg.currency && outLeg.amount === inLeg.amount;
+      icon = '⇄';
+      title = 'Перевод';
+      subtitle = `${outW?.name || '—'} → ${inW?.name || '—'}`;
+      amountText = sameVal
+        ? formatAmount(outLeg.amount, outLeg.currency)
+        : `${formatAmount(outLeg?.amount || 0, outLeg?.currency)} → ${formatAmount(inLeg?.amount || 0, inLeg?.currency)}`;
+      to = `/transfer/${t.transferId}`;
+    }
+
+    return (
+      <li key={t.transferId} className="tx-item tx-item--clickable" onClick={() => navigate(to)}>
+        <span className="tx-item__cat-icon">{icon}</span>
+        <div className="tx-item__main">
+          <span className="tx-item__category">{title}</span>
+          <span className="tx-item__note">{subtitle}{t.note ? ` · ${t.note}` : ''}</span>
+        </div>
+        <div className="tx-item__right">
+          <span className={`tx-item__amount${amountClass ? ` tx-item__amount--${amountClass}` : ''}`}>{amountText}</span>
+          <span className="tx-item__date">{t.time ? `${t.date} ${t.time.slice(0, 5)}` : t.date}</span>
+        </div>
+      </li>
+    );
+  };
+
+  const renderRow = (t, shown) => {
+    if ((t.type === 'transfer_out' || t.type === 'transfer_in') && t.transferId) {
+      if (shown.has(t.transferId)) return null; // вторую ногу пары не показываем
+      shown.add(t.transferId);
+      return renderPairRow(t);
+    }
     const adjust = t.type.startsWith('adjust');
-    const positive = isIncome(t) || t.type === 'transfer_in' || t.type === 'adjust_in';
-    const icon = transfer ? '⇄' : adjust ? '⚖️' : iconByCategory.get(t.category) || '🏷️';
-    const title = transfer ? 'Перевод' : adjust ? 'Корректировка' : t.category || 'Без категории';
+    const positive = isIncome(t) || t.type === 'adjust_in';
+    const icon = adjust ? '⚖️' : iconByCategory.get(t.category) || '🏷️';
+    const title = adjust ? 'Корректировка' : t.category || 'Без категории';
     return (
       <li key={t.id} className="tx-item tx-item--clickable" onClick={() => navigate(`/edit/${t.id}`)}>
         <span className="tx-item__cat-icon">{icon}</span>
@@ -110,7 +200,7 @@ export default function Transactions() {
         </div>
         <div className="tx-item__right">
           <span className={`tx-item__amount tx-item__amount--${positive ? 'income' : 'expense'}`}>{positive ? '+' : '−'}{formatAmount(t.amount, t.currency)}</span>
-          <span className="tx-item__date">{t.time ? `${t.date} ${t.time}` : t.date}</span>
+          <span className="tx-item__date">{t.time ? `${t.date} ${t.time.slice(0, 5)}` : t.date}</span>
         </div>
       </li>
     );
@@ -152,17 +242,20 @@ export default function Transactions() {
         </div>
       )}
 
-      <p className="muted" style={{ margin: '0.5rem 0' }}>Найдено: {filtered.length}</p>
+      <p className="muted" style={{ margin: '0.5rem 0' }}>Найдено: {displayedCount}</p>
 
       {filtered.length === 0 ? (
         <p className="muted empty">Ничего не найдено</p>
       ) : (
-        groups.map(([month, items]) => (
-          <section key={month} className="tx-group">
-            <h3 className="tx-month">{month === '—' ? 'Без даты' : monthLabel(month)}</h3>
-            <ul className="tx-list">{items.map(renderRow)}</ul>
-          </section>
-        ))
+        (() => {
+          const shown = new Set();
+          return groups.map(([month, items]) => (
+            <section key={month} className="tx-group">
+              <h3 className="tx-month">{month === '—' ? 'Без даты' : monthLabel(month)}</h3>
+              <ul className="tx-list">{items.map((t) => renderRow(t, shown))}</ul>
+            </section>
+          ));
+        })()
       )}
     </div>
   );

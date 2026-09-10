@@ -252,26 +252,138 @@ export function AppProvider({ children }) {
   );
 
   const addTransfer = useCallback(
-    ({ fromWalletId, toWalletId, amountOut, amountIn, date, note }) =>
+    ({ fromWalletId, toWalletId, amountOut, amountIn, date, note, time }) =>
       withAuthGuard(async () => {
         const from = wallets.find((w) => w.id === fromWalletId);
         const to = wallets.find((w) => w.id === toWalletId);
         const transferId = newId();
-        const time = nowTime();
+        const legTime = time || nowTime();
         const out = {
           id: newId(), date, type: 'transfer_out', amount: amountOut, category: '',
           note: note || '', tags: [], wallet: fromWalletId, currency: from?.currency || '',
-          origAmount: null, origCurrency: '', transferId, time,
+          origAmount: null, origCurrency: '', transferId, time: legTime,
         };
         const inc = {
           id: newId(), date, type: 'transfer_in', amount: amountIn, category: '',
           note: note || '', tags: [], wallet: toWalletId, currency: to?.currency || '',
-          origAmount: null, origCurrency: '', transferId, time,
+          origAmount: null, origCurrency: '', transferId, time: legTime,
         };
         await backendRef.current.addTransactions([out, inc]);
         setTransactions((prev) => [...prev, out, inc]);
       }),
     [withAuthGuard, wallets],
+  );
+
+  // Долг = движение денег между рабочим и долговым кошельком (пара transfer-ног).
+  // cashDirection 'out' — деньги ушли из кошелька (дал в долг / погасил свой);
+  // 'in' — деньги пришли (мне вернули / я занял). Знак баланса долгового кошелька
+  // копит состояние: «+» вам должны, «−» должны вы.
+  const recordDebt = useCallback(
+    ({ counterpartyId, newCounterpartyName, cashDirection, workWalletId, amountWork, amountDebt, date, note, time }) =>
+      withAuthGuard(async () => {
+        const work = wallets.find((w) => w.id === workWalletId);
+        let debtId = counterpartyId;
+        let debtWallet = wallets.find((w) => w.id === debtId);
+        // Новый контрагент — создаём долговой кошелёк в валюте рабочего.
+        if (!debtId && newCounterpartyName) {
+          await backendRef.current.addWallet({
+            name: newCounterpartyName,
+            currency: work?.currency || DEFAULT_BASE_CURRENCY,
+            kind: 'debt',
+            rate: 0,
+          });
+          const fresh = await backendRef.current.fetchWallets();
+          setWallets(fresh);
+          debtWallet = fresh.find((w) => w.kind === 'debt' && w.name === newCounterpartyName);
+          debtId = debtWallet?.id;
+        }
+        if (!debtId || !workWalletId) throw new Error('Нужны контрагент и кошелёк');
+
+        const workCurrency = work?.currency || '';
+        const debtCurrency = debtWallet?.currency || workCurrency;
+        const amtWork = Number(amountWork);
+        const amtDebt = Number(amountDebt) || amtWork;
+        const transferId = newId();
+        const legTime = time || nowTime();
+        const leg = (type, wallet, currency, amount) => ({
+          id: newId(), date, type, amount, category: '', note: note || '',
+          tags: [], wallet, currency, origAmount: null, origCurrency: '', transferId, time: legTime,
+        });
+        const legs = cashDirection === 'out'
+          ? [leg('transfer_out', workWalletId, workCurrency, amtWork),
+             leg('transfer_in', debtId, debtCurrency, amtDebt)]
+          : [leg('transfer_out', debtId, debtCurrency, amtDebt),
+             leg('transfer_in', workWalletId, workCurrency, amtWork)];
+        await backendRef.current.addTransactions(legs);
+        setTransactions((prev) => [...prev, ...legs]);
+      }),
+    [withAuthGuard, wallets],
+  );
+
+  // Правка перевода/долга: переписываем обе ноги пары одним действием.
+  // Универсально по кошелькам out/in — годится и для обычного перевода, и для
+  // долга (экран сам решает, какой кошелёк списывает, а какой зачисляет).
+  const updateTransfer = useCallback(
+    ({ transferId, outWalletId, inWalletId, amountOut, amountIn, date, note, time }) =>
+      withAuthGuard(async () => {
+        const legs = transactions.filter((t) => t.transferId === transferId);
+        const outLeg = legs.find((t) => t.type === 'transfer_out');
+        const inLeg = legs.find((t) => t.type === 'transfer_in');
+        if (!outLeg || !inLeg) throw new Error('Перевод не найден');
+        const outW = wallets.find((w) => w.id === outWalletId);
+        const inW = wallets.find((w) => w.id === inWalletId);
+        const legTime = time || outLeg.time;
+        const newOut = {
+          ...outLeg, wallet: outWalletId, currency: outW?.currency || outLeg.currency,
+          amount: Number(amountOut), date, note: note || '', time: legTime,
+        };
+        const newIn = {
+          ...inLeg, wallet: inWalletId, currency: inW?.currency || inLeg.currency,
+          amount: Number(amountIn), date, note: note || '', time: legTime,
+        };
+        await backendRef.current.updateTransaction(newOut);
+        await backendRef.current.updateTransaction(newIn);
+        setTransactions((prev) =>
+          prev.map((t) => (t.id === newOut.id ? newOut : t.id === newIn.id ? newIn : t)),
+        );
+      }),
+    [withAuthGuard, transactions, wallets],
+  );
+
+  // Начислить проценты на баланс кошелька. Ставка — явная (ratePercent) либо, если
+  // не передана, дефолтная из кошелька. Прирост считается от текущего баланса со
+  // знаком: положительный баланс → доход, отрицательный (долг, который должны вы)
+  // → расход. Категория «Проценты» заводится сама.
+  // direction: 'add' — начислить (доход), 'subtract' — списать (расход).
+  // Сумма = |баланс| × ставка; направление задаётся явно, а не по знаку баланса.
+  const accrueInterest = useCallback(
+    (wallet, ratePercent, date, direction = 'add') =>
+      withAuthGuard(async () => {
+        const rate = Number(ratePercent) || 0;
+        const balance = walletBalance(transactions, wallet.id);
+        const amount = Math.abs((balance * rate) / 100);
+        if (amount < 0.005) return null;
+
+        const INTEREST_CATEGORY = 'Проценты';
+        if (!categories.some((c) => c.name === INTEREST_CATEGORY)) {
+          await backendRef.current.addCategory({ name: INTEREST_CATEGORY, kind: 'both', icon: '📈' });
+          setCategories(await backendRef.current.fetchCategories());
+        }
+
+        const subtract = direction === 'subtract';
+        const tx = {
+          id: newId(), date: date || todayIso(), time: nowTime(),
+          type: subtract ? 'expense' : 'income',
+          amount, category: INTEREST_CATEGORY,
+          note: `${subtract ? 'Списание' : 'Начисление'} ${rate}%`, tags: [],
+          wallet: wallet.id, currency: wallet.currency,
+          origAmount: null, origCurrency: '', transferId: '',
+        };
+        await backendRef.current.addTransaction(tx);
+        setTransactions((prev) => [...prev, tx]);
+        return { amount: tx.amount, type: tx.type };
+      }),
+    [withAuthGuard, transactions, categories],
   );
 
   const updateTransaction = useCallback(
@@ -451,6 +563,9 @@ export function AppProvider({ children }) {
     refresh,
     addTransaction,
     addTransfer,
+    updateTransfer,
+    recordDebt,
+    accrueInterest,
     updateTransaction,
     deleteTransaction,
     addCategory,

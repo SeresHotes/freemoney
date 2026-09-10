@@ -61,6 +61,8 @@ export async function initLocalStore() {
     currency: DEFAULT_BASE_CURRENCY,
     status: 'active',
     order: 0,
+    kind: 'cash',
+    rate: 0,
   });
   await put(db, STORE_SETTINGS, { key: 'baseCurrency', value: DEFAULT_BASE_CURRENCY });
   db.close();
@@ -81,6 +83,8 @@ export function createLocalBackend() {
           currency: DEFAULT_BASE_CURRENCY,
           status: 'active',
           order: 0,
+          kind: 'cash',
+          rate: 0,
         });
       }
       const settings = await getAll(db, STORE_SETTINGS);
@@ -105,7 +109,9 @@ export function createLocalBackend() {
         categories: cats
           .map((c) => ({ ...c, icon: c.icon || DEFAULT_ICON }))
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-        wallets: wls.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+        wallets: wls
+          .map((w) => ({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
         tags: tgs.map((r) => r.name),
         settings: Object.fromEntries(settings.map((r) => [r.key, r.value])),
       };
@@ -133,7 +139,9 @@ export function createLocalBackend() {
       const db = await openDb();
       const rows = await getAll(db, STORE_WALLET);
       db.close();
-      return rows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      return rows
+        .map((w) => ({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     },
 
     fetchTags: async () => {
@@ -209,20 +217,24 @@ export function createLocalBackend() {
       db.close();
     },
 
-    addWallet: async ({ name, currency }) => {
+    addWallet: async ({ name, currency, kind, rate }) => {
       const db = await openDb();
       const existing = await getAll(db, STORE_WALLET);
       await put(db, STORE_WALLET, {
         id: newId(), name, currency, status: 'active', order: existing.length,
+        kind: kind || 'cash', rate: Number(rate) || 0,
       });
       db.close();
     },
 
-    updateWallet: async (wallet, { name, currency }) => {
+    updateWallet: async (wallet, { name, currency, kind, rate }) => {
       const db = await openDb();
       const s = store(db, STORE_WALLET, 'readwrite');
       const w = await reqToPromise(s.get(wallet.id));
-      if (w) { Object.assign(w, { name, currency }); await reqToPromise(s.put(w)); }
+      if (w) {
+        Object.assign(w, { name, currency, kind: kind || 'cash', rate: Number(rate) || 0 });
+        await reqToPromise(s.put(w));
+      }
       db.close();
     },
 

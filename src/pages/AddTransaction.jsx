@@ -253,7 +253,7 @@ export default function AddTransaction() {
           <span className="field__label">Дата и время</span>
           <div className="datetime-row">
             <input className="field__input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            <input className="field__input datetime-row__time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            <input className="field__input datetime-row__time" type="time" value={(time || '').slice(0, 5)} onChange={(e) => setTime(e.target.value)} />
           </div>
         </div>
 

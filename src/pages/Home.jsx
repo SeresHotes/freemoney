@@ -82,9 +82,17 @@ export default function Home() {
         <button className="btn btn--expense" onClick={() => navigate('/add/expense')}>− Расход</button>
         <button className="btn btn--income" onClick={() => navigate('/add/income')}>+ Доход</button>
       </section>
-      <button className="btn btn--block" style={{ marginTop: '0.75rem' }} onClick={() => navigate('/transfer')}>
-        ⇄ Перевод между кошельками
-      </button>
+      <div className="actions" style={{ marginTop: '0.75rem' }}>
+        <button className="btn btn--block" onClick={() => navigate('/transfer')}>
+          ⇄ Перевод
+        </button>
+        <button className="btn btn--block" onClick={() => navigate('/debt')}>
+          🤝 Долг
+        </button>
+        <button className="btn btn--block" onClick={() => navigate('/interest')}>
+          📈 Проценты
+        </button>
+      </div>
 
       <section>
         <h2 className="section-title">Расходы за месяц ({baseCurrency})</h2>
