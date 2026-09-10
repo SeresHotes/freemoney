@@ -13,6 +13,7 @@ import WalletEdit from './pages/WalletEdit';
 import Transfer from './pages/Transfer';
 import Debt from './pages/Debt';
 import Interest from './pages/Interest';
+import NewAdjustment from './pages/NewAdjustment';
 import Settings from './pages/Settings';
 import {
   LoadingScreen,
@@ -66,6 +67,7 @@ function Shell() {
           <Route path="/debt" element={<Debt />} />
           <Route path="/debt/:transferId" element={<Debt />} />
           <Route path="/interest" element={<Interest />} />
+          <Route path="/adjust" element={<NewAdjustment />} />
           <Route path="/tags" element={<Tags />} />
           <Route
             path="/stats"
