@@ -20,11 +20,6 @@ export default function Wallets() {
         ➕ Добавить кошелёк
       </button>
 
-      <div className="add-cat__row" style={{ marginTop: '0.75rem' }}>
-        <button className="btn btn--block" onClick={() => navigate('/transfer')}>⇄ Перевод</button>
-        <button className="btn btn--block" onClick={() => navigate('/debt')}>🤝 Долг</button>
-      </div>
-
       <section>
         <h2 className="section-title">Активные ({active.length})</h2>
         <ul className="cat-list">

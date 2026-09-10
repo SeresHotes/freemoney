@@ -168,7 +168,7 @@ export default function Transactions() {
         </div>
         <div className="tx-item__right">
           <span className={`tx-item__amount${amountClass ? ` tx-item__amount--${amountClass}` : ''}`}>{amountText}</span>
-          <span className="tx-item__date">{t.time ? `${t.date} ${t.time}` : t.date}</span>
+          <span className="tx-item__date">{t.time ? `${t.date} ${t.time.slice(0, 5)}` : t.date}</span>
         </div>
       </li>
     );
@@ -200,7 +200,7 @@ export default function Transactions() {
         </div>
         <div className="tx-item__right">
           <span className={`tx-item__amount tx-item__amount--${positive ? 'income' : 'expense'}`}>{positive ? '+' : '−'}{formatAmount(t.amount, t.currency)}</span>
-          <span className="tx-item__date">{t.time ? `${t.date} ${t.time}` : t.date}</span>
+          <span className="tx-item__date">{t.time ? `${t.date} ${t.time.slice(0, 5)}` : t.date}</span>
         </div>
       </li>
     );

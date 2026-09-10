@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { todayIso } from '../utils/format';
+import { todayIso, nowTime } from '../utils/format';
 import { getRate } from '../api/rates';
 
 export default function Transfer() {
@@ -26,6 +26,7 @@ export default function Transfer() {
   const [amountIn, setAmountIn] = useState('');
   const [amountInTouched, setAmountInTouched] = useState(false);
   const [date, setDate] = useState(todayIso());
+  const [time, setTime] = useState(nowTime());
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -42,6 +43,7 @@ export default function Transfer() {
       setAmountIn(String(inLeg.amount));
       setAmountInTouched(true);
       setDate(outLeg.date);
+      setTime(outLeg.time || nowTime());
       setNote(outLeg.note || '');
     } else {
       setFromId(active[0]?.id || '');
@@ -84,9 +86,9 @@ export default function Transfer() {
     setSaving(true);
     try {
       if (editing) {
-        await updateTransfer({ transferId, outWalletId: fromId, inWalletId: toId, amountOut: out, amountIn: inc, date, note: note.trim() });
+        await updateTransfer({ transferId, outWalletId: fromId, inWalletId: toId, amountOut: out, amountIn: inc, date, time, note: note.trim() });
       } else {
-        await addTransfer({ fromWalletId: fromId, toWalletId: toId, amountOut: out, amountIn: inc, date, note: note.trim() });
+        await addTransfer({ fromWalletId: fromId, toWalletId: toId, amountOut: out, amountIn: inc, date, time, note: note.trim() });
       }
       navigate('/');
     } catch {
@@ -142,10 +144,13 @@ export default function Transfer() {
           <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amountIn} onChange={(e) => { setAmountIn(e.target.value); setAmountInTouched(true); }} />
         </label>
 
-        <label className="field">
-          <span className="field__label">Дата</span>
-          <input className="field__input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
+        <div className="field">
+          <span className="field__label">Дата и время</span>
+          <div className="datetime-row">
+            <input className="field__input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input className="field__input datetime-row__time" type="time" value={(time || '').slice(0, 5)} onChange={(e) => setTime(e.target.value)} />
+          </div>
+        </div>
 
         <label className="field">
           <span className="field__label">Заметка (необязательно)</span>

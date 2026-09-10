@@ -252,21 +252,21 @@ export function AppProvider({ children }) {
   );
 
   const addTransfer = useCallback(
-    ({ fromWalletId, toWalletId, amountOut, amountIn, date, note }) =>
+    ({ fromWalletId, toWalletId, amountOut, amountIn, date, note, time }) =>
       withAuthGuard(async () => {
         const from = wallets.find((w) => w.id === fromWalletId);
         const to = wallets.find((w) => w.id === toWalletId);
         const transferId = newId();
-        const time = nowTime();
+        const legTime = time || nowTime();
         const out = {
           id: newId(), date, type: 'transfer_out', amount: amountOut, category: '',
           note: note || '', tags: [], wallet: fromWalletId, currency: from?.currency || '',
-          origAmount: null, origCurrency: '', transferId, time,
+          origAmount: null, origCurrency: '', transferId, time: legTime,
         };
         const inc = {
           id: newId(), date, type: 'transfer_in', amount: amountIn, category: '',
           note: note || '', tags: [], wallet: toWalletId, currency: to?.currency || '',
-          origAmount: null, origCurrency: '', transferId, time,
+          origAmount: null, origCurrency: '', transferId, time: legTime,
         };
         await backendRef.current.addTransactions([out, inc]);
         setTransactions((prev) => [...prev, out, inc]);
@@ -279,7 +279,7 @@ export function AppProvider({ children }) {
   // 'in' — деньги пришли (мне вернули / я занял). Знак баланса долгового кошелька
   // копит состояние: «+» вам должны, «−» должны вы.
   const recordDebt = useCallback(
-    ({ counterpartyId, newCounterpartyName, cashDirection, workWalletId, amountWork, amountDebt, date, note }) =>
+    ({ counterpartyId, newCounterpartyName, cashDirection, workWalletId, amountWork, amountDebt, date, note, time }) =>
       withAuthGuard(async () => {
         const work = wallets.find((w) => w.id === workWalletId);
         let debtId = counterpartyId;
@@ -304,10 +304,10 @@ export function AppProvider({ children }) {
         const amtWork = Number(amountWork);
         const amtDebt = Number(amountDebt) || amtWork;
         const transferId = newId();
-        const time = nowTime();
+        const legTime = time || nowTime();
         const leg = (type, wallet, currency, amount) => ({
           id: newId(), date, type, amount, category: '', note: note || '',
-          tags: [], wallet, currency, origAmount: null, origCurrency: '', transferId, time,
+          tags: [], wallet, currency, origAmount: null, origCurrency: '', transferId, time: legTime,
         });
         const legs = cashDirection === 'out'
           ? [leg('transfer_out', workWalletId, workCurrency, amtWork),
@@ -324,7 +324,7 @@ export function AppProvider({ children }) {
   // Универсально по кошелькам out/in — годится и для обычного перевода, и для
   // долга (экран сам решает, какой кошелёк списывает, а какой зачисляет).
   const updateTransfer = useCallback(
-    ({ transferId, outWalletId, inWalletId, amountOut, amountIn, date, note }) =>
+    ({ transferId, outWalletId, inWalletId, amountOut, amountIn, date, note, time }) =>
       withAuthGuard(async () => {
         const legs = transactions.filter((t) => t.transferId === transferId);
         const outLeg = legs.find((t) => t.type === 'transfer_out');
@@ -332,13 +332,14 @@ export function AppProvider({ children }) {
         if (!outLeg || !inLeg) throw new Error('Перевод не найден');
         const outW = wallets.find((w) => w.id === outWalletId);
         const inW = wallets.find((w) => w.id === inWalletId);
+        const legTime = time || outLeg.time;
         const newOut = {
           ...outLeg, wallet: outWalletId, currency: outW?.currency || outLeg.currency,
-          amount: Number(amountOut), date, note: note || '',
+          amount: Number(amountOut), date, note: note || '', time: legTime,
         };
         const newIn = {
           ...inLeg, wallet: inWalletId, currency: inW?.currency || inLeg.currency,
-          amount: Number(amountIn), date, note: note || '',
+          amount: Number(amountIn), date, note: note || '', time: legTime,
         };
         await backendRef.current.updateTransaction(newOut);
         await backendRef.current.updateTransaction(newIn);

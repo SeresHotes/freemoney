@@ -51,7 +51,7 @@ const txToRow = (t) => [
 const rowToTx = (r) => {
   const dt = r[1] || '';
   return {
-    id: r[0], date: dt.slice(0, 10), time: dt.length > 10 ? dt.slice(11, 16) : '00:00',
+    id: r[0], date: dt.slice(0, 10), time: dt.length > 10 ? dt.slice(11) : '00:00',
     type: r[2] || 'expense', amount: Number(r[3]) || 0,
     category: r[4] || '', note: r[5] || '',
     tags: (r[6] || '').split(',').map((s) => s.trim()).filter(Boolean),

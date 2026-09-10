@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { todayIso } from '../utils/format';
+import { todayIso, nowTime } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isDebtWallet } from '../utils/finance';
 import { getRate } from '../api/rates';
@@ -38,6 +38,7 @@ export default function Debt() {
   const [amountDebt, setAmountDebt] = useState('');
   const [amountDebtTouched, setAmountDebtTouched] = useState(false);
   const [date, setDate] = useState(todayIso());
+  const [time, setTime] = useState(nowTime());
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -60,6 +61,7 @@ export default function Debt() {
       setAmountDebt(String(debtLeg.amount));
       setAmountDebtTouched(true);
       setDate(outLeg.date);
+      setTime(outLeg.time || nowTime());
       setNote(outLeg.note || '');
     } else {
       setCounterpartyId(debtWallets[0]?.id || NEW);
@@ -105,7 +107,7 @@ export default function Debt() {
         const legsPayload = direction === 'out'
           ? { outWalletId: workWalletId, inWalletId: counterpartyId, amountOut: work_, amountIn: debt_ }
           : { outWalletId: counterpartyId, inWalletId: workWalletId, amountOut: debt_, amountIn: work_ };
-        await updateTransfer({ transferId, ...legsPayload, date, note: note.trim() });
+        await updateTransfer({ transferId, ...legsPayload, date, time, note: note.trim() });
       } else {
         await recordDebt({
           counterpartyId: isNew ? null : counterpartyId,
@@ -115,6 +117,7 @@ export default function Debt() {
           amountWork: work_,
           amountDebt: debt_,
           date,
+          time,
           note: note.trim(),
         });
       }
@@ -199,10 +202,13 @@ export default function Debt() {
           </label>
         )}
 
-        <label className="field">
-          <span className="field__label">Дата</span>
-          <input className="field__input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
+        <div className="field">
+          <span className="field__label">Дата и время</span>
+          <div className="datetime-row">
+            <input className="field__input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input className="field__input datetime-row__time" type="time" value={(time || '').slice(0, 5)} onChange={(e) => setTime(e.target.value)} />
+          </div>
+        </div>
 
         <label className="field">
           <span className="field__label">Заметка (необязательно)</span>

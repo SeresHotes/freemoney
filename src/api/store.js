@@ -134,8 +134,8 @@ function mapTxRows(rows) {
       // Колонка datetime: «YYYY-MM-DD HH:MM» либо просто «YYYY-MM-DD».
       const dt = r[1] || '';
       const date = dt.slice(0, 10);
-      // Время из datetime, либо из старой колонки; если нет — 00:00.
-      const time = dt.length > 10 ? dt.slice(11, 16) : (r[12] || '00:00');
+      // Время из datetime (HH:MM или HH:MM:SS), либо из старой колонки; иначе 00:00.
+      const time = dt.length > 10 ? dt.slice(11) : (r[12] || '00:00');
       return {
         id: r[0],
         date,
