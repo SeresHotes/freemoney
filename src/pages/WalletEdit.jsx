@@ -15,7 +15,6 @@ export default function WalletEdit() {
   const [name, setName] = useState(current?.name || '');
   const [currency, setCurrency] = useState(current?.currency || CURRENCIES[0].code);
   const [kind, setKind] = useState(current?.kind || 'cash');
-  const [rate, setRate] = useState(current?.rate ? String(current.rate) : '');
   const [balanceInput, setBalanceInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -39,18 +38,17 @@ export default function WalletEdit() {
     setFormError(null);
     const trimmed = name.trim();
     if (!trimmed) { setFormError('Введите название'); return; }
-    const rateValue = Number(String(rate).replace(',', '.')) || 0;
     setBusy(true);
     try {
       if (editing) {
-        await updateWallet(current, { name: trimmed, currency, kind, rate: rateValue });
+        await updateWallet(current, { name: trimmed, currency, kind });
         const raw = balanceInput.trim();
         if (raw !== '') {
           const target = Number(raw.replace(',', '.'));
           if (!Number.isNaN(target)) await setWalletBalance(current, target);
         }
       } else {
-        await addWallet({ name: trimmed, currency, kind, rate: rateValue });
+        await addWallet({ name: trimmed, currency, kind });
       }
       navigate('/wallets');
     } catch {
@@ -92,18 +90,6 @@ export default function WalletEdit() {
             <option value="cash">Обычный</option>
             <option value="debt">Долг (кому / от кого)</option>
           </select>
-        </label>
-
-        <label className="field">
-          <span className="field__label">Ставка процентов по умолчанию, % (необязательно)</span>
-          <input
-            className="field__input"
-            type="text"
-            inputMode="decimal"
-            placeholder="например 5 — подставится на экране «Проценты»"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-          />
         </label>
 
         {editing && (

@@ -23,7 +23,6 @@ export default function Wallets() {
       <div className="add-cat__row" style={{ marginTop: '0.75rem' }}>
         <button className="btn btn--block" onClick={() => navigate('/transfer')}>⇄ Перевод</button>
         <button className="btn btn--block" onClick={() => navigate('/debt')}>🤝 Долг</button>
-        <button className="btn btn--block" onClick={() => navigate('/interest')}>📈 Проценты</button>
       </div>
 
       <section>
@@ -35,7 +34,6 @@ export default function Wallets() {
                 <span className="cat-item__name">{w.name}</span>
                 <span className="kind-badge">{w.currency}</span>
                 {isDebtWallet(w) && <span className="kind-badge">долг</span>}
-                {Number(w.rate) > 0 && <span className="kind-badge">{w.rate}%</span>}
               </div>
               <div className="cat-item__right">
                 <span className="wallet-balance">{formatAmount(walletBalance(transactions, w.id), w.currency)}</span>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { todayIso } from '../utils/format';
@@ -13,7 +13,7 @@ export default function Interest() {
 
   const [walletId, setWalletId] = useState(active[0]?.id || '');
   const [percent, setPercent] = useState('');
-  const [percentTouched, setPercentTouched] = useState(false);
+  const [mode, setMode] = useState('add'); // 'add' — начислить, 'subtract' — списать
   const [date, setDate] = useState(todayIso());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -21,26 +21,22 @@ export default function Interest() {
   const wallet = active.find((w) => w.id === walletId);
   const balance = wallet ? walletBalance(transactions, wallet.id) : 0;
   const rate = Number(String(percent).replace(',', '.')) || 0;
-  const delta = (balance * rate) / 100;
-
-  // При выборе кошелька подставляем его ставку по умолчанию (если её не трогали).
-  useEffect(() => {
-    if (percentTouched) return;
-    setPercent(wallet?.rate ? String(wallet.rate) : '');
-  }, [wallet, percentTouched]);
+  const amount = Math.abs((balance * rate) / 100);
+  const subtract = mode === 'subtract';
+  const newBalance = balance + (subtract ? -amount : amount);
 
   const submit = async (e) => {
     e.preventDefault();
     setFormError(null);
-    if (!wallet) { setFormError('Выберите кошелёк'); return; }
+    if (!wallet) { setFormError('Выберите счёт'); return; }
     if (!rate) { setFormError('Введите процент'); return; }
-    if (Math.abs(delta) < 0.005) { setFormError('Баланс нулевой — начислять нечего'); return; }
+    if (amount < 0.005) { setFormError('Баланс нулевой — считать нечего'); return; }
     setSaving(true);
     try {
-      await accrueInterest(wallet, rate, date);
+      await accrueInterest(wallet, rate, date, mode);
       navigate('/');
     } catch {
-      setFormError('Не удалось начислить');
+      setFormError('Не удалось выполнить');
       setSaving(false);
     }
   };
@@ -55,12 +51,20 @@ export default function Interest() {
       <form className="form" onSubmit={submit}>
         <label className="field">
           <span className="field__label">Счёт</span>
-          <select className="field__input field__input--select" value={walletId} onChange={(e) => { setWalletId(e.target.value); setPercentTouched(false); }}>
+          <select className="field__input field__input--select" value={walletId} onChange={(e) => setWalletId(e.target.value)}>
             {active.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name} · {formatAmount(walletBalance(transactions, w.id), w.currency)}
               </option>
             ))}
+          </select>
+        </label>
+
+        <label className="field">
+          <span className="field__label">Что сделать</span>
+          <select className="field__input field__input--select" value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="add">Начислить (+)</option>
+            <option value="subtract">Списать (−)</option>
           </select>
         </label>
 
@@ -72,7 +76,7 @@ export default function Interest() {
             inputMode="decimal"
             placeholder="например 5"
             value={percent}
-            onChange={(e) => { setPercent(e.target.value); setPercentTouched(true); }}
+            onChange={(e) => setPercent(e.target.value)}
             autoFocus
           />
         </label>
@@ -86,14 +90,14 @@ export default function Interest() {
           <div className="balance-card" style={{ padding: '1rem' }}>
             <div className="muted">Баланс: {formatAmount(balance, wallet.currency)}</div>
             <div className="balance-card__value" style={{ fontSize: '1.4rem' }}>
-              {delta >= 0 ? 'Доход +' : 'Расход −'}{formatAmount(Math.abs(delta), wallet.currency)}
+              {subtract ? 'Списать −' : 'Начислить +'}{formatAmount(amount, wallet.currency)}
             </div>
-            <div className="muted">Станет: {formatAmount(balance + delta, wallet.currency)}</div>
+            <div className="muted">Станет: {formatAmount(newBalance, wallet.currency)}</div>
           </div>
         )}
 
         {formError && <p className="form-error">{formError}</p>}
-        <button type="submit" className="btn btn--block btn--primary" disabled={saving}>{saving ? 'Начисляю…' : 'Начислить'}</button>
+        <button type="submit" className="btn btn--block btn--primary" disabled={saving}>{saving ? 'Выполняю…' : subtract ? 'Списать' : 'Начислить'}</button>
       </form>
     </div>
   );

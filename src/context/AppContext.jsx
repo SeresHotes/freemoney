@@ -353,13 +353,15 @@ export function AppProvider({ children }) {
   // не передана, дефолтная из кошелька. Прирост считается от текущего баланса со
   // знаком: положительный баланс → доход, отрицательный (долг, который должны вы)
   // → расход. Категория «Проценты» заводится сама.
+  // direction: 'add' — начислить (доход), 'subtract' — списать (расход).
+  // Сумма = |баланс| × ставка; направление задаётся явно, а не по знаку баланса.
   const accrueInterest = useCallback(
-    (wallet, ratePercent, date) =>
+    (wallet, ratePercent, date, direction = 'add') =>
       withAuthGuard(async () => {
-        const rate = Number(ratePercent ?? wallet.rate) || 0;
+        const rate = Number(ratePercent) || 0;
         const balance = walletBalance(transactions, wallet.id);
-        const delta = (balance * rate) / 100;
-        if (Math.abs(delta) < 0.005) return null;
+        const amount = Math.abs((balance * rate) / 100);
+        if (amount < 0.005) return null;
 
         const INTEREST_CATEGORY = 'Проценты';
         if (!categories.some((c) => c.name === INTEREST_CATEGORY)) {
@@ -367,11 +369,12 @@ export function AppProvider({ children }) {
           setCategories(await backendRef.current.fetchCategories());
         }
 
+        const subtract = direction === 'subtract';
         const tx = {
           id: newId(), date: date || todayIso(), time: nowTime(),
-          type: delta >= 0 ? 'income' : 'expense',
-          amount: Math.abs(delta), category: INTEREST_CATEGORY,
-          note: `Проценты ${rate}%`, tags: [],
+          type: subtract ? 'expense' : 'income',
+          amount, category: INTEREST_CATEGORY,
+          note: `${subtract ? 'Списание' : 'Начисление'} ${rate}%`, tags: [],
           wallet: wallet.id, currency: wallet.currency,
           origAmount: null, origCurrency: '', transferId: '',
         };
