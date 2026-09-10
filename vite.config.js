@@ -25,6 +25,7 @@ export default defineConfig({
         name: isDev ? 'FreeMoney dev' : 'FreeMoney — учёт денег',
         short_name: isDev ? 'FM dev' : 'FreeMoney',
         description: 'Учёт доходов и расходов с хранением в Google Таблицах',
+        lang: 'ru',
         theme_color: isDev ? '#7c2d12' : '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
@@ -37,6 +38,25 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
+          },
+        ],
+        // Скриншоты для «богатого» диалога установки Chrome.
+        // wide → desktop, narrow (form_factor не задан «wide») → mobile.
+        // Генерируются скриптом scripts/gen-screenshots.mjs (npm run screenshots).
+        screenshots: [
+          {
+            src: 'screenshot-wide.png',
+            sizes: '1600x900',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'FreeMoney на компьютере',
+          },
+          {
+            src: 'screenshot-mobile.png',
+            sizes: '1080x1920',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'FreeMoney на телефоне',
           },
         ],
       },
