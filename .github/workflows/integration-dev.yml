@@ -1,0 +1,99 @@
+name: Integration preview (dev)
+
+# Собирает «совместную» dev-ветку и катит её в dev-канал.
+#
+# Идея: dev всегда показывает объединённое состояние ВСЕХ открытых PR. На любое
+# изменение любого PR (новый коммит, открытие, переоткрытие, закрытие) воркфлоу:
+#   1. берёт свежий main;
+#   2. вмерживает в него head-ветки всех открытых PR (конфликтные — пропускает
+#      и пишет в summary, чтобы прогон не падал целиком);
+#   3. force-push в ветку dev (снимок объединённого состояния для истории);
+#   4. собирает dev-сборку и деплоит в Cloudflare Pages (dev.freemoney.sereshotes.dev).
+#
+# Требует секреты репозитория CLOUDFLARE_API_TOKEN (Pages:Edit) и
+# VITE_GOOGLE_CLIENT_ID — те же, что и deploy-dev.yml. Пуш в dev делается
+# GITHUB_TOKEN, поэтому deploy-dev.yml повторно НЕ триггерится (нет двойного
+# деплоя) — здесь деплой встроен в тот же прогон.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+# Интеграция перезаписывает ветку dev — держим строго один прогон за раз.
+concurrency:
+  group: integration-dev
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  integrate-deploy:
+    runs-on: ubuntu-latest
+    # PR из форков не имеют доступа к секретам и записи — их пропускаем.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Собрать интеграционную ветку из всех открытых PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch --no-tags origin main
+          git checkout -B dev origin/main
+
+          merged=()
+          skipped=()
+          prs=$(gh pr list --state open --base main --json number,headRefName \
+                  -q '.[] | "\(.number) \(.headRefName)"')
+          while read -r num br; do
+            [ -z "${br:-}" ] && continue
+            git fetch --no-tags origin "$br"
+            if git merge --no-edit --no-ff "origin/$br" -m "integrate #$num $br"; then
+              merged+=("#$num $br")
+            else
+              git merge --abort
+              skipped+=("#$num $br")
+            fi
+          done <<< "$prs"
+
+          git push --force origin dev
+
+          {
+            echo "### Интеграционная ветка dev пересобрана"
+            echo ""
+            echo "- **Вмержено:** ${merged[*]:-—}"
+            echo "- **Пропущено (конфликт):** ${skipped[*]:-—}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (dev, base /)
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_AUTH_BACKEND_URL: ${{ vars.VITE_AUTH_BACKEND_URL }}
+          BASE_PATH: /
+          VITE_CHANNEL: dev
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 98f57f1329b9fed2bb0ab7dabc4599d3
+          command: pages deploy dist --project-name freemoney-dev --branch main
