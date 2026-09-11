@@ -18,7 +18,7 @@ const FILES = {
   settings: 'settings.csv',
 };
 
-const TX_COLS = ['id', 'datetime', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId'];
+const TX_COLS = ['id', 'datetime', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'rate'];
 const CAT_COLS = ['id', 'name', 'kind', 'status', 'icon'];
 const WALLET_COLS = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate'];
 
@@ -46,7 +46,7 @@ async function writeRows(file, header, rows) {
 // --- Сериализация сущностей -------------------------------------------------
 const txToRow = (t) => [
   t.id, t.date ? `${t.date} ${t.time || '00:00'}` : '', t.type, t.amount, t.category || '', t.note || '', (t.tags || []).join(', '),
-  t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
+  t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '', t.rate ?? '',
 ];
 const rowToTx = (r) => {
   const dt = r[1] || '';
@@ -57,6 +57,7 @@ const rowToTx = (r) => {
     tags: (r[6] || '').split(',').map((s) => s.trim()).filter(Boolean),
     wallet: r[7] || '', currency: r[8] || '', origAmount: r[9] ? Number(r[9]) : null,
     origCurrency: r[10] || '', transferId: r[11] || '',
+    rate: r[12] != null && r[12] !== '' ? Number(r[12]) : null,
   };
 };
 const catToRow = (c) => [c.id, c.name, c.kind, c.status, c.icon || DEFAULT_ICON];
