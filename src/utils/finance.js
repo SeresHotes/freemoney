@@ -17,11 +17,25 @@ export function isRealFlow(t) {
 
 import { monthKey } from './format';
 
-// Укрупнённый тип операции: expense | income | transfer | adjust.
+// Укрупнённый тип операции: expense | income | transfer | adjust | interest.
 export function txKind(t) {
   if (t.type.startsWith('transfer')) return 'transfer';
   if (t.type.startsWith('adjust')) return 'adjust';
+  if (t.type.startsWith('interest')) return 'interest';
   return t.type;
+}
+
+// Знаковый вклад операции в баланс кошелька (в его валюте).
+// Проценты (interest_in/out) — как корректировки: влияют на баланс, но это
+// не доход/расход (в статистику потоков не попадают, категории не требуют).
+export function signedDelta(t) {
+  if (t.type === 'income' || t.type === 'transfer_in' || t.type === 'adjust_in' || t.type === 'interest_in') {
+    return t.amount;
+  }
+  if (t.type === 'expense' || t.type === 'transfer_out' || t.type === 'adjust_out' || t.type === 'interest_out') {
+    return -t.amount;
+  }
+  return 0;
 }
 
 // Проверка операции по набору фильтров (пустой массив = без ограничения).
@@ -87,13 +101,13 @@ export function expenseTotalsByCategory(transactions, toDisplay) {
 }
 
 // Баланс кошелька в его валюте.
-// adjust_in / adjust_out — корректировки реального баланса (не доход/расход).
+// adjust_in / adjust_out — корректировки, interest_in / out — проценты
+// (тоже влияют на баланс, но не доход/расход).
 export function walletBalance(transactions, walletId) {
   let balance = 0;
   for (const t of transactions) {
     if (t.wallet !== walletId) continue;
-    if (t.type === 'income' || t.type === 'transfer_in' || t.type === 'adjust_in') balance += t.amount;
-    else if (t.type === 'expense' || t.type === 'transfer_out' || t.type === 'adjust_out') balance -= t.amount;
+    balance += signedDelta(t);
   }
   return balance;
 }
@@ -103,18 +117,23 @@ function txOrderKey(t) {
   return `${t.date} ${t.time || '00:00'}`;
 }
 
+// Баланс кошелька на момент orderKey (все операции с ключом <= orderKey), кроме
+// операции excludeId. Нужен для «сколько было денег на тот момент» — база
+// начисления процентов и хронология долгов.
+export function walletBalanceAsOf(transactions, walletId, orderKey, excludeId) {
+  let balance = 0;
+  for (const t of transactions) {
+    if (t.wallet !== walletId || t.id === excludeId) continue;
+    if (txOrderKey(t) > orderKey) continue;
+    balance += signedDelta(t);
+  }
+  return balance;
+}
+
 // Баланс долгового кошелька ДО указанной операции (по хронологии) — нужен, чтобы
 // понять, растёт долг по модулю (дал/взял) или гасится (возврат/погашение).
 export function debtBalanceBefore(transactions, walletId, beforeTx) {
-  const key = txOrderKey(beforeTx);
-  let balance = 0;
-  for (const t of transactions) {
-    if (t.wallet !== walletId || t.id === beforeTx.id) continue;
-    if (txOrderKey(t) > key) continue;
-    if (t.type === 'income' || t.type === 'transfer_in' || t.type === 'adjust_in') balance += t.amount;
-    else if (t.type === 'expense' || t.type === 'transfer_out' || t.type === 'adjust_out') balance -= t.amount;
-  }
-  return balance;
+  return walletBalanceAsOf(transactions, walletId, txOrderKey(beforeTx), beforeTx.id);
 }
 
 // Человеческая подпись операции долга. cashOut — деньги ушли из моего кошелька

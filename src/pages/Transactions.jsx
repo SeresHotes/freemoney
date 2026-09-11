@@ -11,6 +11,7 @@ const TYPE_OPTIONS = [
   { value: 'income', label: 'Доходы' },
   { value: 'transfer', label: 'Переводы' },
   { value: 'adjust', label: 'Корректировки' },
+  { value: 'interest', label: 'Проценты' },
 ];
 
 export default function Transactions() {
@@ -181,9 +182,12 @@ export default function Transactions() {
       return renderPairRow(t);
     }
     const adjust = t.type.startsWith('adjust');
-    const positive = isIncome(t) || t.type === 'adjust_in';
-    const icon = adjust ? '⚖️' : iconByCategory.get(t.category) || '🏷️';
-    const title = adjust ? 'Корректировка' : t.category || 'Без категории';
+    const interest = t.type.startsWith('interest');
+    const positive = isIncome(t) || t.type === 'adjust_in' || t.type === 'interest_in';
+    const icon = interest ? '📈' : adjust ? '⚖️' : iconByCategory.get(t.category) || '🏷️';
+    const title = interest
+      ? (t.rate != null ? `Проценты · ${t.rate}%` : 'Проценты')
+      : adjust ? 'Корректировка' : t.category || 'Без категории';
     return (
       <li key={t.id} className="tx-item tx-item--clickable" onClick={() => navigate(`/edit/${t.id}`)}>
         <span className="tx-item__cat-icon">{icon}</span>
