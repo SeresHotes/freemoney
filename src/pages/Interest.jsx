@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { todayIso } from '../utils/format';
+import { todayIso, nowTime } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalanceAsOf } from '../utils/finance';
 
@@ -22,19 +22,20 @@ export default function Interest() {
   const [percent, setPercent] = useState('');
   const [mode, setMode] = useState('add'); // 'add' — начислить, 'subtract' — списать
   const [date, setDate] = useState(todayIso());
+  const [time, setTime] = useState(nowTime());
   const [baseStr, setBaseStr] = useState('');
   const [baseTouched, setBaseTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
   const wallet = active.find((w) => w.id === walletId);
-  // Баланс на конец выбранной даты (все операции этого дня и раньше).
+  // Баланс на выбранный момент (все операции с этим временем и раньше).
   const balanceAsOf = useMemo(
-    () => (wallet ? walletBalanceAsOf(transactions, wallet.id, `${date} 99:99`, null) : 0),
-    [wallet, transactions, date],
+    () => (wallet ? walletBalanceAsOf(transactions, wallet.id, `${date} ${time || '99:99'}`, null) : 0),
+    [wallet, transactions, date, time],
   );
 
-  // Пока «было» не тронули руками — держим его равным балансу на дату.
+  // Пока «было» не тронули руками — держим его равным балансу на момент.
   useEffect(() => {
     if (!baseTouched) setBaseStr(fmt(balanceAsOf));
   }, [balanceAsOf, baseTouched]);
@@ -55,7 +56,7 @@ export default function Interest() {
     if (amount < 0.005) { setFormError('Считать нечего — сумма нулевая'); return; }
     setSaving(true);
     try {
-      await accrueInterest({ wallet, base, rate, date, direction: mode });
+      await accrueInterest({ wallet, base, rate, date, time, direction: mode });
       navigate('/');
     } catch {
       setFormError('Не удалось выполнить');
@@ -84,15 +85,23 @@ export default function Interest() {
           </select>
         </label>
 
-        <label className="field">
-          <span className="field__label">Дата</span>
-          <input
-            className="field__input"
-            type="date"
-            value={date}
-            onChange={(e) => { setDate(e.target.value); setBaseTouched(false); }}
-          />
-        </label>
+        <div className="field">
+          <span className="field__label">Дата и время</span>
+          <div className="datetime-row">
+            <input
+              className="field__input"
+              type="date"
+              value={date}
+              onChange={(e) => { setDate(e.target.value); setBaseTouched(false); }}
+            />
+            <input
+              className="field__input datetime-row__time"
+              type="time"
+              value={(time || '').slice(0, 5)}
+              onChange={(e) => { setTime(e.target.value); setBaseTouched(false); }}
+            />
+          </div>
+        </div>
 
         <label className="field">
           <span className="field__label">
