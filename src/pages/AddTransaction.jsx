@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { newId, todayIso, nowTime } from '../utils/format';
 import { CURRENCIES } from '../utils/currencies';
 import { getRate } from '../api/rates';
+import EditAdjustment from './EditAdjustment';
 
 export default function AddTransaction() {
   const params = useParams();
@@ -119,10 +120,12 @@ export default function AddTransaction() {
   const toggleTag = (tag) =>
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
 
-  // Переводы и корректировки правим/удаляем отдельно — здесь только обычные операции.
-  const special = editingTx && (editingTx.type.startsWith('transfer') || editingTx.type.startsWith('adjust'));
+  // Корректировку правим отдельной формой; перевод — только удаляем.
+  if (editing && editingTx?.type.startsWith('adjust')) {
+    return <EditAdjustment tx={editingTx} />;
+  }
+  const special = editingTx && editingTx.type.startsWith('transfer');
   if (editing && (!editingTx || special)) {
-    const isAdjust = editingTx?.type.startsWith('adjust');
     return (
       <div className="page">
         <header className="page__header page__header--with-back">
@@ -134,7 +137,7 @@ export default function AddTransaction() {
         ) : (
           <>
             <p className="muted">
-              {isAdjust ? 'Корректировку баланса' : 'Перевод между кошельками'} нельзя отредактировать — только удалить.
+              Перевод между кошельками нельзя отредактировать — только удалить.
             </p>
             <button
               className="btn btn--block btn--expense"

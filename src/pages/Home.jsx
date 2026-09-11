@@ -92,6 +92,9 @@ export default function Home() {
         <button className="btn btn--block" onClick={() => navigate('/interest')}>
           📈 Проценты
         </button>
+        <button className="btn btn--block" onClick={() => navigate('/adjust')}>
+          ⚖️ Корректировка
+        </button>
       </div>
 
       <section>
