@@ -2,6 +2,10 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES } from '../utils/currencies';
+import { CHANNEL, IS_DEV_CHANNEL } from '../config';
+
+// Версию подставляет сборка (vite define). Локально без vite — 'dev'.
+const APP_VERSION = typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__;
 
 const MODE_LABELS = {
   google: '☁️ Google Таблицы',
@@ -93,6 +97,18 @@ export default function Settings() {
         </p>
         <button className="btn btn--block" style={{ marginTop: '0.75rem' }} onClick={resetMode}>🔄 Сменить способ хранения</button>
         <p className="muted hint">Данные не удаляются: при возврате к тому же хранилищу они снова появятся.</p>
+      </section>
+
+      <section>
+        <h2 className="section-title">О приложении</h2>
+        <p className="muted">
+          Версия: <code>{APP_VERSION}</code>
+          {IS_DEV_CHANNEL ? ` · канал ${CHANNEL}` : ''}
+        </p>
+        <p className="muted hint">
+          Новая версия подтянется автоматически: когда она будет готова,
+          появится баннер «Доступна новая версия».
+        </p>
       </section>
     </div>
   );

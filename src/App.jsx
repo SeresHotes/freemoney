@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import NavBar from './components/NavBar';
+import UpdatePrompt from './components/UpdatePrompt';
 import Home from './pages/Home';
 import AddTransaction from './pages/AddTransaction';
 import Transactions from './pages/Transactions';
@@ -92,6 +93,7 @@ export default function App() {
     <HashRouter>
       <AppProvider>
         <Shell />
+        <UpdatePrompt />
       </AppProvider>
     </HashRouter>
   );
