@@ -1,41 +1,39 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { todayIso, nowTime } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalanceAsOf } from '../utils/finance';
 
 const fmt = (n) => (Number.isFinite(n) ? String(Number(n.toFixed(2))) : '');
 const parse = (s) => Number(String(s).replace(',', '.'));
 
-// Проценты — балансовая операция (не доход/расход, без категории). Считаем от
-// «было» (по умолчанию — баланс кошелька на выбранную дату, можно поправить
-// вручную) и ставки; «станет» показывается без правки. Смена даты подставляет
-// баланс на тот момент.
-export default function Interest() {
-  const { wallets, transactions, accrueInterest } = useApp();
+// Правка процентной операции своим экраном (не общей формой дохода/расхода):
+// «было» (по умолчанию — баланс на дату операции, редактируемо), процент, режим
+// и read-only «станет». Смена даты пересчитывает «было» из баланса на тот момент.
+export default function EditInterest({ tx }) {
   const navigate = useNavigate();
+  const { wallets, transactions, updateTransaction, deleteTransaction } = useApp();
 
-  const active = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
+  const wallet = wallets.find((w) => w.id === tx.wallet);
+  const currency = wallet?.currency || tx.currency;
 
-  const [walletId, setWalletId] = useState(active[0]?.id || '');
-  const [percent, setPercent] = useState('');
-  const [mode, setMode] = useState('add'); // 'add' — начислить, 'subtract' — списать
-  const [date, setDate] = useState(todayIso());
-  const [time, setTime] = useState(nowTime());
+  const [date, setDate] = useState(tx.date);
+  const [time, setTime] = useState(tx.time || '');
+  const [mode, setMode] = useState(tx.type === 'interest_out' ? 'subtract' : 'add');
+  const [percent, setPercent] = useState(tx.rate != null ? String(tx.rate) : '');
   const [baseStr, setBaseStr] = useState('');
   const [baseTouched, setBaseTouched] = useState(false);
+  const [note, setNote] = useState(tx.note || '');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const wallet = active.find((w) => w.id === walletId);
-  // Баланс на выбранный момент (все операции с этим временем и раньше).
+  // Баланс кошелька на момент операции без неё самой.
   const balanceAsOf = useMemo(
-    () => (wallet ? walletBalanceAsOf(transactions, wallet.id, `${date} ${time || '99:99'}`, null) : 0),
-    [wallet, transactions, date, time],
+    () => walletBalanceAsOf(transactions, tx.wallet, `${date} ${time || '99:99'}`, tx.id),
+    [transactions, tx.wallet, tx.id, date, time],
   );
 
-  // Пока «было» не тронули руками — держим его равным балансу на момент.
+  // Пока «было» не тронули руками — держим равным балансу на дату.
   useEffect(() => {
     if (!baseTouched) setBaseStr(fmt(balanceAsOf));
   }, [balanceAsOf, baseTouched]);
@@ -47,19 +45,41 @@ export default function Interest() {
   const subtract = mode === 'subtract';
   const newBalance = base + (subtract ? -amount : amount);
 
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
-    if (!wallet) { setFormError('Выберите счёт'); return; }
     if (!hasBase) { setFormError('Введите сумму «было»'); return; }
     if (!rate) { setFormError('Введите процент'); return; }
     if (amount < 0.005) { setFormError('Считать нечего — сумма нулевая'); return; }
+
+    const next = {
+      ...tx,
+      type: subtract ? 'interest_out' : 'interest_in',
+      amount,
+      rate,
+      category: '',
+      date,
+      time,
+      note: note.trim(),
+    };
     setSaving(true);
     try {
-      await accrueInterest({ wallet, base, rate, date, time, direction: mode });
-      navigate('/');
+      await updateTransaction(next);
+      navigate(-1);
     } catch {
-      setFormError('Не удалось выполнить');
+      setFormError('Не удалось сохранить. Попробуйте снова.');
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Удалить операцию?')) return;
+    setSaving(true);
+    try {
+      await deleteTransaction(tx.id);
+      navigate(-1);
+    } catch {
+      setFormError('Не удалось удалить.');
       setSaving(false);
     }
   };
@@ -71,19 +91,11 @@ export default function Interest() {
         <h1>Проценты</h1>
       </header>
 
-      <form className="form" onSubmit={submit}>
-        <label className="field">
+      <form className="form" onSubmit={handleSubmit}>
+        <div className="field">
           <span className="field__label">Счёт</span>
-          <select
-            className="field__input field__input--select"
-            value={walletId}
-            onChange={(e) => { setWalletId(e.target.value); setBaseTouched(false); }}
-          >
-            {active.map((w) => (
-              <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>
-            ))}
-          </select>
-        </label>
+          <p className="muted">{wallet ? `${wallet.name} (${currency})` : currency}</p>
+        </div>
 
         <div className="field">
           <span className="field__label">Дата и время</span>
@@ -105,8 +117,8 @@ export default function Interest() {
 
         <label className="field">
           <span className="field__label">
-            Было{wallet ? `, ${wallet.currency}` : ''}
-            {wallet && !baseTouched && <span className="muted"> · баланс на дату</span>}
+            Было, {currency}
+            {!baseTouched && <span className="muted"> · баланс на дату</span>}
           </span>
           <input
             className="field__input field__input--amount"
@@ -135,22 +147,32 @@ export default function Interest() {
             placeholder="например 5"
             value={percent}
             onChange={(e) => setPercent(e.target.value)}
-            autoFocus
           />
         </label>
 
-        {wallet && hasBase && rate > 0 && (
+        {hasBase && rate > 0 && (
           <div className="balance-card" style={{ padding: '1rem' }}>
-            <div className="muted">Было: {formatAmount(base, wallet.currency)}</div>
+            <div className="muted">Было: {formatAmount(base, currency)}</div>
             <div className="balance-card__value" style={{ fontSize: '1.4rem' }}>
-              {subtract ? 'Списать −' : 'Начислить +'}{formatAmount(amount, wallet.currency)}
+              {subtract ? 'Списать −' : 'Начислить +'}{formatAmount(amount, currency)}
             </div>
-            <div className="muted">Станет: {formatAmount(newBalance, wallet.currency)}</div>
+            <div className="muted">Станет: {formatAmount(newBalance, currency)}</div>
           </div>
         )}
 
+        <label className="field">
+          <span className="field__label">Заметка (необязательно)</span>
+          <input className="field__input" type="text" value={note} onChange={(e) => setNote(e.target.value)} />
+        </label>
+
         {formError && <p className="form-error">{formError}</p>}
-        <button type="submit" className="btn btn--block btn--primary" disabled={saving}>{saving ? 'Выполняю…' : subtract ? 'Списать' : 'Начислить'}</button>
+
+        <button type="submit" className="btn btn--block btn--income" disabled={saving}>
+          {saving ? 'Сохраняю…' : 'Сохранить'}
+        </button>
+        <button type="button" className="btn btn--block btn--danger" onClick={handleDelete} disabled={saving}>
+          Удалить операцию
+        </button>
       </form>
     </div>
   );

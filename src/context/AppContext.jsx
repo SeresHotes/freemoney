@@ -350,40 +350,30 @@ export function AppProvider({ children }) {
     [withAuthGuard, transactions, wallets],
   );
 
-  // Начислить проценты на баланс кошелька. Ставка — явная (ratePercent) либо, если
-  // не передана, дефолтная из кошелька. Прирост считается от текущего баланса со
-  // знаком: положительный баланс → доход, отрицательный (долг, который должны вы)
-  // → расход. Категория «Проценты» заводится сама.
-  // direction: 'add' — начислить (доход), 'subtract' — списать (расход).
-  // Сумма = |баланс| × ставка; направление задаётся явно, а не по знаку баланса.
+  // Начислить/списать проценты — отдельный тип операции (interest_in/out), а не
+  // доход/расход: влияет только на баланс кошелька, категория не нужна. База
+  // (сумма, от которой считаем) и ставка задаются явно на экране; сумма =
+  // |база| × ставка. direction: 'add' — начислить (+), 'subtract' — списать (−).
+  // rate сохраняется, чтобы при правке показать введённый процент.
   const accrueInterest = useCallback(
-    (wallet, ratePercent, date, direction = 'add') =>
+    ({ wallet, base, rate, date, time, direction = 'add', note = '' }) =>
       withAuthGuard(async () => {
-        const rate = Number(ratePercent) || 0;
-        const balance = walletBalance(transactions, wallet.id);
-        const amount = Math.abs((balance * rate) / 100);
+        const r = Number(rate) || 0;
+        const amount = Math.abs((Number(base) * r) / 100);
         if (amount < 0.005) return null;
-
-        const INTEREST_CATEGORY = 'Проценты';
-        if (!categories.some((c) => c.name === INTEREST_CATEGORY)) {
-          await backendRef.current.addCategory({ name: INTEREST_CATEGORY, kind: 'both', icon: '📈' });
-          setCategories(await backendRef.current.fetchCategories());
-        }
-
         const subtract = direction === 'subtract';
         const tx = {
-          id: newId(), date: date || todayIso(), time: nowTime(),
-          type: subtract ? 'expense' : 'income',
-          amount, category: INTEREST_CATEGORY,
-          note: `${subtract ? 'Списание' : 'Начисление'} ${rate}%`, tags: [],
+          id: newId(), date: date || todayIso(), time: time || nowTime(),
+          type: subtract ? 'interest_out' : 'interest_in',
+          amount, category: '', note: note || '', tags: [],
           wallet: wallet.id, currency: wallet.currency,
-          origAmount: null, origCurrency: '', transferId: '',
+          origAmount: null, origCurrency: '', transferId: '', rate: r,
         };
         await backendRef.current.addTransaction(tx);
         setTransactions((prev) => [...prev, tx]);
         return { amount: tx.amount, type: tx.type };
       }),
-    [withAuthGuard, transactions, categories],
+    [withAuthGuard],
   );
 
   const updateTransaction = useCallback(

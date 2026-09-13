@@ -5,6 +5,7 @@ import { newId, todayIso, nowTime } from '../utils/format';
 import { CURRENCIES } from '../utils/currencies';
 import { getRate } from '../api/rates';
 import EditAdjustment from './EditAdjustment';
+import EditInterest from './EditInterest';
 
 export default function AddTransaction() {
   const params = useParams();
@@ -120,9 +121,12 @@ export default function AddTransaction() {
   const toggleTag = (tag) =>
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
 
-  // Корректировку правим отдельной формой; перевод — только удаляем.
+  // Корректировку и проценты правим отдельными формами; перевод — только удаляем.
   if (editing && editingTx?.type.startsWith('adjust')) {
     return <EditAdjustment tx={editingTx} />;
+  }
+  if (editing && editingTx?.type.startsWith('interest')) {
+    return <EditInterest tx={editingTx} />;
   }
   const special = editingTx && editingTx.type.startsWith('transfer');
   if (editing && (!editingTx || special)) {

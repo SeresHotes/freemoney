@@ -1,13 +1,15 @@
 // Высокоуровневая модель данных поверх Google Sheets.
 //
 // Листы:
-//   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|origAmount|origCurrency|transferId
+//   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|origAmount|origCurrency|transferId|rate
 //     datetime — «YYYY-MM-DD HH:MM» или «YYYY-MM-DD» (в приложении хранится как date + time)
 //     type    — 'expense' | 'income' | 'transfer_out' | 'transfer_in'
+//               | 'adjust_in' | 'adjust_out' | 'interest_in' | 'interest_out'
 //     amount  — сумма в валюте кошелька
 //     wallet  — id кошелька; currency — валюта кошелька (денормализовано)
 //     origAmount/origCurrency — если операция введена в другой валюте
 //     transferId — связывает две ноги перевода между кошельками
+//     rate    — ставка процентов (%), только для interest_in/out (колонка M)
 //   Categories:   name|kind|status|icon
 //   Wallets:      id|name|currency|status|order|kind|rate
 //     kind — 'cash' (обычный) | 'debt' (долговой кошелёк на контрагента)
@@ -97,11 +99,11 @@ export async function ensureSchema(id) {
   }
 
   // Разово обновляем шапки столбцов (после добавления новых полей они устарели).
-  const hdrKey = `freemoney:hdr4:${id}`;
+  const hdrKey = `freemoney:hdr5:${id}`;
   if (!localStorage.getItem(hdrKey)) {
     await batchUpdateValues(id, [
-      // 13-й столбец очищаем от старого заголовка time.
-      { range: `${SHEET_TX}!A1:M1`, values: [[...TX_HEADER, '']] },
+      // 13-й столбец (M) теперь rate — ставка процентов.
+      { range: `${SHEET_TX}!A1:M1`, values: [[...TX_HEADER, 'rate']] },
       { range: `${SHEET_CAT}!A1:D1`, values: [CAT_HEADER] },
       { range: `${SHEET_WALLET}!A1:G1`, values: [WALLET_HEADER] },
       { range: `${SHEET_TAG}!A1`, values: [TAG_HEADER] },
@@ -136,6 +138,10 @@ function mapTxRows(rows) {
       const date = dt.slice(0, 10);
       // Время из datetime (HH:MM или HH:MM:SS), либо из старой колонки; иначе 00:00.
       const time = dt.length > 10 ? dt.slice(11) : (r[12] || '00:00');
+      // Колонка M переиспользована под ставку процентов (rate). Для старых
+      // строк там могло лежать время — но rate читают только процентные операции.
+      const rateNum = Number(r[12]);
+      const rate = r[12] != null && r[12] !== '' && !Number.isNaN(rateNum) ? rateNum : null;
       return {
         id: r[0],
         date,
@@ -150,6 +156,7 @@ function mapTxRows(rows) {
         origAmount: r[9] ? Number(r[9]) : null,
         origCurrency: r[10] || '',
         transferId: r[11] || '',
+        rate,
       };
     });
 }
@@ -161,9 +168,11 @@ export async function fetchTransactions(id) {
 
 function txToRow(t) {
   const datetime = t.date ? `${t.date} ${t.time || '00:00'}` : '';
+  // 13-я колонка (M) — ставка процентов rate (только для interest_*).
   return [
     t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
     t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
+    t.rate ?? '',
   ];
 }
 
@@ -186,8 +195,8 @@ async function findTxRow(id, txId) {
 export async function updateTransaction(id, tx) {
   const row = await findTxRow(id, tx.id);
   if (row == null) throw new Error('Операция не найдена');
-  // Пишем 13 значений (последнее пустое), чтобы очистить старую колонку time (M).
-  await updateValues(id, `${SHEET_TX}!A${row}:M${row}`, [[...txToRow(tx), '']]);
+  // 13 колонок A:M, последняя (M) — rate.
+  await updateValues(id, `${SHEET_TX}!A${row}:M${row}`, [txToRow(tx)]);
 }
 
 // Удаление = очистка строки (пустые строки отфильтровываются при чтении).
