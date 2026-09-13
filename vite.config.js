@@ -1,6 +1,25 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// Версия приложения для показа в интерфейсе и отладки.
+// Приоритет: явная VITE_APP_VERSION (можно задать в CI) → git describe
+// (тег вида v1.2.3, иначе короткий SHA коммита) → 'dev' как fallback.
+function getAppVersion() {
+  if (process.env.VITE_APP_VERSION) return process.env.VITE_APP_VERSION;
+  try {
+    return execSync('git describe --tags --always --dirty', {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim();
+  } catch {
+    return 'dev';
+  }
+}
+
+const appVersion = getAppVersion();
 
 // base — путь, по которому приложение публикуется на GitHub Pages.
 // Для https://<user>.github.io/freemoney/ это '/freemoney/'.
@@ -16,10 +35,17 @@ const isDev = channel === 'dev';
 
 export default defineConfig({
   base,
+  // Версия доступна в коде как глобальная константа __APP_VERSION__.
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' — не обновляемся молча: показываем пользователю баннер
+      // «Доступна новая версия», обновление применяется по клику
+      // (см. src/components/UpdatePrompt.jsx). Так не теряется несохранённый ввод.
+      registerType: 'prompt',
       includeAssets: ['icon.svg'],
       manifest: {
         name: isDev ? 'FreeMoney dev' : 'FreeMoney — учёт денег',
