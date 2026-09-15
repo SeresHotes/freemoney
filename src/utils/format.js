@@ -92,3 +92,19 @@ export function newId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 }
+
+// Монотонная (по стенным часам) метка изменения записи в мс — для LWW-мерджа
+// при синхронизации. Разные устройства сравнивают её, «последняя правка побеждает».
+export function nowStamp() {
+  return Date.now();
+}
+
+// Человекочитаемое «сколько назад» для отметки последней синхронизации.
+export function agoLabel(ms) {
+  if (!ms) return 'никогда';
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return 'только что';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} мин назад`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} ч назад`;
+  return `${Math.floor(diff / 86_400_000)} дн назад`;
+}

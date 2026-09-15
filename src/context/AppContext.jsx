@@ -1,20 +1,28 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { initAuth, signIn, signOut, ensureToken } from '../auth/googleAuth';
 import { AuthError } from '../api/sheets';
-import { initSpreadsheet } from '../api/store';
-import { createGoogleBackend } from '../api/googleBackend';
-import { createLocalBackend, isLocalStoreReady, initLocalStore } from '../api/localBackend';
+import { initSpreadsheet, findExistingSpreadsheets } from '../api/store';
+import { syncNow } from '../api/sync';
+import {
+  createLocalBackend, isLocalStoreReady, initLocalStore, requestPersistentStorage,
+} from '../api/localBackend';
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
-import { LS_SPREADSHEET_ID, LS_MODE, DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED } from '../config';
+import {
+  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_LAST_SYNC,
+  DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED,
+} from '../config';
 import { newId, todayIso, nowTime } from '../utils/format';
 import { walletBalance } from '../utils/finance';
 
 const AppContext = createContext(null);
 
+const SYNC_DEBOUNCE_MS = 1500;
+
 export function AppProvider({ children }) {
   const [status, setStatus] = useState('loading');
-  const [mode, setMode] = useState(() => localStorage.getItem(LS_MODE) || null);
+  // Режим хранения источника правды: 'local' (IndexedDB) или 'device' (.csv на нативе).
+  const [mode, setMode] = useState('local');
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [wallets, setWallets] = useState([]);
@@ -23,7 +31,20 @@ export function AppProvider({ children }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  // --- Состояние синхронизации с Google ------------------------------------
+  const [syncEnabled, setSyncEnabled] = useState(false);
+  // 'disabled' | 'idle' | 'syncing' | 'error'
+  const [syncStatus, setSyncStatus] = useState('disabled');
+  const [lastSyncAt, setLastSyncAt] = useState(Number(localStorage.getItem(LS_LAST_SYNC)) || null);
+  const [syncError, setSyncError] = useState(null);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+
   const backendRef = useRef(null);
+  const spreadsheetIdRef = useRef(localStorage.getItem(LS_SPREADSHEET_ID) || null);
+  const syncEnabledRef = useRef(false);
+  const syncingRef = useRef(false);
+  const rerunRef = useRef(false);
+  const syncTimer = useRef(null);
 
   // Индикатор загрузки: показываем, только если операция длится дольше секунды.
   const inflight = useRef(0);
@@ -46,7 +67,6 @@ export function AppProvider({ children }) {
 
   // Загрузка всех данных с нормализацией операций (кошелёк/валюта по умолчанию).
   const loadData = useCallback(async (backend) => {
-    // Одно чтение всех данных (для Google — один запрос вместо пяти).
     const { categories: cats, transactions: txs, wallets: wls, tags: tgs, settings } =
       await backend.fetchAll();
     const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
@@ -76,167 +96,212 @@ export function AppProvider({ children }) {
     setTransactions(normalized);
   }, []);
 
-  const activateBackend = useCallback(
-    async (backend) => {
-      await backend.ensureSchema();
-      await loadData(backend);
-      backendRef.current = backend;
-      setStatus('ready');
-    },
-    [loadData],
-  );
-
-  const activateGoogle = useCallback(async () => {
-    const savedId = localStorage.getItem(LS_SPREADSHEET_ID);
-    if (savedId) {
-      await activateBackend(createGoogleBackend(savedId));
-    } else {
-      setStatus('no-sheet');
+  // --- Синхронизация --------------------------------------------------------
+  // Один полный проход. Не блокирует UI: локальные данные уже на экране.
+  const doSync = useCallback(async () => {
+    const id = spreadsheetIdRef.current;
+    if (!syncEnabledRef.current || !id || !IS_CLIENT_ID_CONFIGURED) return;
+    if (syncingRef.current) { rerunRef.current = true; return; }
+    syncingRef.current = true;
+    setSyncStatus('syncing');
+    setSyncError(null);
+    try {
+      await ensureToken();
+      const res = await syncNow(id);
+      if (backendRef.current) await loadData(backendRef.current);
+      setLastSyncAt(res.at);
+      localStorage.setItem(LS_LAST_SYNC, String(res.at));
+      setNeedsSignIn(false);
+      setSyncStatus('idle');
+    } catch (err) {
+      if (err instanceof AuthError || /session|token|no_session/i.test(err?.message || '')) {
+        setNeedsSignIn(true);
+        setSyncError('Нужен вход в Google, чтобы синхронизировать.');
+      } else {
+        setSyncError('Не удалось синхронизировать. Попробуем позже.');
+      }
+      setSyncStatus('error');
+    } finally {
+      syncingRef.current = false;
+      if (rerunRef.current) {
+        rerunRef.current = false;
+        doSync();
+      }
     }
-  }, [activateBackend]);
+  }, [loadData]);
+
+  // Отложенная синхронизация после правок (батчим частые изменения).
+  const scheduleSync = useCallback(() => {
+    if (!syncEnabledRef.current) return;
+    clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => doSync(), SYNC_DEBOUNCE_MS);
+  }, [doSync]);
+
+  // Ручная синхронизация «сейчас».
+  const syncNowManual = useCallback(() => {
+    clearTimeout(syncTimer.current);
+    return doSync();
+  }, [doSync]);
 
   const activateLocal = useCallback(async () => {
     if (!(await isLocalStoreReady())) await initLocalStore();
-    await activateBackend(createLocalBackend());
-  }, [activateBackend]);
+    const backend = createLocalBackend();
+    await backend.ensureSchema();
+    await loadData(backend);
+    backendRef.current = backend;
+    setMode('local');
+  }, [loadData]);
 
   const activateDevice = useCallback(async () => {
     if (!(await isDeviceStoreReady())) await initDeviceStore();
-    await activateBackend(createDeviceBackend());
-  }, [activateBackend]);
+    const backend = createDeviceBackend();
+    await backend.ensureSchema();
+    await loadData(backend);
+    backendRef.current = backend;
+    setMode('device');
+  }, [loadData]);
 
+  // --- Инициализация --------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let savedMode = localStorage.getItem(LS_MODE);
-      if (!savedMode && localStorage.getItem(LS_SPREADSHEET_ID)) {
-        savedMode = 'google';
-        localStorage.setItem(LS_MODE, savedMode);
-        setMode(savedMode);
-      }
-      if (!savedMode) {
-        setStatus('select-mode');
+      requestPersistentStorage();
+      const legacyMode = localStorage.getItem(LS_MODE);
+
+      // Нативный режим .csv-файлов сохраняем как есть (без синхронизации).
+      if (legacyMode === 'device') {
+        try {
+          await activateDevice();
+          if (!cancelled) { setSyncStatus('disabled'); setStatus('ready'); }
+        } catch {
+          if (!cancelled) setStatus('ready');
+        }
         return;
       }
+
+      // Единый режим: источник правды — локальный стор.
       try {
-        if (savedMode === 'local') {
-          await activateLocal();
-          return;
-        }
-        if (savedMode === 'device') {
-          await activateDevice();
-          return;
-        }
-        if (!IS_CLIENT_ID_CONFIGURED) {
-          setStatus('no-config');
-          return;
-        }
-        await initAuth().catch(() => {});
-        await ensureToken();
-        if (cancelled) return;
-        await activateGoogle();
+        await activateLocal();
       } catch (err) {
-        if (cancelled) return;
-        setStatus(savedMode === 'google' ? 'signed-out' : 'select-mode');
+        if (!cancelled) { setError('Не удалось открыть локальное хранилище.'); setStatus('ready'); }
+        return;
+      }
+      if (cancelled) return;
+
+      // Восстановить состояние синхронизации + миграция бывших google-пользователей.
+      let enabled = localStorage.getItem(LS_SYNC_ENABLED) === '1';
+      if (!enabled && legacyMode === 'google' && localStorage.getItem(LS_SPREADSHEET_ID)) {
+        enabled = true;
+        localStorage.setItem(LS_SYNC_ENABLED, '1');
+      }
+      spreadsheetIdRef.current = localStorage.getItem(LS_SPREADSHEET_ID) || null;
+
+      // UI показываем сразу — локальные данные уже загружены.
+      setStatus('ready');
+
+      if (enabled && spreadsheetIdRef.current && IS_CLIENT_ID_CONFIGURED) {
+        syncEnabledRef.current = true;
+        setSyncEnabled(true);
+        setSyncStatus('syncing');
+        initAuth().catch(() => {});
+        doSync();
+      } else {
+        setSyncStatus('disabled');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activateGoogle, activateLocal, activateDevice]);
+  }, [activateLocal, activateDevice, doSync]);
 
-  const chooseMode = useCallback(
-    async (chosen) => {
-      setError(null);
-      localStorage.setItem(LS_MODE, chosen);
-      setMode(chosen);
-      if (chosen === 'local') {
-        setStatus('loading');
-        await activateLocal();
-      } else if (chosen === 'device') {
-        setStatus('loading');
-        await activateDevice();
-      } else if (!IS_CLIENT_ID_CONFIGURED) {
-        setStatus('no-config');
-      } else {
-        setStatus('signed-out');
-      }
-    },
-    [activateLocal, activateDevice],
-  );
+  // Досинхронизировать при возврате связи и при возвращении на вкладку.
+  useEffect(() => {
+    const onOnline = () => scheduleSync();
+    const onVisible = () => { if (document.visibilityState === 'visible') scheduleSync(); };
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [scheduleSync]);
 
-  const resetMode = useCallback(() => {
-    signOut();
-    localStorage.removeItem(LS_MODE);
-    backendRef.current = null;
-    setMode(null);
-    setCategories([]);
-    setTransactions([]);
-    setWallets([]);
-    setTags([]);
-    setStatus('select-mode');
-  }, []);
+  // --- Управление синхронизацией из настроек --------------------------------
+  const listSyncSheets = useCallback(() => findExistingSpreadsheets(), []);
 
-  const handleSignIn = useCallback(async () => {
-    setError(null);
-    try {
-      await initAuth();
-      await signIn();
-      await activateGoogle();
-    } catch (err) {
-      setError('Не удалось войти. Попробуйте ещё раз.');
-      setStatus('signed-out');
-    }
-  }, [activateGoogle]);
-
-  const handleSignOut = useCallback(() => {
-    signOut();
-    backendRef.current = null;
-    setTransactions([]);
-    setCategories([]);
-    setWallets([]);
-    setTags([]);
-    setStatus('signed-out');
-  }, []);
-
-  const createSheet = useCallback(
-    async (title) => {
-      setError(null);
-      const id = await initSpreadsheet(title);
-      localStorage.setItem(LS_SPREADSHEET_ID, id);
-      await activateBackend(createGoogleBackend(id));
-    },
-    [activateBackend],
-  );
-
-  const useExistingSheet = useCallback(
+  const finalizeSync = useCallback(
     async (id) => {
-      setError(null);
-      await activateBackend(createGoogleBackend(id));
+      spreadsheetIdRef.current = id;
       localStorage.setItem(LS_SPREADSHEET_ID, id);
+      localStorage.setItem(LS_SYNC_ENABLED, '1');
+      syncEnabledRef.current = true;
+      setSyncEnabled(true);
+      await syncNowManual();
     },
-    [activateBackend],
+    [syncNowManual],
   );
+
+  // Шаг 1: вход в Google. Если таблица уже привязана — сразу включает синк и
+  // возвращает false. Иначе возвращает true — нужно выбрать/создать таблицу.
+  const beginSync = useCallback(async () => {
+    setError(null);
+    await initAuth();
+    await signIn(); // в backend-режиме уходит в редирект и не возвращается
+    await ensureToken();
+    if (spreadsheetIdRef.current) {
+      await finalizeSync(spreadsheetIdRef.current);
+      return false;
+    }
+    return true;
+  }, [finalizeSync]);
+
+  const createSyncSheet = useCallback(
+    async (title) => {
+      const id = await initSpreadsheet(title);
+      await finalizeSync(id);
+    },
+    [finalizeSync],
+  );
+
+  const connectSyncSheet = useCallback((id) => finalizeSync(id), [finalizeSync]);
+
+  // Выключить синхронизацию (данные и вход сохраняются — можно включить снова).
+  const disableSync = useCallback(() => {
+    clearTimeout(syncTimer.current);
+    localStorage.removeItem(LS_SYNC_ENABLED);
+    localStorage.removeItem(LS_MODE); // снимаем legacy 'google', чтобы не включалось заново
+    syncEnabledRef.current = false;
+    setSyncEnabled(false);
+    setSyncStatus('disabled');
+    setSyncError(null);
+    setNeedsSignIn(false);
+  }, []);
+
+  // Полностью отключить и выйти из Google (забыть таблицу).
+  const disconnectSync = useCallback(() => {
+    signOut();
+    localStorage.removeItem(LS_SPREADSHEET_ID);
+    spreadsheetIdRef.current = null;
+    disableSync();
+  }, [disableSync]);
 
   const refresh = useCallback(
     () => track(async () => {
       if (backendRef.current) await loadData(backendRef.current);
+      scheduleSync();
     }),
-    [loadData, track],
+    [loadData, track, scheduleSync],
   );
 
-  // Обёртка мутаций: индикатор загрузки + перехват AuthError.
-  const withAuthGuard = useCallback(
+  // Обёртка мутаций: индикатор загрузки + планирование фоновой синхронизации.
+  const mutate = useCallback(
     (fn) =>
       track(async () => {
-        try {
-          return await fn();
-        } catch (err) {
-          if (err instanceof AuthError) handleSignOut();
-          throw err;
-        }
+        const res = await fn();
+        scheduleSync();
+        return res;
       }),
-    [handleSignOut, track],
+    [track, scheduleSync],
   );
 
   // --- Операции -------------------------------------------------------------
@@ -244,16 +309,16 @@ export function AppProvider({ children }) {
   // проставляют уже существующие теги, новые здесь не заводятся.
   const addTransaction = useCallback(
     (tx) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         await backendRef.current.addTransaction(tx);
         setTransactions((prev) => [...prev, tx]);
       }),
-    [withAuthGuard],
+    [mutate],
   );
 
   const addTransfer = useCallback(
     ({ fromWalletId, toWalletId, amountOut, amountIn, date, note, time }) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         const from = wallets.find((w) => w.id === fromWalletId);
         const to = wallets.find((w) => w.id === toWalletId);
         const transferId = newId();
@@ -271,20 +336,16 @@ export function AppProvider({ children }) {
         await backendRef.current.addTransactions([out, inc]);
         setTransactions((prev) => [...prev, out, inc]);
       }),
-    [withAuthGuard, wallets],
+    [mutate, wallets],
   );
 
   // Долг = движение денег между рабочим и долговым кошельком (пара transfer-ног).
-  // cashDirection 'out' — деньги ушли из кошелька (дал в долг / погасил свой);
-  // 'in' — деньги пришли (мне вернули / я занял). Знак баланса долгового кошелька
-  // копит состояние: «+» вам должны, «−» должны вы.
   const recordDebt = useCallback(
     ({ counterpartyId, newCounterpartyName, cashDirection, workWalletId, amountWork, amountDebt, date, note, time }) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         const work = wallets.find((w) => w.id === workWalletId);
         let debtId = counterpartyId;
         let debtWallet = wallets.find((w) => w.id === debtId);
-        // Новый контрагент — создаём долговой кошелёк в валюте рабочего.
         if (!debtId && newCounterpartyName) {
           await backendRef.current.addWallet({
             name: newCounterpartyName,
@@ -317,15 +378,13 @@ export function AppProvider({ children }) {
         await backendRef.current.addTransactions(legs);
         setTransactions((prev) => [...prev, ...legs]);
       }),
-    [withAuthGuard, wallets],
+    [mutate, wallets],
   );
 
   // Правка перевода/долга: переписываем обе ноги пары одним действием.
-  // Универсально по кошелькам out/in — годится и для обычного перевода, и для
-  // долга (экран сам решает, какой кошелёк списывает, а какой зачисляет).
   const updateTransfer = useCallback(
     ({ transferId, outWalletId, inWalletId, amountOut, amountIn, date, note, time }) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         const legs = transactions.filter((t) => t.transferId === transferId);
         const outLeg = legs.find((t) => t.type === 'transfer_out');
         const inLeg = legs.find((t) => t.type === 'transfer_in');
@@ -347,17 +406,13 @@ export function AppProvider({ children }) {
           prev.map((t) => (t.id === newOut.id ? newOut : t.id === newIn.id ? newIn : t)),
         );
       }),
-    [withAuthGuard, transactions, wallets],
+    [mutate, transactions, wallets],
   );
 
-  // Начислить/списать проценты — отдельный тип операции (interest_in/out), а не
-  // доход/расход: влияет только на баланс кошелька, категория не нужна. База
-  // (сумма, от которой считаем) и ставка задаются явно на экране; сумма =
-  // |база| × ставка. direction: 'add' — начислить (+), 'subtract' — списать (−).
-  // rate сохраняется, чтобы при правке показать введённый процент.
+  // Начислить/списать проценты — отдельный тип операции (interest_in/out).
   const accrueInterest = useCallback(
     ({ wallet, base, rate, date, time, direction = 'add', note = '' }) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         const r = Number(rate) || 0;
         const amount = Math.abs((Number(base) * r) / 100);
         if (amount < 0.005) return null;
@@ -373,22 +428,22 @@ export function AppProvider({ children }) {
         setTransactions((prev) => [...prev, tx]);
         return { amount: tx.amount, type: tx.type };
       }),
-    [withAuthGuard],
+    [mutate],
   );
 
   const updateTransaction = useCallback(
     (tx) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         await backendRef.current.updateTransaction(tx);
         setTransactions((prev) => prev.map((t) => (t.id === tx.id ? tx : t)));
       }),
-    [withAuthGuard],
+    [mutate],
   );
 
   // Удаление операции; для перевода удаляются обе связанные ноги.
   const deleteTransaction = useCallback(
     (id) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         const tx = transactions.find((t) => t.id === id);
         const ids = tx?.transferId
           ? transactions.filter((t) => t.transferId === tx.transferId).map((t) => t.id)
@@ -396,31 +451,31 @@ export function AppProvider({ children }) {
         for (const legId of ids) await backendRef.current.deleteTransaction(legId);
         setTransactions((prev) => prev.filter((t) => !ids.includes(t.id)));
       }),
-    [withAuthGuard, transactions],
+    [mutate, transactions],
   );
 
   // --- Категории ------------------------------------------------------------
   const addCategory = useCallback(
     (cat) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         await backendRef.current.addCategory(cat);
         setCategories(await backendRef.current.fetchCategories());
       }),
-    [withAuthGuard],
+    [mutate],
   );
 
   const setCategoryStatus = useCallback(
     (id, newStatus) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         await backendRef.current.setCategoryStatus(id, newStatus);
         setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)));
       }),
-    [withAuthGuard],
+    [mutate],
   );
 
   const updateCategory = useCallback(
     (id, patch) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         const current = categories.find((c) => c.id === id);
         const oldName = current?.name;
         await backendRef.current.updateCategory(id, patch);
@@ -432,29 +487,29 @@ export function AppProvider({ children }) {
         }
         setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
       }),
-    [withAuthGuard, categories],
+    [mutate, categories],
   );
 
   // --- Кошельки -------------------------------------------------------------
   const reloadWallets = async () => setWallets(await backendRef.current.fetchWallets());
 
   const addWallet = useCallback(
-    (w) => withAuthGuard(async () => { await backendRef.current.addWallet(w); await reloadWallets(); }),
-    [withAuthGuard],
+    (w) => mutate(async () => { await backendRef.current.addWallet(w); await reloadWallets(); }),
+    [mutate],
   );
   const updateWallet = useCallback(
-    (wallet, patch) => withAuthGuard(async () => { await backendRef.current.updateWallet(wallet, patch); await reloadWallets(); }),
-    [withAuthGuard],
+    (wallet, patch) => mutate(async () => { await backendRef.current.updateWallet(wallet, patch); await reloadWallets(); }),
+    [mutate],
   );
   const setWalletStatus = useCallback(
-    (wallet, s) => withAuthGuard(async () => { await backendRef.current.setWalletStatus(wallet, s); await reloadWallets(); }),
-    [withAuthGuard],
+    (wallet, s) => mutate(async () => { await backendRef.current.setWalletStatus(wallet, s); await reloadWallets(); }),
+    [mutate],
   );
 
   // Задать реальный баланс кошелька — создаёт операцию-корректировку на разницу.
   const setWalletBalance = useCallback(
     (wallet, actual) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         const current = walletBalance(transactions, wallet.id);
         const diff = actual - current;
         if (Math.abs(diff) < 0.005) return; // уже совпадает
@@ -476,25 +531,25 @@ export function AppProvider({ children }) {
         await backendRef.current.addTransaction(tx);
         setTransactions((prev) => [...prev, tx]);
       }),
-    [withAuthGuard, transactions],
+    [mutate, transactions],
   );
 
   // --- Теги -----------------------------------------------------------------
   const addTag = useCallback(
-    (name) => withAuthGuard(async () => { await backendRef.current.addTag(name); setTags(await backendRef.current.fetchTags()); }),
-    [withAuthGuard],
+    (name) => mutate(async () => { await backendRef.current.addTag(name); setTags(await backendRef.current.fetchTags()); }),
+    [mutate],
   );
   // Удаление тега = убрать из списка подсказок. Историю операций не трогаем.
   const deleteTag = useCallback(
-    (name) => withAuthGuard(async () => {
+    (name) => mutate(async () => {
       await backendRef.current.deleteTag(name);
       setTags((prev) => prev.filter((t) => t !== name));
     }),
-    [withAuthGuard],
+    [mutate],
   );
   // Переименование тега применяется и к списку, и ко всем операциям.
   const renameTag = useCallback(
-    (oldName, newName) => withAuthGuard(async () => {
+    (oldName, newName) => mutate(async () => {
       await backendRef.current.renameTag(oldName, newName);
       setTags((prev) => [...new Set(prev.map((t) => (t === oldName ? newName : t)))]);
       setTransactions((prev) =>
@@ -505,17 +560,17 @@ export function AppProvider({ children }) {
         )),
       );
     }),
-    [withAuthGuard],
+    [mutate],
   );
 
   // --- Настройки ------------------------------------------------------------
   const setBaseCurrencyPref = useCallback(
     (currency) =>
-      withAuthGuard(async () => {
+      mutate(async () => {
         await backendRef.current.setSetting('baseCurrency', currency);
         setBaseCurrency(currency);
       }),
-    [withAuthGuard],
+    [mutate],
   );
 
   // --- Резервная копия (единый JSON) ----------------------------------------
@@ -529,9 +584,10 @@ export function AppProvider({ children }) {
       track(async () => {
         const result = await importBackup(text, backendRef.current, { wallets, categories, tags, transactions });
         await loadData(backendRef.current);
+        scheduleSync();
         return result;
       }),
-    [wallets, categories, tags, transactions, track, loadData],
+    [wallets, categories, tags, transactions, track, loadData, scheduleSync],
   );
 
   const value = {
@@ -544,13 +600,22 @@ export function AppProvider({ children }) {
     baseCurrency,
     error,
     busy,
-    chooseMode,
-    resetMode,
-    signIn: handleSignIn,
-    signOut: handleSignOut,
-    createSheet,
-    useExistingSheet,
+    // синхронизация
+    syncEnabled,
+    syncStatus,
+    lastSyncAt,
+    syncError,
+    needsSignIn,
+    isClientConfigured: IS_CLIENT_ID_CONFIGURED,
+    beginSync,
+    listSyncSheets,
+    createSyncSheet,
+    connectSyncSheet,
+    disableSync,
+    disconnectSync,
+    syncNow: syncNowManual,
     refresh,
+    // операции
     addTransaction,
     addTransfer,
     updateTransfer,

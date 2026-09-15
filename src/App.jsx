@@ -16,13 +16,7 @@ import Debt from './pages/Debt';
 import Interest from './pages/Interest';
 import NewAdjustment from './pages/NewAdjustment';
 import Settings from './pages/Settings';
-import {
-  LoadingScreen,
-  NoConfigScreen,
-  SignInScreen,
-  NoSheetScreen,
-  ModeSelectScreen,
-} from './pages/Gate';
+import { LoadingScreen } from './pages/Gate';
 
 // Статистика тянет recharts — грузим её отдельным чанком по требованию.
 const Stats = lazy(() => import('./pages/Stats'));
@@ -44,10 +38,6 @@ function Shell() {
   const { status } = useApp();
 
   if (status === 'loading') return <LoadingScreen />;
-  if (status === 'select-mode') return <ModeSelectScreen />;
-  if (status === 'no-config') return <NoConfigScreen />;
-  if (status === 'signed-out') return <SignInScreen />;
-  if (status === 'no-sheet') return <NoSheetScreen />;
 
   return (
     <div className="app">

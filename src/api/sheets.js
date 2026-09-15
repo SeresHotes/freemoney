@@ -116,6 +116,12 @@ export async function updateValues(spreadsheetId, range, values) {
   return authFetch(url, { method: 'PUT', body: JSON.stringify({ values }) });
 }
 
+// Очистить значения диапазона (при полной перезаписи листа в sync).
+export async function clearValues(spreadsheetId, range) {
+  const url = `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:clear`;
+  return authFetch(url, { method: 'POST', body: '{}' });
+}
+
 // Получить метаданные таблицы (список листов и т.п.).
 export async function getSpreadsheetMeta(spreadsheetId) {
   const url = `${SHEETS_API}/${spreadsheetId}?fields=sheets.properties.title`;
