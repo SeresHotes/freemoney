@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { monthKey, monthLabel, dayLabel, todayIso, compactNumber, monthRange, rangeLabel } from '../utils/format';
+import { monthKey, monthLabel, dayLabel, todayIso, compactNumber, monthRange, rangeLabel, shiftMonth } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import {
   isIncome, isExpense, matchesFilters,
@@ -23,19 +23,37 @@ export default function Stats() {
   const cats = searchParams.getAll('category');
   const tagSel = searchParams.getAll('tag');
   const wals = searchParams.getAll('wallet');
-  const granularity = searchParams.get('granularity') || 'day';
 
-  // Диапазон дат по умолчанию — текущий календарный месяц.
   const today = todayIso();
-  const curMonth = monthRange(monthKey(today));
-  const yearRange = { from: `${today.slice(0, 4)}-01-01`, to: `${today.slice(0, 4)}-12-31` };
+  const curMonthKey = monthKey(today);
+  const curYear = today.slice(0, 4);
 
-  const isAll = searchParams.get('all') === '1';
   const rawFrom = searchParams.get('from');
   const rawTo = searchParams.get('to');
   const hasCustom = rawFrom != null || rawTo != null;
-  const from = isAll ? '' : hasCustom ? (rawFrom || '') : curMonth.from;
-  const to = isAll ? '' : hasCustom ? (rawTo || '') : curMonth.to;
+  const legacyAll = searchParams.get('all') === '1';
+
+  // Режим периода: month | year | custom | all. Под каждый режим показываем свой пикер.
+  // Явный ?mode= в приоритете; иначе выводим из старых ссылок (all=1 / from-to), по умолчанию — текущий месяц.
+  const mode = searchParams.get('mode') || (legacyAll ? 'all' : hasCustom ? 'custom' : 'month');
+
+  // Активный месяц/год для листалки: берём из from, иначе — текущий.
+  const monthSel = rawFrom ? monthKey(rawFrom) : curMonthKey;
+  const yearSel = rawFrom ? rawFrom.slice(0, 4) : curYear;
+
+  // Границы диапазона, единые для всей аналитики ниже.
+  let from = '';
+  let to = '';
+  if (mode === 'month') ({ from, to } = monthRange(monthSel));
+  else if (mode === 'year') { from = `${yearSel}-01-01`; to = `${yearSel}-12-31`; }
+  else if (mode === 'custom') { from = rawFrom || ''; to = rawTo || ''; }
+  // mode === 'all' — пустые границы (весь период).
+
+  // Гранулярность нижнего графика по умолчанию подбираем по длине диапазона;
+  // явный выбор пользователя (?granularity=) всегда в приоритете.
+  const spanDays = from && to ? Math.round((new Date(to) - new Date(from)) / 86400000) + 1 : Infinity;
+  const autoGranularity = spanDays > 92 ? 'month' : 'day';
+  const granularity = searchParams.get('granularity') || autoGranularity;
 
   const update = (mutate) => {
     const next = new URLSearchParams(searchParams);
@@ -44,25 +62,32 @@ export default function Stats() {
   };
   const setArr = (key, arr) => update((n) => { n.delete(key); arr.forEach((v) => n.append(key, v)); });
   const setSingle = (key, val) => update((n) => { if (val) n.set(key, val); else n.delete(key); });
-  const setRange = (f, t) => update((n) => {
+
+  // Переключение режима: для month/year фиксируем границы выбранного периода,
+  // сохраняя уже выбранный месяц/год; для custom оставляем текущие from/to.
+  const setMode = (m) => update((n) => {
     n.delete('all');
-    if (f) n.set('from', f); else n.delete('from');
-    if (t) n.set('to', t); else n.delete('to');
+    n.set('mode', m);
+    if (m === 'month') { const r = monthRange(monthSel); n.set('from', r.from); n.set('to', r.to); }
+    else if (m === 'year') { n.set('from', `${yearSel}-01-01`); n.set('to', `${yearSel}-12-31`); }
+    else if (m === 'all') { n.delete('from'); n.delete('to'); }
   });
-  const setAllTime = () => update((n) => { n.delete('from'); n.delete('to'); n.set('all', '1'); });
-  // Правка одной границы: фиксируем обе текущие границы в URL, затем применяем изменение.
+  // Листалка месяца/года стрелками.
+  const stepMonth = (delta) => update((n) => {
+    const r = monthRange(shiftMonth(monthSel, delta));
+    n.delete('all'); n.set('mode', 'month'); n.set('from', r.from); n.set('to', r.to);
+  });
+  const stepYear = (delta) => update((n) => {
+    const y = String(Number(yearSel) + delta);
+    n.delete('all'); n.set('mode', 'year'); n.set('from', `${y}-01-01`); n.set('to', `${y}-12-31`);
+  });
+  // Правка одной границы произвольного диапазона.
   const setBound = (key, val) => update((n) => {
-    n.delete('all');
+    n.delete('all'); n.set('mode', 'custom');
     if (from) n.set('from', from); else n.delete('from');
     if (to) n.set('to', to); else n.delete('to');
     if (val) n.set(key, val); else n.delete(key);
   });
-
-  const activePreset =
-    isAll ? 'all'
-    : from === curMonth.from && to === curMonth.to ? 'month'
-    : from === yearRange.from && to === yearRange.to ? 'year'
-    : 'custom';
 
   // Переход к операциям: категория + активные фильтры и период статистики.
   const openCategory = (name) => {
@@ -144,16 +169,33 @@ export default function Stats() {
         )}
         <div className="chipms">
           <span className="chipms__label">Период</span>
-          <div className="seg">
-            <button className={`seg__btn${activePreset === 'month' ? ' seg__btn--active' : ''}`} onClick={() => setRange(curMonth.from, curMonth.to)}>Месяц</button>
-            <button className={`seg__btn${activePreset === 'year' ? ' seg__btn--active' : ''}`} onClick={() => setRange(yearRange.from, yearRange.to)}>Год</button>
-            <button className={`seg__btn${activePreset === 'all' ? ' seg__btn--active' : ''}`} onClick={setAllTime}>Всё время</button>
+          <div className="seg seg--period">
+            <button className={`seg__btn${mode === 'month' ? ' seg__btn--active' : ''}`} onClick={() => setMode('month')}>Месяц</button>
+            <button className={`seg__btn${mode === 'year' ? ' seg__btn--active' : ''}`} onClick={() => setMode('year')}>Год</button>
+            <button className={`seg__btn${mode === 'custom' ? ' seg__btn--active' : ''}`} onClick={() => setMode('custom')}>Произвольно</button>
+            <button className={`seg__btn${mode === 'all' ? ' seg__btn--active' : ''}`} onClick={() => setMode('all')}>Всё время</button>
           </div>
-          <div className="filters__dates">
-            <input className="field__input" type="date" value={from} onChange={(e) => setBound('from', e.target.value)} />
-            <span className="muted">—</span>
-            <input className="field__input" type="date" value={to} onChange={(e) => setBound('to', e.target.value)} />
-          </div>
+          {mode === 'month' && (
+            <div className="stepper">
+              <button className="stepper__btn" onClick={() => stepMonth(-1)} aria-label="Предыдущий месяц">‹</button>
+              <span className="stepper__label">{monthLabel(monthSel)}</span>
+              <button className="stepper__btn" onClick={() => stepMonth(1)} aria-label="Следующий месяц">›</button>
+            </div>
+          )}
+          {mode === 'year' && (
+            <div className="stepper">
+              <button className="stepper__btn" onClick={() => stepYear(-1)} aria-label="Предыдущий год">‹</button>
+              <span className="stepper__label">{yearSel}</span>
+              <button className="stepper__btn" onClick={() => stepYear(1)} aria-label="Следующий год">›</button>
+            </div>
+          )}
+          {mode === 'custom' && (
+            <div className="filters__dates">
+              <input className="field__input" type="date" value={from} onChange={(e) => setBound('from', e.target.value)} />
+              <span className="muted">—</span>
+              <input className="field__input" type="date" value={to} onChange={(e) => setBound('to', e.target.value)} />
+            </div>
+          )}
         </div>
       </div>
 
