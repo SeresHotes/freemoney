@@ -30,10 +30,11 @@ export default function Stats() {
   const period = usePeriod({ searchParams, setSearchParams, transactions, defaultMode: 'month' });
   const { from, to } = period;
 
-  // Гранулярность нижнего графика по умолчанию подбираем по длине диапазона;
-  // явный выбор пользователя (?granularity=) всегда в приоритете.
+  // Гранулярность нижнего графика по умолчанию подбираем по периоду;
+  // «всё время» -> по годам, длинный диапазон -> по месяцам, короткий -> по дням.
+  // Явный выбор пользователя (?granularity=) всегда в приоритете.
   const spanDays = from && to ? Math.round((new Date(to) - new Date(from)) / 86400000) + 1 : Infinity;
-  const autoGranularity = spanDays > 92 ? 'month' : 'day';
+  const autoGranularity = period.mode === 'all' ? 'year' : spanDays > 92 ? 'month' : 'day';
   const granularity = searchParams.get('granularity') || autoGranularity;
 
   const update = (mutate) => {
@@ -104,7 +105,9 @@ export default function Stats() {
     const sliced = raw.length > maxBars ? raw.slice(-maxBars) : raw;
     const data = sliced.map((b) => ({
       ...b,
-      label: granularity === 'day' ? dayLabel(b.key) : monthLabel(b.key).replace(/ \d{4}$/, ''),
+      label: granularity === 'day' ? dayLabel(b.key)
+        : granularity === 'year' ? b.key
+        : monthLabel(b.key).replace(/ \d{4}$/, ''),
     }));
     return { series: seriesList, catTrend: data };
   }, [scoped, granularity, singleWallet, toBase]);
@@ -163,6 +166,7 @@ export default function Stats() {
         <div className="seg">
           <button className={`seg__btn${granularity === 'day' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('granularity', 'day')}>По дням</button>
           <button className={`seg__btn${granularity === 'month' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('granularity', 'month')}>По месяцам</button>
+          <button className={`seg__btn${granularity === 'year' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('granularity', 'year')}>По годам</button>
         </div>
         <h2 className="section-title">
           Динамика расходов · {periodLabel} · {displayCurrency}
