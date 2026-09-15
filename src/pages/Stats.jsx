@@ -79,7 +79,7 @@ export default function Stats() {
   const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [categories]);
   const walletOptions = useMemo(() => activeWallets.map((w) => ({ value: w.id, label: w.name })), [activeWallets]);
   const tagOptions = useMemo(() => {
-    const set = new Set(tags);
+    const set = new Set(tags.filter((t) => t.status === 'active').map((t) => t.name));
     for (const t of transactions) (t.tags || []).forEach((x) => set.add(x));
     return [...set].sort().map((t) => ({ value: t, label: `#${t}` }));
   }, [tags, transactions]);

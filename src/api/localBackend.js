@@ -112,7 +112,7 @@ export function createLocalBackend() {
         wallets: wls
           .map((w) => ({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-        tags: tgs.map((r) => r.name),
+        tags: tgs.map((r) => ({ name: r.name, status: r.status || 'active' })),
         settings: Object.fromEntries(settings.map((r) => [r.key, r.value])),
       };
     },
@@ -148,7 +148,7 @@ export function createLocalBackend() {
       const db = await openDb();
       const rows = await getAll(db, STORE_TAG);
       db.close();
-      return rows.map((r) => r.name);
+      return rows.map((r) => ({ name: r.name, status: r.status || 'active' }));
     },
 
     fetchSettings: async () => {
@@ -248,21 +248,24 @@ export function createLocalBackend() {
 
     addTag: async (name) => {
       const db = await openDb();
-      await put(db, STORE_TAG, { name });
+      await put(db, STORE_TAG, { name, status: 'active' });
       db.close();
     },
 
-    deleteTag: async (name) => {
+    setTagStatus: async (name, status) => {
       const db = await openDb();
-      await reqToPromise(store(db, STORE_TAG, 'readwrite').delete(name));
+      const s = store(db, STORE_TAG, 'readwrite');
+      const tag = await reqToPromise(s.get(name));
+      if (tag) { tag.status = status; await reqToPromise(s.put(tag)); }
       db.close();
     },
 
     renameTag: async (oldName, newName) => {
       const db = await openDb();
       const tagStore = store(db, STORE_TAG, 'readwrite');
+      const old = await reqToPromise(tagStore.get(oldName));
       await reqToPromise(tagStore.delete(oldName));
-      await reqToPromise(tagStore.put({ name: newName }));
+      await reqToPromise(tagStore.put({ name: newName, status: old?.status || 'active' }));
       const s = store(db, STORE_TX, 'readwrite');
       const all = await reqToPromise(s.getAll());
       for (const t of all) {

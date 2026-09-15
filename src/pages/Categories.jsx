@@ -51,7 +51,7 @@ export default function Categories() {
       {archived.length > 0 && (
         <section>
           <button className="link-btn-inline" onClick={() => setShowArchived((v) => !v)}>
-            {showArchived ? 'Скрыть архив' : `Показать архив (${archived.length})`}
+            {showArchived ? 'Скрыть удалённые' : `Показать удалённые (${archived.length})`}
           </button>
           {showArchived && (
             <ul className="cat-list cat-list--archived">

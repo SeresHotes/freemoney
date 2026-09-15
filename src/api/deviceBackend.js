@@ -21,6 +21,7 @@ const FILES = {
 const TX_COLS = ['id', 'datetime', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'rate'];
 const CAT_COLS = ['id', 'name', 'kind', 'status', 'icon'];
 const WALLET_COLS = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate'];
+const TAG_COLS = ['name', 'status'];
 
 const path = (file) => `${FOLDER}/${file}`;
 
@@ -82,7 +83,7 @@ export async function initDeviceStore() {
     [newId(), 'Основной', DEFAULT_BASE_CURRENCY, 'active', 0, 'cash', 0],
   ]);
   await writeRows(FILES.transactions, TX_COLS, []);
-  await writeRows(FILES.tags, ['name'], []);
+  await writeRows(FILES.tags, TAG_COLS, []);
   await writeRows(FILES.settings, ['key', 'value'], [['baseCurrency', DEFAULT_BASE_CURRENCY]]);
 }
 
@@ -90,7 +91,8 @@ export function createDeviceBackend() {
   const loadTx = () => readAll(FILES.transactions, rowToTx);
   const loadCats = () => readAll(FILES.categories, rowToCat);
   const loadWallets = () => readAll(FILES.wallets, rowToWallet);
-  const loadTags = async () => (await readAll(FILES.tags, (r) => r[0])).filter(Boolean);
+  const loadTags = async () =>
+    (await readAll(FILES.tags, (r) => ({ name: r[0], status: r[1] || 'active' }))).filter((t) => t.name);
   const loadSettings = async () => {
     const rows = await readAll(FILES.settings, (r) => r);
     return Object.fromEntries(rows.map((r) => [r[0], r[1] ?? '']));
@@ -99,7 +101,7 @@ export function createDeviceBackend() {
   const saveTx = (list) => writeRows(FILES.transactions, TX_COLS, list.map(txToRow));
   const saveCats = (list) => writeRows(FILES.categories, CAT_COLS, list.map(catToRow));
   const saveWallets = (list) => writeRows(FILES.wallets, WALLET_COLS, list.map(walletToRow));
-  const saveTags = (list) => writeRows(FILES.tags, ['name'], list.map((t) => [t]));
+  const saveTags = (list) => writeRows(FILES.tags, TAG_COLS, list.map((t) => [t.name, t.status || 'active']));
   const saveSettings = (obj) => writeRows(FILES.settings, ['key', 'value'], Object.entries(obj));
 
   return {
@@ -146,11 +148,19 @@ export function createDeviceBackend() {
     updateWallet: async (wallet, patch) => { const l = await loadWallets(); await saveWallets(l.map((w) => (w.id === wallet.id ? { ...w, ...patch } : w))); },
     setWalletStatus: async (wallet, status) => { const l = await loadWallets(); await saveWallets(l.map((w) => (w.id === wallet.id ? { ...w, status } : w))); },
 
-    addTag: async (name) => { const l = await loadTags(); if (!l.includes(name)) { l.push(name); await saveTags(l); } },
-    deleteTag: async (name) => { const l = await loadTags(); await saveTags(l.filter((t) => t !== name)); },
+    addTag: async (name) => { const l = await loadTags(); if (!l.some((t) => t.name === name)) { l.push({ name, status: 'active' }); await saveTags(l); } },
+    setTagStatus: async (name, status) => { const l = await loadTags(); await saveTags(l.map((t) => (t.name === name ? { ...t, status } : t))); },
     renameTag: async (oldName, newName) => {
       const l = await loadTags();
-      await saveTags([...new Set(l.map((t) => (t === oldName ? newName : t)))]);
+      const seen = new Set();
+      const next = [];
+      for (const t of l) {
+        const name = t.name === oldName ? newName : t.name;
+        if (seen.has(name)) continue;
+        seen.add(name);
+        next.push({ name, status: t.status });
+      }
+      await saveTags(next);
       const txs = await loadTx();
       await saveTx(txs.map((t) => (
         (t.tags || []).includes(oldName)
