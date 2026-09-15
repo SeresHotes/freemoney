@@ -79,7 +79,15 @@ export default function AddTransaction() {
   }, [crossCurrency, amount, entryCurrency, walletCurrency, date, walletAmountTouched]);
 
   // Теги — управляемый словарь: выбираем готовые чипами, новые заводятся на странице «Теги».
-  const allTags = useMemo(() => [...knownTags].sort((a, b) => a.localeCompare(b, 'ru')), [knownTags]);
+  // Удалённые (archived) теги в подсказки не попадают.
+  const allTags = useMemo(
+    () =>
+      knownTags
+        .filter((t) => t.status === 'active')
+        .map((t) => t.name)
+        .sort((a, b) => a.localeCompare(b, 'ru')),
+    [knownTags],
+  );
 
   // Порядок недавнего использования: тег, засветившийся в свежих операциях, идёт раньше.
   const recentTags = useMemo(() => {
@@ -92,11 +100,11 @@ export default function AddTransaction() {
     const order = [];
     for (const tx of sorted) {
       for (const t of tx.tags || []) {
-        if (!seen.has(t) && knownTags.includes(t)) { seen.add(t); order.push(t); }
+        if (!seen.has(t) && allTags.includes(t)) { seen.add(t); order.push(t); }
       }
     }
     return order;
-  }, [transactions, knownTags]);
+  }, [transactions, allTags]);
 
   const RECENT_LIMIT = 10;
   // Свёрнутый вид: выбранные всегда видны, дальше — недавние (или весь словарь, если истории нет).

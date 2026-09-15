@@ -12,7 +12,8 @@
 //   Wallets:      id|name|currency|status|order|kind|rate
 //     kind — 'cash' (обычный) | 'debt' (долговой кошелёк на контрагента)
 //     rate — ставка для ручного начисления процентов, % (0 = не начисляем)
-//   Tags:         name
+//   Tags:         name|status
+//     status — 'active' | 'archived' ('archived' = удалённый тег, скрыт из подсказок)
 //   Settings:     key|value
 
 import {
@@ -43,7 +44,7 @@ const TX_HEADER = [
 ];
 const CAT_HEADER = ['name', 'kind', 'status', 'icon'];
 const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate'];
-const TAG_HEADER = ['name'];
+const TAG_HEADER = ['name', 'status'];
 const SETTINGS_HEADER = ['key', 'value'];
 
 const DEFAULT_CATEGORY_ROWS = DEFAULT_CATEGORIES.map((c) => [c.name, c.kind, 'active', c.icon]);
@@ -97,14 +98,14 @@ export async function ensureSchema(id) {
   }
 
   // Разово обновляем шапки столбцов (после добавления новых полей они устарели).
-  const hdrKey = `freemoney:hdr4:${id}`;
+  const hdrKey = `freemoney:hdr5:${id}`;
   if (!localStorage.getItem(hdrKey)) {
     await batchUpdateValues(id, [
       // 13-й столбец очищаем от старого заголовка time.
       { range: `${SHEET_TX}!A1:M1`, values: [[...TX_HEADER, '']] },
       { range: `${SHEET_CAT}!A1:D1`, values: [CAT_HEADER] },
       { range: `${SHEET_WALLET}!A1:G1`, values: [WALLET_HEADER] },
-      { range: `${SHEET_TAG}!A1`, values: [TAG_HEADER] },
+      { range: `${SHEET_TAG}!A1:B1`, values: [TAG_HEADER] },
       { range: `${SHEET_SETTINGS}!A1:B1`, values: [SETTINGS_HEADER] },
     ]);
     localStorage.setItem(hdrKey, '1');
@@ -282,31 +283,42 @@ export async function setWalletStatus(id, rowNumber, status) {
 
 // --- Теги -------------------------------------------------------------------
 
+function mapTagRows(rows) {
+  return rows
+    .filter((r) => r[0])
+    .map((r) => ({ name: r[0], status: r[1] || 'active' }));
+}
+
 export async function fetchTags(id) {
-  const rows = await getValues(id, `${SHEET_TAG}!A2:A`);
-  return rows.map((r) => r[0]).filter(Boolean);
+  const rows = await getValues(id, `${SHEET_TAG}!A2:B`);
+  return mapTagRows(rows);
 }
 
 export async function addTag(id, name) {
-  await appendRow(id, `${SHEET_TAG}!A1`, [name]);
+  await appendRow(id, `${SHEET_TAG}!A1`, [name, 'active']);
 }
 
-// Удаление тега из списка подсказок (операции не трогаем).
-export async function deleteTag(id, name) {
-  const tags = (await fetchTags(id)).filter((t) => t !== name);
-  // Перезаписываем область тегов: сначала чистим с запасом, потом пишем оставшиеся.
-  await updateValues(id, `${SHEET_TAG}!A2:A1000`, Array.from({ length: 999 }, () => ['']));
-  if (tags.length) {
-    await updateValues(id, `${SHEET_TAG}!A2`, tags.map((t) => [t]));
-  }
+// «Удаление» тега = архивирование: убираем из подсказок, но храним и операции не трогаем.
+export async function setTagStatus(id, name, status) {
+  const rows = await getValues(id, `${SHEET_TAG}!A2:A`);
+  const index = rows.findIndex((r) => r[0] === name);
+  if (index < 0) return;
+  await updateValues(id, `${SHEET_TAG}!B${index + 2}`, [[status]]);
 }
 
-// Переименование тега: и в списке подсказок, и во всех операциях.
+// Переименование тега: и в списке подсказок, и во всех операциях. Статус сохраняем.
 export async function renameTag(id, oldName, newName) {
-  const nextTags = [...new Set((await fetchTags(id)).map((t) => (t === oldName ? newName : t)))];
-  await updateValues(id, `${SHEET_TAG}!A2:A1000`, Array.from({ length: 999 }, () => ['']));
+  const seen = new Set();
+  const nextTags = [];
+  for (const t of await fetchTags(id)) {
+    const name = t.name === oldName ? newName : t.name;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    nextTags.push({ name, status: t.status });
+  }
+  await updateValues(id, `${SHEET_TAG}!A2:B1000`, Array.from({ length: 999 }, () => ['', '']));
   if (nextTags.length) {
-    await updateValues(id, `${SHEET_TAG}!A2`, nextTags.map((t) => [t]));
+    await updateValues(id, `${SHEET_TAG}!A2`, nextTags.map((t) => [t.name, t.status]));
   }
   const rows = await getValues(id, `${SHEET_TX}!A2:M`);
   const data = [];
@@ -340,14 +352,14 @@ export async function fetchAll(id) {
     `${SHEET_TX}!A2:M`,
     `${SHEET_CAT}!A2:D`,
     `${SHEET_WALLET}!A2:G`,
-    `${SHEET_TAG}!A2:A`,
+    `${SHEET_TAG}!A2:B`,
     `${SHEET_SETTINGS}!A2:B`,
   ]);
   return {
     transactions: mapTxRows(txRows),
     categories: mapCatRows(catRows),
     wallets: mapWalletRows(walletRows),
-    tags: tagRows.map((r) => r[0]).filter(Boolean),
+    tags: mapTagRows(tagRows),
     settings: mapSettingsRows(settingsRows),
   };
 }

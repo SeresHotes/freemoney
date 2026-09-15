@@ -62,7 +62,7 @@ export default function Transactions() {
     [wallets],
   );
   const tagOptions = useMemo(() => {
-    const set = new Set(tags);
+    const set = new Set(tags.filter((t) => t.status === 'active').map((t) => t.name));
     for (const t of transactions) (t.tags || []).forEach((x) => set.add(x));
     return [...set].sort().map((t) => ({ value: t, label: t }));
   }, [tags, transactions]);

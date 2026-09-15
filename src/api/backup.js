@@ -11,7 +11,7 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
     baseCurrency,
     wallets: wallets.map((w) => ({ id: w.id, name: w.name, currency: w.currency, status: w.status, kind: w.kind || 'cash', rate: w.rate || 0 })),
     categories: categories.map((c) => ({ name: c.name, kind: c.kind, status: c.status, icon: c.icon })),
-    tags,
+    tags: tags.map((t) => (typeof t === 'string' ? { name: t, status: 'active' } : { name: t.name, status: t.status || 'active' })),
     transactions: transactions.map((t) => ({
       id: t.id, date: t.date, type: t.type, amount: t.amount, category: t.category,
       note: t.note, tags: t.tags, wallet: t.wallet, currency: t.currency,
@@ -57,14 +57,17 @@ export async function importBackup(text, backend, current) {
     }
   }
 
-  // Теги — по имени.
-  const tagSet = new Set(current.tags);
-  for (const name of data.tags || []) {
-    if (!tagSet.has(name)) {
-      await backend.addTag(name);
-      tagSet.add(name);
-      result.tags += 1;
-    }
+  // Теги — по имени (старые бэкапы хранят строки, новые — {name, status}).
+  const tagName = (t) => (typeof t === 'string' ? t : t.name);
+  const tagSet = new Set((current.tags || []).map(tagName));
+  for (const t of data.tags || []) {
+    const name = tagName(t);
+    if (!name || tagSet.has(name)) continue;
+    await backend.addTag(name);
+    const status = typeof t === 'string' ? 'active' : (t.status || 'active');
+    if (status === 'archived') await backend.setTagStatus(name, 'archived');
+    tagSet.add(name);
+    result.tags += 1;
   }
 
   // Операции — по id, с ремапом кошелька.
