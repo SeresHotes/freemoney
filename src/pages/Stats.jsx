@@ -1,14 +1,16 @@
 import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { monthKey, monthLabel, dayLabel, todayIso, compactNumber, monthRange, rangeLabel } from '../utils/format';
+import { monthLabel, dayLabel, compactNumber, rangeLabel } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import {
   isIncome, isExpense, matchesFilters,
   buildCategoryTimeSeries, expenseTotalsByCategory,
 } from '../utils/finance';
 import { useBaseRates } from '../hooks/useBaseRates';
+import { usePeriod } from '../hooks/usePeriod';
 import ChipMultiSelect from '../components/ChipMultiSelect';
+import PeriodPicker from '../components/PeriodPicker';
 import CategoryTrendChart from '../components/CategoryTrendChart';
 import CategoryDonut from '../components/CategoryDonut';
 import { CATEGORY_COLORS as COLORS, buildCategorySeries } from '../utils/chartColors';
@@ -23,19 +25,17 @@ export default function Stats() {
   const cats = searchParams.getAll('category');
   const tagSel = searchParams.getAll('tag');
   const wals = searchParams.getAll('wallet');
-  const granularity = searchParams.get('granularity') || 'day';
 
-  // Диапазон дат по умолчанию — текущий календарный месяц.
-  const today = todayIso();
-  const curMonth = monthRange(monthKey(today));
-  const yearRange = { from: `${today.slice(0, 4)}-01-01`, to: `${today.slice(0, 4)}-12-31` };
+  // Период по умолчанию — текущий месяц.
+  const period = usePeriod({ searchParams, setSearchParams, transactions, defaultMode: 'month' });
+  const { from, to } = period;
 
-  const isAll = searchParams.get('all') === '1';
-  const rawFrom = searchParams.get('from');
-  const rawTo = searchParams.get('to');
-  const hasCustom = rawFrom != null || rawTo != null;
-  const from = isAll ? '' : hasCustom ? (rawFrom || '') : curMonth.from;
-  const to = isAll ? '' : hasCustom ? (rawTo || '') : curMonth.to;
+  // Гранулярность нижнего графика по умолчанию подбираем по периоду;
+  // «всё время» -> по годам, длинный диапазон -> по месяцам, короткий -> по дням.
+  // Явный выбор пользователя (?granularity=) всегда в приоритете.
+  const spanDays = from && to ? Math.round((new Date(to) - new Date(from)) / 86400000) + 1 : Infinity;
+  const autoGranularity = period.mode === 'all' ? 'year' : spanDays > 92 ? 'month' : 'day';
+  const granularity = searchParams.get('granularity') || autoGranularity;
 
   const update = (mutate) => {
     const next = new URLSearchParams(searchParams);
@@ -44,25 +44,6 @@ export default function Stats() {
   };
   const setArr = (key, arr) => update((n) => { n.delete(key); arr.forEach((v) => n.append(key, v)); });
   const setSingle = (key, val) => update((n) => { if (val) n.set(key, val); else n.delete(key); });
-  const setRange = (f, t) => update((n) => {
-    n.delete('all');
-    if (f) n.set('from', f); else n.delete('from');
-    if (t) n.set('to', t); else n.delete('to');
-  });
-  const setAllTime = () => update((n) => { n.delete('from'); n.delete('to'); n.set('all', '1'); });
-  // Правка одной границы: фиксируем обе текущие границы в URL, затем применяем изменение.
-  const setBound = (key, val) => update((n) => {
-    n.delete('all');
-    if (from) n.set('from', from); else n.delete('from');
-    if (to) n.set('to', to); else n.delete('to');
-    if (val) n.set(key, val); else n.delete(key);
-  });
-
-  const activePreset =
-    isAll ? 'all'
-    : from === curMonth.from && to === curMonth.to ? 'month'
-    : from === yearRange.from && to === yearRange.to ? 'year'
-    : 'custom';
 
   // Переход к операциям: категория + активные фильтры и период статистики.
   const openCategory = (name) => {
@@ -124,7 +105,9 @@ export default function Stats() {
     const sliced = raw.length > maxBars ? raw.slice(-maxBars) : raw;
     const data = sliced.map((b) => ({
       ...b,
-      label: granularity === 'day' ? dayLabel(b.key) : monthLabel(b.key).replace(/ \d{4}$/, ''),
+      label: granularity === 'day' ? dayLabel(b.key)
+        : granularity === 'year' ? b.key
+        : monthLabel(b.key).replace(/ \d{4}$/, ''),
     }));
     return { series: seriesList, catTrend: data };
   }, [scoped, granularity, singleWallet, toBase]);
@@ -142,19 +125,7 @@ export default function Stats() {
         {tagOptions.length > 0 && (
           <ChipMultiSelect label="Теги" options={tagOptions} selected={tagSel} onChange={(a) => setArr('tag', a)} />
         )}
-        <div className="chipms">
-          <span className="chipms__label">Период</span>
-          <div className="seg">
-            <button className={`seg__btn${activePreset === 'month' ? ' seg__btn--active' : ''}`} onClick={() => setRange(curMonth.from, curMonth.to)}>Месяц</button>
-            <button className={`seg__btn${activePreset === 'year' ? ' seg__btn--active' : ''}`} onClick={() => setRange(yearRange.from, yearRange.to)}>Год</button>
-            <button className={`seg__btn${activePreset === 'all' ? ' seg__btn--active' : ''}`} onClick={setAllTime}>Всё время</button>
-          </div>
-          <div className="filters__dates">
-            <input className="field__input" type="date" value={from} onChange={(e) => setBound('from', e.target.value)} />
-            <span className="muted">—</span>
-            <input className="field__input" type="date" value={to} onChange={(e) => setBound('to', e.target.value)} />
-          </div>
-        </div>
+        <PeriodPicker period={period} />
       </div>
 
       <section>
@@ -195,6 +166,7 @@ export default function Stats() {
         <div className="seg">
           <button className={`seg__btn${granularity === 'day' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('granularity', 'day')}>По дням</button>
           <button className={`seg__btn${granularity === 'month' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('granularity', 'month')}>По месяцам</button>
+          <button className={`seg__btn${granularity === 'year' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('granularity', 'year')}>По годам</button>
         </div>
         <h2 className="section-title">
           Динамика расходов · {periodLabel} · {displayCurrency}
