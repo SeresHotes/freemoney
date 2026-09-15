@@ -22,13 +22,25 @@ export default function AddTransaction() {
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
   const currencyOf = (id) => wallets.find((w) => w.id === id)?.currency || '';
 
+  // Последний использованный кошелёк — из самой свежей операции с активным кошельком.
+  const lastUsedWalletId = useMemo(() => {
+    const activeIds = new Set(activeWallets.map((w) => w.id));
+    let latest = null;
+    for (const tx of transactions) {
+      if (!activeIds.has(tx.wallet)) continue;
+      const key = `${tx.date} ${tx.time || ''}`;
+      if (!latest || key > latest.key) latest = { key, wallet: tx.wallet };
+    }
+    return latest?.wallet || '';
+  }, [transactions, activeWallets]);
+
   const available = useMemo(
     () => categories.filter((c) => c.status === 'active' && (c.kind === type || c.kind === 'both')),
     [categories, type],
   );
 
   const [walletId, setWalletId] = useState(
-    () => editingTx?.wallet || activeWallets[0]?.id || '',
+    () => editingTx?.wallet || lastUsedWalletId || activeWallets[0]?.id || '',
   );
   const walletCurrency = currencyOf(walletId);
 
