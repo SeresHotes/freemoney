@@ -130,12 +130,29 @@ export async function rawDump() {
 }
 
 // Применить записи-победители мерджа в локальный стор (upsert, включая tombstones).
+// Compare-and-set в одной транзакции: НЕ перезаписываем запись, если её локальная
+// версия стала новее посчитанного победителя (правка во время синхронизации).
+// get→put выполняются синхронно в onsuccess, поэтому транзакция атомарна
+// относительно параллельных правок (IndexedDB сериализует readwrite-транзакции).
 export async function applyRecords(entity, records) {
   if (!records?.length) return;
   const name = STORE_BY_ENTITY[entity];
+  const keyOf = (r) => (name === STORE_TAG ? r.name : name === STORE_SETTINGS ? r.key : r.id);
   const db = await openDb();
-  const s = store(db, name, 'readwrite');
-  await Promise.all(records.map((r) => reqToPromise(s.put(r))));
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(name, 'readwrite');
+    const s = tx.objectStore(name);
+    for (const r of records) {
+      const getReq = s.get(keyOf(r));
+      getReq.onsuccess = () => {
+        const cur = getReq.result;
+        if (!cur || (r.updatedAt || 0) >= (cur.updatedAt || 0)) s.put(r);
+      };
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
   db.close();
 }
 

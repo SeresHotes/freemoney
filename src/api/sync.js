@@ -3,36 +3,47 @@
 // Модель — local-first: IndexedDB это источник правды, таблица — реплика.
 // syncNow() делает полный проход: читает таблицу, сливает с локальными данными
 // по правилу «последняя правка побеждает» (LWW по updatedAt) с учётом
-// tombstones (deleted), применяет чужие изменения локально и переписывает
+// tombstones (deleted), применяет чужие изменения локально (compare-and-set,
+// чтобы не затирать правку, сделанную во время синхронизации) и переписывает
 // изменившиеся листы. Ручные правки листа (без роста updatedAt) распознаются
 // сравнением со снапшотом прошлой синхронизации и считаются свежими.
 //
 // Идентичность сущностей:
 //   transactions/wallets — по стабильному id;
 //   tags/settings — по имени/ключу;
-//   categories — ПО ИМЕНИ (id категории чисто локальный: в приложении категория
-//     адресуется именем, rename каскадит по имени). Это исключает дубли базовых
-//     категорий при подключении второго устройства.
+//   categories — сначала по id, затем по имени. Сопоставление по id ловит
+//     переименование (строка листа с тем же id — та же категория, а не новая),
+//     сопоставление по имени — совпадение базовых категорий на разных
+//     устройствах (id категории у них разный). tx ссылается на категорию по
+//     имени, поэтому имя каскадится в операции при rename.
 //
-// Конфликты между независимо заведёнными сторами (оба с данными до первой
-// синхронизации) разрешаются без потерь: операции объединяются по id, категории
-// — по имени. Единственный побочный эффект — возможен лишний пустой кошелёк
-// «Основной» на втором устройстве (кошельки сливаются по id); его можно
-// заархивировать. Ничего при этом не теряется.
+// Первый синк с пустым локальным стором и непустой таблицей = «adopt»: берём
+// таблицу как источник (бывший google-пользователь / второе устройство), не
+// смешивая её со свежесозданными дефолтами. Иначе — обычный merge без потерь.
 
 import { ensureSyncSchema, fetchAllForSync, overwriteEntity } from './store';
-import { rawDump, applyRecords, getMeta, setMeta } from './localBackend';
+import { rawDump, applyRecords, replaceAllData, getMeta, setMeta } from './localBackend';
 import { nowStamp, newId } from '../utils/format';
 
 const ENTITIES = ['transactions', 'categories', 'wallets', 'tags', 'settings'];
 
+const norm = (s) => (s || '').trim().toLowerCase();
+
 const KEY = {
   transactions: (r) => r.id,
-  categories: (r) => `n:${(r.name || '').trim().toLowerCase()}`,
+  categories: (r) => `n:${norm(r.name)}`,
   wallets: (r) => r.id,
   tags: (r) => (r.name || '').trim(),
   settings: (r) => r.key,
 };
+
+// Ключ снапшота (для детекта ручных правок листа между синками). У категорий —
+// по id (стабилен при переименовании), с откатом на имя, если id ещё нет.
+function snapKeyOf(entity, r) {
+  if (!r) return '';
+  if (entity === 'categories') return r.id || `n:${norm(r.name)}`;
+  return KEY[entity](r);
+}
 
 // Поля, определяющие «содержимое» записи для сравнения (без updatedAt).
 // Для категорий id исключён намеренно (см. шапку).
@@ -69,33 +80,53 @@ function effectiveRemoteTs(entity, r, snapEntry, now) {
   return ts;
 }
 
-// Слить одну сущность. Возвращает записи для локального upsert, полный набор
-// для перезаписи листа и признак того, что лист изменился.
-export function mergeEntity(entity, localRecs, remoteRecs, snap, now) {
-  const key = KEY[entity];
-  const lMap = new Map(localRecs.map((r) => [key(r), r]));
-  const rMap = new Map(remoteRecs.map((r) => [key(r), r]));
-  const keys = new Set([...lMap.keys(), ...rMap.keys()]);
+// --- Сопоставление локальных и удалённых записей в пары {l, r} ---------------
 
+function pairByKey(localRecs, remoteRecs, keyFn) {
+  const lMap = new Map(localRecs.map((x) => [keyFn(x), x]));
+  const rMap = new Map(remoteRecs.map((x) => [keyFn(x), x]));
+  const keys = new Set([...lMap.keys(), ...rMap.keys()]);
+  return [...keys].map((k) => ({ l: lMap.get(k) || null, r: rMap.get(k) || null }));
+}
+
+// Категории: пара по id (ловит rename), затем по имени (базовые на разных устройствах).
+function pairCategories(localRecs, remoteRecs) {
+  const rById = new Map(remoteRecs.filter((c) => c.id).map((c) => [c.id, c]));
+  const rByName = new Map();
+  remoteRecs.forEach((c) => { if (!rByName.has(norm(c.name))) rByName.set(norm(c.name), c); });
+  const usedR = new Set();
+  const pairs = [];
+  for (const l of localRecs) {
+    let r = (l.id && rById.get(l.id)) || null;
+    if (!r) {
+      const byName = rByName.get(norm(l.name));
+      if (byName && !usedR.has(byName)) r = byName;
+    }
+    if (r) usedR.add(r);
+    pairs.push({ l, r: r || null });
+  }
+  for (const r of remoteRecs) if (!usedR.has(r)) pairs.push({ l: null, r });
+  return pairs;
+}
+
+// Общее ядро слияния по готовым парам.
+function mergeCore(entity, pairs, snap, now) {
   const localUpserts = [];
   const remoteRecords = [];
   const newSnap = {};
   let remoteDirty = false;
 
-  for (const k of keys) {
-    const l = lMap.get(k);
-    const r = rMap.get(k);
-
+  for (const { l, r } of pairs) {
     let winner;
     if (l && !r) winner = l;
     else if (r && !l) winner = r;
     else {
-      const rEff = effectiveRemoteTs(entity, r, snap[k], now);
+      const rEff = effectiveRemoteTs(entity, r, snap[snapKeyOf(entity, r)], now);
       winner = rEff > (l.updatedAt || 0) ? r : l;
     }
 
-    // Локальная запись: у категорий сохраняем стабильный локальный id, чтобы не
-    // плодить дубли в IndexedDB (стор с keyPath 'id'); прочие ключи стабильны.
+    // Локальная запись: у категорий сохраняем стабильный локальный id, чтобы
+    // rename не плодил дубли в IndexedDB (стор с keyPath 'id').
     const localRec = entity === 'categories'
       ? { ...winner, id: (l && l.id) || (r && r.id) || newId() }
       : winner;
@@ -105,9 +136,9 @@ export function mergeEntity(entity, localRecs, remoteRecs, snap, now) {
       : winner;
 
     remoteRecords.push(remoteRec);
-    newSnap[k] = { ts: winner.updatedAt || 0, sig: contentSig(entity, winner) };
-
     const winnerSig = contentSig(entity, winner);
+    newSnap[snapKeyOf(entity, remoteRec)] = { ts: winner.updatedAt || 0, sig: winnerSig };
+
     if (!l || contentSig(entity, l) !== winnerSig || (l.updatedAt || 0) !== (winner.updatedAt || 0)) {
       localUpserts.push(localRec);
     }
@@ -119,6 +150,32 @@ export function mergeEntity(entity, localRecs, remoteRecs, snap, now) {
   return { localUpserts, remoteRecords, remoteDirty, snap: newSnap };
 }
 
+export function mergeEntity(entity, localRecs, remoteRecs, snap, now) {
+  const pairs = entity === 'categories'
+    ? pairCategories(localRecs, remoteRecs)
+    : pairByKey(localRecs, remoteRecs, KEY[entity]);
+  return mergeCore(entity, pairs, snap, now);
+}
+
+function buildSnapshot(data) {
+  const snap = {};
+  for (const entity of ENTITIES) {
+    snap[entity] = {};
+    for (const r of data[entity] || []) {
+      snap[entity][snapKeyOf(entity, r)] = { ts: r.updatedAt || 0, sig: contentSig(entity, r) };
+    }
+  }
+  return snap;
+}
+
+// У категорий из старой таблицы может не быть id — проставим для локального стора.
+function withCategoryIds(remote) {
+  return {
+    ...remote,
+    categories: (remote.categories || []).map((c) => ({ ...c, id: c.id || newId() })),
+  };
+}
+
 // Полный цикл синхронизации. Кидает AuthError/ошибки сети наружу — вызывающий
 // решает, что показать. Возвращает сводку изменений.
 export async function syncNow(spreadsheetId) {
@@ -126,8 +183,20 @@ export async function syncNow(spreadsheetId) {
   const now = nowStamp();
 
   const [remote, local] = await Promise.all([fetchAllForSync(spreadsheetId), rawDump()]);
-  const snapAll = (await getMeta('syncSnapshot')) || {};
 
+  // Первый синк с пустым локальным стором и непустой таблицей — принять таблицу.
+  const firstSync = !(await getMeta('lastSync'));
+  const localEmpty = (local.transactions || []).filter((t) => !t.deleted).length === 0;
+  const remoteHasData = ENTITIES.some((e) => (remote[e] || []).length > 0);
+  if (firstSync && localEmpty && remoteHasData) {
+    const adopted = withCategoryIds(remote);
+    await replaceAllData(adopted);
+    await setMeta('syncSnapshot', buildSnapshot(adopted));
+    await setMeta('lastSync', now);
+    return { at: now, adopted: true, pulled: (adopted.transactions || []).length, pushedEntities: 0 };
+  }
+
+  const snapAll = (await getMeta('syncSnapshot')) || {};
   const newSnapAll = {};
   let pulled = 0;
   let pushedEntities = 0;
@@ -147,5 +216,5 @@ export async function syncNow(spreadsheetId) {
 
   await setMeta('syncSnapshot', newSnapAll);
   await setMeta('lastSync', now);
-  return { at: now, pulled, pushedEntities };
+  return { at: now, adopted: false, pulled, pushedEntities };
 }
