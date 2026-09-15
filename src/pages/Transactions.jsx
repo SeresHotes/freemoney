@@ -4,7 +4,9 @@ import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
 import { monthKey, monthLabel } from '../utils/format';
 import { isIncome, matchesFilters, isDebtWallet, debtBalanceBefore, debtRowLabel } from '../utils/finance';
+import { usePeriod } from '../hooks/usePeriod';
 import ChipMultiSelect from '../components/ChipMultiSelect';
+import PeriodPicker from '../components/PeriodPicker';
 
 const TYPE_OPTIONS = [
   { value: 'expense', label: 'Расходы' },
@@ -25,8 +27,11 @@ export default function Transactions() {
   const wals = searchParams.getAll('wallet');
   const tagSel = searchParams.getAll('tag');
   const query = searchParams.get('q') || '';
-  const from = searchParams.get('from') || '';
-  const to = searchParams.get('to') || '';
+
+  // Период по умолчанию — всё время (без фильтра по датам).
+  const period = usePeriod({ searchParams, setSearchParams, transactions, defaultMode: 'all' });
+  const { from, to, mode } = period;
+  const periodActive = mode !== 'all';
 
   const update = (mutate) => {
     const next = new URLSearchParams(searchParams);
@@ -37,7 +42,7 @@ export default function Transactions() {
   const setSingle = (key, val) => update((n) => { if (val) n.set(key, val); else n.delete(key); });
 
   const [showFilters, setShowFilters] = useState(
-    () => types.length + cats.length + wals.length + tagSel.length > 0 || Boolean(from || to),
+    () => types.length + cats.length + wals.length + tagSel.length > 0 || periodActive,
   );
 
   const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
@@ -89,7 +94,7 @@ export default function Transactions() {
       });
   }, [transactions, query, types, cats, tagSel, wals, from, to]);
 
-  const activeCount = types.length + cats.length + tagSel.length + wals.length + (from ? 1 : 0) + (to ? 1 : 0);
+  const activeCount = types.length + cats.length + tagSel.length + wals.length + (periodActive ? 1 : 0);
   const clear = () => setSearchParams({}, { replace: true });
 
   // Число видимых строк: пара ног перевода/долга считается как одна.
@@ -234,14 +239,7 @@ export default function Transactions() {
           {tagOptions.length > 0 && (
             <ChipMultiSelect label="Теги" options={tagOptions} selected={tagSel} onChange={(a) => setArr('tag', a)} />
           )}
-          <div className="chipms">
-            <span className="chipms__label">Период</span>
-            <div className="filters__dates">
-              <input className="field__input" type="date" value={from} onChange={(e) => setSingle('from', e.target.value)} />
-              <span className="muted">—</span>
-              <input className="field__input" type="date" value={to} onChange={(e) => setSingle('to', e.target.value)} />
-            </div>
-          </div>
+          <PeriodPicker period={period} />
           {activeCount > 0 && <button className="link-btn-inline" onClick={clear}>Сбросить фильтры</button>}
         </div>
       )}
