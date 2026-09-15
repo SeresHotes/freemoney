@@ -46,6 +46,25 @@ export function monthLabel(key) {
   return date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 }
 
+// Дата "2026-08-21" -> "21.08.2026".
+export function dateLabel(iso) {
+  const [y, m, d] = (iso || '').split('-');
+  return d && m && y ? `${d}.${m}.${y}` : iso || '';
+}
+
+// Человекочитаемая подпись диапазона дат для заголовков.
+// Ровно один календарный месяц -> название месяца; открытые границы -> "с …"/"по …".
+export function rangeLabel(from, to) {
+  if (!from && !to) return 'всё время';
+  if (from && to) {
+    const mr = monthRange(monthKey(from));
+    if (mr.from === from && mr.to === to) return monthLabel(monthKey(from));
+    if (from === to) return dateLabel(from);
+    return `${dateLabel(from)} — ${dateLabel(to)}`;
+  }
+  return from ? `с ${dateLabel(from)}` : `по ${dateLabel(to)}`;
+}
+
 // Дата N дней назад в формате YYYY-MM-DD.
 export function daysAgoIso(n) {
   const now = new Date();
