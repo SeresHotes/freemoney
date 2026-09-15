@@ -63,24 +63,28 @@ export default function Stats() {
   const setArr = (key, arr) => update((n) => { n.delete(key); arr.forEach((v) => n.append(key, v)); });
   const setSingle = (key, val) => update((n) => { if (val) n.set(key, val); else n.delete(key); });
 
-  // Переключение режима: для month/year фиксируем границы выбранного периода,
-  // сохраняя уже выбранный месяц/год; для custom оставляем текущие from/to.
+  // Установка конкретного месяца/года в URL (общая точка для листалки и выбора тапом).
+  const applyMonth = (n, key) => {
+    const r = monthRange(key);
+    n.delete('all'); n.set('mode', 'month'); n.set('from', r.from); n.set('to', r.to);
+  };
+  const applyYear = (n, year) => {
+    n.delete('all'); n.set('mode', 'year'); n.set('from', `${year}-01-01`); n.set('to', `${year}-12-31`);
+  };
+  // Переключение режима. При входе в month/year выбираем ТЕКУЩИЙ месяц/год;
+  // для custom оставляем текущие from/to.
   const setMode = (m) => update((n) => {
-    n.delete('all');
-    n.set('mode', m);
-    if (m === 'month') { const r = monthRange(monthSel); n.set('from', r.from); n.set('to', r.to); }
-    else if (m === 'year') { n.set('from', `${yearSel}-01-01`); n.set('to', `${yearSel}-12-31`); }
-    else if (m === 'all') { n.delete('from'); n.delete('to'); }
+    if (m === 'month') applyMonth(n, curMonthKey);
+    else if (m === 'year') applyYear(n, curYear);
+    else if (m === 'all') { n.delete('all'); n.set('mode', 'all'); n.delete('from'); n.delete('to'); }
+    else { n.delete('all'); n.set('mode', m); }
   });
   // Листалка месяца/года стрелками.
-  const stepMonth = (delta) => update((n) => {
-    const r = monthRange(shiftMonth(monthSel, delta));
-    n.delete('all'); n.set('mode', 'month'); n.set('from', r.from); n.set('to', r.to);
-  });
-  const stepYear = (delta) => update((n) => {
-    const y = String(Number(yearSel) + delta);
-    n.delete('all'); n.set('mode', 'year'); n.set('from', `${y}-01-01`); n.set('to', `${y}-12-31`);
-  });
+  const stepMonth = (delta) => update((n) => applyMonth(n, shiftMonth(monthSel, delta)));
+  const stepYear = (delta) => update((n) => applyYear(n, String(Number(yearSel) + delta)));
+  // Выбор конкретного месяца/года тапом по подписи.
+  const pickMonth = (key) => update((n) => applyMonth(n, key));
+  const pickYear = (year) => update((n) => applyYear(n, year));
   // Правка одной границы произвольного диапазона.
   const setBound = (key, val) => update((n) => {
     n.delete('all'); n.set('mode', 'custom');
@@ -88,6 +92,18 @@ export default function Stats() {
     if (to) n.set('to', to); else n.delete('to');
     if (val) n.set(key, val); else n.delete(key);
   });
+
+  // Годы для выпадающего выбора: от самой ранней операции до текущего года.
+  const yearOptions = useMemo(() => {
+    let min = Number(curYear);
+    for (const t of transactions) {
+      const y = Number((t.date || '').slice(0, 4));
+      if (y && y < min) min = y;
+    }
+    const arr = [];
+    for (let y = Number(curYear); y >= min; y--) arr.push(String(y));
+    return arr;
+  }, [transactions, curYear]);
 
   // Переход к операциям: категория + активные фильтры и период статистики.
   const openCategory = (name) => {
@@ -178,14 +194,33 @@ export default function Stats() {
           {mode === 'month' && (
             <div className="stepper">
               <button className="stepper__btn" onClick={() => stepMonth(-1)} aria-label="Предыдущий месяц">‹</button>
-              <span className="stepper__label">{monthLabel(monthSel)}</span>
+              <label className="stepper__pick">
+                <span className="stepper__label">{monthLabel(monthSel)}</span>
+                <input
+                  className="stepper__native"
+                  type="month"
+                  value={monthSel}
+                  onChange={(e) => e.target.value && pickMonth(e.target.value)}
+                  aria-label="Выбрать месяц"
+                />
+              </label>
               <button className="stepper__btn" onClick={() => stepMonth(1)} aria-label="Следующий месяц">›</button>
             </div>
           )}
           {mode === 'year' && (
             <div className="stepper">
               <button className="stepper__btn" onClick={() => stepYear(-1)} aria-label="Предыдущий год">‹</button>
-              <span className="stepper__label">{yearSel}</span>
+              <label className="stepper__pick">
+                <span className="stepper__label">{yearSel}</span>
+                <select
+                  className="stepper__native"
+                  value={yearSel}
+                  onChange={(e) => pickYear(e.target.value)}
+                  aria-label="Выбрать год"
+                >
+                  {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
               <button className="stepper__btn" onClick={() => stepYear(1)} aria-label="Следующий год">›</button>
             </div>
           )}
