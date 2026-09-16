@@ -5,6 +5,7 @@ import { initSpreadsheet, findExistingSpreadsheets } from '../api/store';
 import { syncNow } from '../api/sync';
 import {
   createLocalBackend, isLocalStoreReady, initLocalStore, requestPersistentStorage,
+  prepareWalletKeyMigration,
 } from '../api/localBackend';
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
@@ -146,6 +147,8 @@ export function AppProvider({ children }) {
   }, [doSync]);
 
   const activateLocal = useCallback(async () => {
+    // Разовая подготовка миграции кошельков на ключ-имя (до открытия БД v4).
+    await prepareWalletKeyMigration();
     if (!(await isLocalStoreReady())) await initLocalStore();
     const backend = createLocalBackend();
     await backend.ensureSchema();

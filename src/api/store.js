@@ -206,17 +206,36 @@ export async function ensureSyncSchema(id) {
     await updateValues(id, `${SHEET_SETTINGS}!A1`, [SETTINGS_HEADER]);
   }
 
-  // Разовая миграция листа Wallets: старая схема id|name|... → name|... (без id).
-  // Определяем по заголовку в самой таблице (не по localStorage) — безопасно для
-  // любого устройства и идемпотентно (после миграции заголовок начинается с name).
-  const [walletSheet] = await getValuesBatch(id, [`${SHEET_WALLET}!A1:J`]);
+  // Разовая миграция листа Wallets со старой схемы id|name|... на name|... И
+  // одновременно перевод ссылок в листе Transactions (wallet: id → имя). Порядок
+  // важен: соответствие id→имя живёт только в колонке id листа Wallets, поэтому
+  // операции надо переписать ДО её удаления, иначе связка потеряется. Определяем
+  // по заголовку самой таблицы — безопасно для любого устройства и идемпотентно.
+  const [walletSheet, txSheet] = await getValuesBatch(id, [
+    `${SHEET_WALLET}!A1:J`,
+    `${SHEET_TX}!A1:O`,
+  ]);
   if (walletSheet[0]?.[0] === 'id' && walletSheet[0]?.[1] === 'name') {
-    // Старая строка: id|name|currency|status|order|kind|rate|updatedAt|deleted —
-    // новый ряд это та же строка без первого столбца (id).
-    const migrated = walletSheet.slice(1).filter((r) => r[1]).map((r) => r.slice(1, 9));
+    const idToName = {};
+    for (const r of walletSheet.slice(1)) if (r[0] && r[1]) idToName[r[0]] = r[1];
+
+    // Операции: wallet (индекс 7) id→имя + бамп updatedAt (индекс 13), чтобы
+    // починка доехала до устройств через LWW-мердж синхронизации.
+    const stamp = String(Date.now());
+    let txChanged = false;
+    const migratedTx = txSheet.slice(1).map((r) => {
+      const row = TX_HEADER.map((_, c) => r[c] ?? '');
+      const name = idToName[r[7]];
+      if (name && name !== r[7]) { row[7] = name; row[13] = stamp; txChanged = true; }
+      return row;
+    });
+    if (txChanged) await updateValues(id, `${SHEET_TX}!A2`, migratedTx);
+
+    // Кошельки: новый ряд — та же строка без первого столбца (id).
+    const migratedW = walletSheet.slice(1).filter((r) => r[1]).map((r) => r.slice(1, 9));
     await clearValues(id, `${SHEET_WALLET}!A1:J`);
     await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER]);
-    if (migrated.length) await updateValues(id, `${SHEET_WALLET}!A2`, migrated);
+    if (migratedW.length) await updateValues(id, `${SHEET_WALLET}!A2`, migratedW);
   }
 
   const hdrKey = `freemoney:hdr7:${id}`;
