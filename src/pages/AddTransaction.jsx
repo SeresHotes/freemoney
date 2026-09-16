@@ -45,14 +45,15 @@ export default function AddTransaction() {
   );
   const walletCurrency = currencyOf(walletId);
 
+  // amount в сторе знаковый (расход < 0) — в поле показываем ВЕЛИЧИНУ.
   const [amount, setAmount] = useState(() =>
-    editingTx ? String(editingTx.origAmount ?? editingTx.amount) : '',
+    editingTx ? String(editingTx.origAmount ?? Math.abs(editingTx.amount)) : '',
   );
   const [entryCurrency, setEntryCurrency] = useState(
     () => editingTx?.origCurrency || editingTx?.currency || currencyOf(walletId),
   );
   const [walletAmount, setWalletAmount] = useState(() =>
-    editingTx?.origCurrency ? String(editingTx.amount) : '',
+    editingTx?.origCurrency ? String(Math.abs(editingTx.amount)) : '',
   );
   const [walletAmountTouched, setWalletAmountTouched] = useState(Boolean(editingTx?.origCurrency));
   const [rateInfo, setRateInfo] = useState(null);
