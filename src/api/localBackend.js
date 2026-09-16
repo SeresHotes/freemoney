@@ -47,10 +47,13 @@ function migrateWalletsIdToName(db, tx) {
     }
     const txStore = tx.objectStore(STORE_TX);
     const txReq = txStore.getAll();
+    // Бампим updatedAt у переадресованных операций, чтобы имя-версия выиграла
+    // LWW-мердж и колонка wallet в Google Таблице переписалась с id на имя.
+    const stamp = nowStamp();
     txReq.onsuccess = () => {
       for (const t of txReq.result || []) {
         const name = idToName.get(t.wallet);
-        if (name && name !== t.wallet) txStore.put({ ...t, wallet: name });
+        if (name && name !== t.wallet) txStore.put({ ...t, wallet: name, updatedAt: stamp });
       }
     };
   };

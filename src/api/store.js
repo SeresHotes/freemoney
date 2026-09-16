@@ -8,9 +8,9 @@
 //     type    — expense|income|transfer_in|transfer_out|adjust_in|adjust_out|
 //               interest_in|interest_out
 //   Categories: id|name|kind|status|icon|order|updatedAt|deleted              (A:H)
-//   Wallets:    _|name|currency|status|order|kind|rate|updatedAt|deleted       (A:J)
-//     кошелёк идентифицируется по имени (колонка B); колонка A — legacy-слот
-//     бывшего id, пишется пустой (позиции колонок не сдвигаем ради старых таблиц)
+//   Wallets:    name|currency|status|order|kind|rate|updatedAt|deleted         (A:H)
+//     кошелёк идентифицируется по имени (колонка A); поле id упразднено. Старые
+//     таблицы со схемой id|name|... разово мигрируются в ensureSyncSchema.
 //   Tags:       name|updatedAt|deleted                                        (A:C)
 //   Settings:   key|value|updatedAt                                           (A:C)
 //
@@ -46,7 +46,7 @@ const TX_HEADER = [
 // name|kind|status|icon остаются на местах A–D. Иначе у существующих таблиц
 // (старая схема name|kind|status|icon) данные читались бы со сдвигом.
 const CAT_HEADER = ['name', 'kind', 'status', 'icon', 'id', 'order', 'updatedAt', 'deleted'];
-const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
+const WALLET_HEADER = ['name', 'currency', 'status', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
 const TAG_HEADER = ['name', 'status', 'updatedAt', 'deleted'];
 const SETTINGS_HEADER = ['key', 'value', 'updatedAt'];
 
@@ -122,20 +122,20 @@ function rowToCat(r, index) {
 
 function walletToRow(w) {
   return [
-    '', w.name || '', w.currency || DEFAULT_BASE_CURRENCY, w.status || 'active', w.order ?? 0,
+    w.name || '', w.currency || DEFAULT_BASE_CURRENCY, w.status || 'active', w.order ?? 0,
     w.kind || 'cash', w.rate ?? 0, String(w.updatedAt || 0), encBool(w.deleted),
   ];
 }
 function rowToWallet(r, index) {
   return {
-    name: r[1] || '',
-    currency: r[2] || DEFAULT_BASE_CURRENCY,
-    status: r[3] || 'active',
-    order: r[4] === '' || r[4] == null ? index : decNum(r[4]),
-    kind: r[5] || 'cash',
-    rate: decNum(r[6]),
-    updatedAt: decNum(r[7]),
-    deleted: decBool(r[8]),
+    name: r[0] || '',
+    currency: r[1] || DEFAULT_BASE_CURRENCY,
+    status: r[2] || 'active',
+    order: r[3] === '' || r[3] == null ? index : decNum(r[3]),
+    kind: r[4] || 'cash',
+    rate: decNum(r[5]),
+    updatedAt: decNum(r[6]),
+    deleted: decBool(r[7]),
   };
 }
 
@@ -157,7 +157,7 @@ function rowToSetting(r) {
 const ENTITY = {
   transactions: { sheet: SHEET_TX, lastCol: 'O', toRow: txToRow, fromRow: rowToTx },
   categories: { sheet: SHEET_CAT, lastCol: 'H', toRow: catToRow, fromRow: rowToCat },
-  wallets: { sheet: SHEET_WALLET, lastCol: 'J', toRow: walletToRow, fromRow: rowToWallet },
+  wallets: { sheet: SHEET_WALLET, lastCol: 'H', toRow: walletToRow, fromRow: rowToWallet },
   tags: { sheet: SHEET_TAG, lastCol: 'D', toRow: tagToRow, fromRow: rowToTag },
   settings: { sheet: SHEET_SETTINGS, lastCol: 'C', toRow: settingToRow, fromRow: rowToSetting },
 };
@@ -206,12 +206,25 @@ export async function ensureSyncSchema(id) {
     await updateValues(id, `${SHEET_SETTINGS}!A1`, [SETTINGS_HEADER]);
   }
 
+  // Разовая миграция листа Wallets: старая схема id|name|... → name|... (без id).
+  // Определяем по заголовку в самой таблице (не по localStorage) — безопасно для
+  // любого устройства и идемпотентно (после миграции заголовок начинается с name).
+  const [walletSheet] = await getValuesBatch(id, [`${SHEET_WALLET}!A1:J`]);
+  if (walletSheet[0]?.[0] === 'id' && walletSheet[0]?.[1] === 'name') {
+    // Старая строка: id|name|currency|status|order|kind|rate|updatedAt|deleted —
+    // новый ряд это та же строка без первого столбца (id).
+    const migrated = walletSheet.slice(1).filter((r) => r[1]).map((r) => r.slice(1, 9));
+    await clearValues(id, `${SHEET_WALLET}!A1:J`);
+    await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER]);
+    if (migrated.length) await updateValues(id, `${SHEET_WALLET}!A2`, migrated);
+  }
+
   const hdrKey = `freemoney:hdr7:${id}`;
   if (!localStorage.getItem(hdrKey)) {
     await batchUpdateValues(id, [
       { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
       { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
-      { range: `${SHEET_WALLET}!A1:J1`, values: [WALLET_HEADER] },
+      { range: `${SHEET_WALLET}!A1:H1`, values: [WALLET_HEADER] },
       { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
       { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
     ]);
@@ -231,15 +244,15 @@ export async function fetchAllForSync(id) {
   const [txRows, catRows, walletRows, tagRows, settingsRows] = await getValuesBatch(id, [
     `${SHEET_TX}!A2:O`,
     `${SHEET_CAT}!A2:H`,
-    `${SHEET_WALLET}!A2:J`,
+    `${SHEET_WALLET}!A2:H`,
     `${SHEET_TAG}!A2:D`,
     `${SHEET_SETTINGS}!A2:C`,
   ]);
   return {
     transactions: txRows.filter((r) => r[0]).map(rowToTx),
     categories: catRows.filter((r) => r[0]).map(rowToCat),
-    // Кошельки идентифицируются по имени (колонка B), колонка A — legacy-пустая.
-    wallets: walletRows.filter((r) => r[1]).map(rowToWallet),
+    // Кошельки идентифицируются по имени (колонка A).
+    wallets: walletRows.filter((r) => r[0]).map(rowToWallet),
     tags: tagRows.filter((r) => r[0]).map(rowToTag),
     settings: settingsRows.filter((r) => r[0]).map(rowToSetting),
   };
