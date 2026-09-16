@@ -901,6 +901,43 @@ code {
   text-decoration: underline;
 }
 
+/* --- Индикатор синхронизации --------------------------------------------- */
+/* Ненавязчивый: маленький кружок в верхнем углу, виден только когда идёт синк
+   или требуется внимание. */
+.sync-indicator {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  right: 10px;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  opacity: 0.9;
+}
+.sync-indicator--error {
+  color: #b45309;
+  border-color: #f59e0b;
+  cursor: pointer;
+}
+.sync-indicator__spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--surface-2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 /* --- Update toast --------------------------------------------------------- */
 /* Баннер «Доступна новая версия» — плавает над навбаром снизу. */
 .update-toast {
