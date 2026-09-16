@@ -25,7 +25,7 @@ const SYNC_STATUS_TEXT = {
 function SyncSection() {
   const {
     mode, syncEnabled, syncStatus, lastSyncAt, syncError, needsSignIn, isClientConfigured,
-    syncSetup, clearSyncSetup,
+    syncSetup, clearSyncSetup, hasBackup, restoreLocalBackup,
     beginSync, listSyncSheets, createSyncSheet, connectSyncSheet, disableSync, disconnectSync,
     syncNow,
   } = useApp();
@@ -70,6 +70,11 @@ function SyncSection() {
     if (needSheet) setChoosing(true);
   });
 
+  const handleRestore = () => run(async () => {
+    const ok = await restoreLocalBackup();
+    if (!ok) setLocalError('Резервный снимок не найден.');
+  });
+
   const handleCreate = () => run(async () => {
     await createSyncSheet(sheetName);
     setChoosing(false);
@@ -99,6 +104,18 @@ function SyncSection() {
   return (
     <section>
       <h2 className="section-title">Синхронизация с Google</h2>
+
+      {hasBackup && (
+        <div className="gate__section">
+          <p className="muted" style={{ marginBottom: '0.5rem' }}>
+            Перед первой синхронизацией сохранён снимок данных этого устройства.
+            Если синхронизация заменила ваши данные — их можно вернуть.
+          </p>
+          <button className="btn btn--block" onClick={handleRestore} disabled={busy}>
+            ↩️ Восстановить данные до синхронизации
+          </button>
+        </div>
+      )}
 
       {!syncEnabled && !choosing && (
         <>

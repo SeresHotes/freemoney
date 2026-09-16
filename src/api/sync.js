@@ -26,6 +26,7 @@
 import { ensureSyncSchema, fetchAllForSync, overwriteEntity } from './store';
 import { rawDump, applyRecords, replaceAllData, getMeta, setMeta, hardDeleteSettings } from './localBackend';
 import { nowStamp, newId } from '../utils/format';
+import { DEFAULT_CATEGORIES } from './defaults';
 
 const ENTITIES = ['transactions', 'categories', 'wallets', 'tags', 'settings'];
 
@@ -201,12 +202,26 @@ export async function syncNow(spreadsheetId) {
     await overwriteEntity(spreadsheetId, 'settings', remote.settings);
   }
 
-  // Первый синк с пустым локальным стором и непустой таблицей — принять таблицу.
+  // Первый синк с ПУСТЫМ локальным стором и непустой таблицей — принять таблицу
+  // (adopt: replaceAllData затирает локальное). Это разрушающая операция, поэтому
+  // «пусто» проверяем по ВСЕМ сущностям, а не только по операциям: у пользователя
+  // могли быть заведены кошельки/категории/теги без единой операции — их adopt
+  // затёр бы. Считаем локальное нетронутым, только если нет живых операций и
+  // тегов, а кошельки/категории не превышают исходный дефолтный посев. Иначе —
+  // обычный merge (union по LWW), который ничего локально не удаляет.
+  const live = (rows) => (rows || []).filter((x) => !x.deleted).length;
+  const localPristine =
+    live(local.transactions) === 0 &&
+    live(local.tags) === 0 &&
+    live(local.wallets) <= 1 &&
+    live(local.categories) <= DEFAULT_CATEGORIES.length;
   const firstSync = !(await getMeta('lastSync'));
-  const localEmpty = (local.transactions || []).filter((t) => !t.deleted).length === 0;
   const remoteHasData = ENTITIES.some((e) => (remote[e] || []).length > 0);
-  if (firstSync && localEmpty && remoteHasData) {
+  if (firstSync && localPristine && remoteHasData) {
     const adopted = withCategoryIds(remote);
+    // Страховка: перед разрушающей заменой сохраняем снимок локальных данных,
+    // чтобы включение синхронизации никогда не приводило к безвозвратной потере.
+    await setMeta('preSyncBackup', { at: now, reason: 'adopt', data: local });
     await replaceAllData(adopted);
     await setMeta('syncSnapshot', buildSnapshot(adopted));
     await setMeta('lastSync', now);

@@ -5,7 +5,7 @@ import { initSpreadsheet, findExistingSpreadsheets } from '../api/store';
 import { syncNow } from '../api/sync';
 import {
   createLocalBackend, isLocalStoreReady, initLocalStore, requestPersistentStorage,
-  prepareWalletKeyMigration,
+  prepareWalletKeyMigration, hasPreSyncBackup, restorePreSyncBackup,
 } from '../api/localBackend';
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
@@ -42,6 +42,9 @@ export function AppProvider({ children }) {
   // Вошли в Google, но таблица ещё не выбрана — нужно показать выбор таблицы
   // (в т.ч. после возврата из редиректа входа в backend-режиме).
   const [syncSetup, setSyncSetup] = useState(false);
+  // Есть страховочный снимок локальных данных (сделан перед adopt-синком) —
+  // значит можно предложить откат, если синхронизация заменила данные.
+  const [hasBackup, setHasBackup] = useState(false);
 
   const backendRef = useRef(null);
   const spreadsheetIdRef = useRef(localStorage.getItem(LS_SPREADSHEET_ID) || null);
@@ -102,6 +105,7 @@ export function AppProvider({ children }) {
       await ensureToken();
       const res = await syncNow(id);
       if (backendRef.current) await loadData(backendRef.current);
+      if (res.adopted) setHasBackup(true); // синк заменил локальные данные — есть откат
       setLastSyncAt(res.at);
       localStorage.setItem(LS_LAST_SYNC, String(res.at));
       setNeedsSignIn(false);
@@ -213,6 +217,7 @@ export function AppProvider({ children }) {
 
       // UI показываем сразу — локальные данные уже загружены.
       setStatus('ready');
+      hasPreSyncBackup().then((v) => { if (!cancelled) setHasBackup(v); }).catch(() => {});
 
       if (enabled && spreadsheetIdRef.current && IS_CLIENT_ID_CONFIGURED) {
         syncEnabledRef.current = true;
@@ -636,6 +641,22 @@ export function AppProvider({ children }) {
 
   const clearSyncSetup = useCallback(() => setSyncSetup(false), []);
 
+  // Откатить локальные данные к снимку, сделанному перед adopt-синком. После
+  // восстановления отправляем данные в таблицу (scheduleSync), чтобы реплика
+  // тоже пришла в согласованное состояние.
+  const restoreLocalBackup = useCallback(
+    () => track(async () => {
+      const ok = await restorePreSyncBackup();
+      if (ok && backendRef.current) {
+        await loadData(backendRef.current);
+        setHasBackup(false);
+        scheduleSync();
+      }
+      return ok;
+    }),
+    [track, loadData, scheduleSync],
+  );
+
   const value = {
     status,
     mode,
@@ -654,6 +675,8 @@ export function AppProvider({ children }) {
     needsSignIn,
     syncSetup,
     clearSyncSetup,
+    hasBackup,
+    restoreLocalBackup,
     isClientConfigured: IS_CLIENT_ID_CONFIGURED,
     beginSync,
     listSyncSheets,

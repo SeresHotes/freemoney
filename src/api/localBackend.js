@@ -243,6 +243,21 @@ export async function hardDeleteSettings(keys) {
   db.close();
 }
 
+// Есть ли страховочный снимок локальных данных, сделанный перед adopt-синком.
+export async function hasPreSyncBackup() {
+  return Boolean(await getMeta('preSyncBackup'));
+}
+
+// Восстановить локальные данные из страховочного снимка (см. sync.js, adopt).
+// Возвращает true, если снимок был и данные восстановлены.
+export async function restorePreSyncBackup() {
+  const backup = await getMeta('preSyncBackup');
+  if (!backup?.data) return false;
+  await replaceAllData(backup.data);
+  await setMeta('preSyncBackup', null); // снимок использован — больше не предлагаем откат
+  return true;
+}
+
 // Число «живых» операций — признак того, что на устройстве есть реальные данные.
 export async function countActiveTransactions() {
   const db = await openDb();
