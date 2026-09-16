@@ -201,6 +201,12 @@ export async function syncNow(spreadsheetId) {
   let pulled = 0;
   let pushedEntities = 0;
 
+  // Разовая миграция формата ячеек: один раз на таблицу переписываем все листы,
+  // чтобы старые «сырые» updatedAt и голые даты в datetime стали читаемыми
+  // (ISO-8601 / «YYYY-MM-DD HH:MM:SS»). Содержимое не меняется — только кодировка.
+  const fmtKey = `freemoney:fmtmig1:${spreadsheetId}`;
+  const migrateFmt = !localStorage.getItem(fmtKey);
+
   for (const entity of ENTITIES) {
     const res = mergeEntity(entity, local[entity] || [], remote[entity] || [], snapAll[entity] || {}, now);
     newSnapAll[entity] = res.snap;
@@ -208,11 +214,13 @@ export async function syncNow(spreadsheetId) {
       await applyRecords(entity, res.localUpserts);
       pulled += res.localUpserts.length;
     }
-    if (res.remoteDirty) {
+    if (res.remoteDirty || (migrateFmt && res.remoteRecords.length)) {
       await overwriteEntity(spreadsheetId, entity, res.remoteRecords);
       pushedEntities += 1;
     }
   }
+
+  if (migrateFmt) localStorage.setItem(fmtKey, '1');
 
   await setMeta('syncSnapshot', newSnapAll);
   await setMeta('lastSync', now);

@@ -12,7 +12,9 @@
 //   Tags:       name|updatedAt|deleted                                        (A:C)
 //   Settings:   key|value|updatedAt                                           (A:C)
 //
-// updatedAt — метка изменения (мс) для LWW-мерджа; deleted — tombstone ('1'/'').
+// updatedAt — метка последнего изменения для LWW-мерджа; в таблице хранится
+// читаемой меткой ISO-8601 UTC («2026-09-16T14:30:00.123Z»), внутри приложения —
+// число мс. deleted — tombstone ('1'/'').
 // Лист остаётся читаемым и правится руками: изменения, внесённые в таблицу
 // напрямую, sync распознаёт по расхождению со снапшотом (см. api/sync.js).
 
@@ -55,6 +57,23 @@ const encBool = (v) => (v ? '1' : '');
 const decBool = (v) => v === '1' || v === 'TRUE' || v === 'true' || v === true;
 const decNum = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
 
+// updatedAt хранится в таблице читаемой меткой ISO-8601 в UTC
+// («2026-09-16T14:30:00.123Z»), а не «сырыми» миллисекундами — чтобы колонка
+// была легко читаема. Внутри приложения updatedAt остаётся числом мс (Date.now())
+// для LWW-мерджа; ISO хранит миллисекунды, поэтому round-trip без потерь точности.
+// UTC (а не локальное время) — чтобы метка одинаково парсилась на разных устройствах.
+const encStamp = (ms) => {
+  const n = Number(ms) || 0;
+  return n > 0 ? new Date(n).toISOString() : '';
+};
+const decStamp = (v) => {
+  if (v == null || v === '') return 0;
+  const s = String(v).trim();
+  if (/^\d+$/.test(s)) return Number(s); // legacy: «сырые» миллисекунды
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? 0 : t;
+};
+
 function parseTags(cell) {
   if (!cell) return [];
   return [...new Set(String(cell).split(',').map((t) => t.trim()).filter(Boolean))];
@@ -71,7 +90,7 @@ function txToRow(t) {
   return [
     t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
     t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
-    t.rate ?? '', String(t.updatedAt || 0), encBool(t.deleted),
+    t.rate ?? '', encStamp(t.updatedAt), encBool(t.deleted),
   ];
 }
 function rowToTx(r) {
@@ -95,7 +114,7 @@ function rowToTx(r) {
     origCurrency: r[10] || '',
     transferId: r[11] || '',
     rate,
-    updatedAt: decNum(r[13]),
+    updatedAt: decStamp(r[13]),
     deleted: decBool(r[14]),
   };
 }
@@ -103,7 +122,7 @@ function rowToTx(r) {
 function catToRow(c) {
   return [
     c.name, c.kind || 'both', c.status || 'active', c.icon || DEFAULT_ICON,
-    c.id || '', c.order ?? 0, String(c.updatedAt || 0), encBool(c.deleted),
+    c.id || '', c.order ?? 0, encStamp(c.updatedAt), encBool(c.deleted),
   ];
 }
 function rowToCat(r, index) {
@@ -114,7 +133,7 @@ function rowToCat(r, index) {
     icon: r[3] || DEFAULT_ICON,
     id: r[4] || '',
     order: r[5] === '' || r[5] == null ? index : decNum(r[5]),
-    updatedAt: decNum(r[6]),
+    updatedAt: decStamp(r[6]),
     deleted: decBool(r[7]),
   };
 }
@@ -122,7 +141,7 @@ function rowToCat(r, index) {
 function walletToRow(w) {
   return [
     w.id, w.name || '', w.currency || DEFAULT_BASE_CURRENCY, w.status || 'active', w.order ?? 0,
-    w.kind || 'cash', w.rate ?? 0, String(w.updatedAt || 0), encBool(w.deleted),
+    w.kind || 'cash', w.rate ?? 0, encStamp(w.updatedAt), encBool(w.deleted),
   ];
 }
 function rowToWallet(r, index) {
@@ -134,23 +153,23 @@ function rowToWallet(r, index) {
     order: r[4] === '' || r[4] == null ? index : decNum(r[4]),
     kind: r[5] || 'cash',
     rate: decNum(r[6]),
-    updatedAt: decNum(r[7]),
+    updatedAt: decStamp(r[7]),
     deleted: decBool(r[8]),
   };
 }
 
 function tagToRow(t) {
-  return [t.name, t.status || 'active', String(t.updatedAt || 0), encBool(t.deleted)];
+  return [t.name, t.status || 'active', encStamp(t.updatedAt), encBool(t.deleted)];
 }
 function rowToTag(r) {
-  return { name: r[0] || '', status: r[1] || 'active', updatedAt: decNum(r[2]), deleted: decBool(r[3]) };
+  return { name: r[0] || '', status: r[1] || 'active', updatedAt: decStamp(r[2]), deleted: decBool(r[3]) };
 }
 
 function settingToRow(s) {
-  return [s.key, s.value ?? '', String(s.updatedAt || 0)];
+  return [s.key, s.value ?? '', encStamp(s.updatedAt)];
 }
 function rowToSetting(r) {
-  return { key: r[0] || '', value: r[1] ?? '', updatedAt: decNum(r[2]), deleted: false };
+  return { key: r[0] || '', value: r[1] ?? '', updatedAt: decStamp(r[2]), deleted: false };
 }
 
 // Диапазоны данных (без строки заголовка) и мапперы по сущностям.
