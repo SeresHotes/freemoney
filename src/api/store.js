@@ -15,9 +15,15 @@
 // updatedAt — метка изменения (мс) для LWW-мерджа; deleted — tombstone ('1'/'').
 // Лист остаётся читаемым и правится руками: изменения, внесённые в таблицу
 // напрямую, sync распознаёт по расхождению со снапшотом (см. api/sync.js).
+//
+// Версия схемы хранится в служебном листе `_Meta` (ключ schemaVersion) — в самой
+// таблице, а не в localStorage, поэтому любое устройство видит реальную версию и
+// доводит недостающие миграции (см. SCHEMA_VERSION / MIGRATIONS ниже). Лист
+// `_Meta` не входит в синхронизируемые сущности и sync его не трогает.
 
 import {
   createSpreadsheet,
+  getValues,
   getValuesBatch,
   updateValues,
   batchUpdateValues,
@@ -34,6 +40,7 @@ export const SHEET_CAT = 'Categories';
 export const SHEET_WALLET = 'Wallets';
 export const SHEET_TAG = 'Tags';
 export const SHEET_SETTINGS = 'Settings';
+export const SHEET_META = '_Meta'; // служебный: версия схемы, не синхронизируется
 
 const TX_HEADER = [
   'id', 'datetime', 'type', 'amount', 'category', 'note', 'tags',
@@ -47,6 +54,32 @@ const CAT_HEADER = ['name', 'kind', 'status', 'icon', 'id', 'order', 'updatedAt'
 const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
 const TAG_HEADER = ['name', 'status', 'updatedAt', 'deleted'];
 const SETTINGS_HEADER = ['key', 'value', 'updatedAt'];
+const META_HEADER = ['key', 'value'];
+const SCHEMA_VERSION_KEY = 'schemaVersion';
+
+// Миграции схемы Google-таблицы, по порядку. Индекс+1 = целевая версия: элемент i
+// приводит таблицу с версии i к версии i+1. Каждая миграция ДОЛЖНА быть
+// идемпотентной (её могут прогнать повторно на частично мигрированной таблице).
+// Добавление новой версии = дописать функцию в конец массива — SCHEMA_VERSION
+// пересчитается сам, а старые таблицы догонят недостающие шаги при синхронизации.
+const MIGRATIONS = [
+  // v0 → v1: привести шапки всех листов к текущему суперсету колонок. Колонки
+  // только дописывались в конец (данные позиционные), поэтому перезапись
+  // заголовков безопасна и для таблиц старой схемы. Раньше это делалось разово по
+  // localStorage-флагу (freemoney:hdrN) — теперь версия живёт в самой таблице.
+  async (id) => {
+    await batchUpdateValues(id, [
+      { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
+      { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
+      { range: `${SHEET_WALLET}!A1:J1`, values: [WALLET_HEADER] },
+      { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
+      { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
+    ]);
+  },
+];
+// Текущая версия схемы = число миграций. Пре-версионные таблицы (без листа _Meta)
+// считаются версией 0 и догоняются до этой отметки.
+export const SCHEMA_VERSION = MIGRATIONS.length;
 
 // --- Кодирование ячеек ------------------------------------------------------
 
@@ -174,6 +207,7 @@ export async function initSpreadsheet(title = SPREADSHEET_TITLE) {
     { properties: { title: SHEET_WALLET } },
     { properties: { title: SHEET_TAG } },
     { properties: { title: SHEET_SETTINGS } },
+    { properties: { title: SHEET_META } },
   ]);
   const id = spreadsheet.spreadsheetId;
   await updateValues(id, `${SHEET_TX}!A1`, [TX_HEADER]);
@@ -181,12 +215,32 @@ export async function initSpreadsheet(title = SPREADSHEET_TITLE) {
   await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER]);
   await updateValues(id, `${SHEET_TAG}!A1`, [TAG_HEADER]);
   await updateValues(id, `${SHEET_SETTINGS}!A1`, [SETTINGS_HEADER]);
+  // Свежая таблица уже на актуальной схеме — сразу проставляем версию.
+  await writeSchemaVersion(id, SCHEMA_VERSION);
   return id;
 }
 
-// Дозавести недостающие листы и обновить шапки до текущей схемы-суперсета.
-// Старые таблицы (без колонок updatedAt/deleted/id/order) при этом остаются
-// читаемыми: недостающие ячейки sync прочитает как 0/пусто и заполнит при записи.
+// Прочитать версию схемы из листа _Meta. Отсутствие листа или ключа = версия 0
+// (пре-версионная таблица); при отсутствующем листе запрос не делаем.
+async function readSchemaVersion(id, metaExists) {
+  if (!metaExists) return 0;
+  const rows = await getValues(id, `${SHEET_META}!A2:B`);
+  const row = rows.find((r) => r[0] === SCHEMA_VERSION_KEY);
+  return row ? Number(row[1]) || 0 : 0;
+}
+
+// Записать версию схемы в лист _Meta (перезаписывает шапку и строку версии).
+async function writeSchemaVersion(id, version) {
+  await updateValues(id, `${SHEET_META}!A1:B2`, [
+    META_HEADER,
+    [SCHEMA_VERSION_KEY, String(version)],
+  ]);
+}
+
+// Довести таблицу до актуальной схемы: дозавести недостающие листы и прогнать
+// недостающие миграции по версии из листа _Meta. Старые таблицы (версия 0)
+// проходят все шаги по порядку; версия фиксируется после каждого, поэтому
+// прерванная синхронизация продолжится с места остановки.
 export async function ensureSyncSchema(id) {
   const meta = await getSpreadsheetMeta(id);
   const titles = new Set((meta.sheets || []).map((s) => s.properties.title));
@@ -205,16 +259,13 @@ export async function ensureSyncSchema(id) {
     await updateValues(id, `${SHEET_SETTINGS}!A1`, [SETTINGS_HEADER]);
   }
 
-  const hdrKey = `freemoney:hdr7:${id}`;
-  if (!localStorage.getItem(hdrKey)) {
-    await batchUpdateValues(id, [
-      { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
-      { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
-      { range: `${SHEET_WALLET}!A1:J1`, values: [WALLET_HEADER] },
-      { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
-      { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
-    ]);
-    localStorage.setItem(hdrKey, '1');
+  const metaExists = titles.has(SHEET_META);
+  if (!metaExists) await addSheet(id, SHEET_META);
+  const current = await readSchemaVersion(id, metaExists);
+
+  for (let v = current; v < SCHEMA_VERSION; v += 1) {
+    await MIGRATIONS[v](id);
+    await writeSchemaVersion(id, v + 1);
   }
 }
 
