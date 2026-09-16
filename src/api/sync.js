@@ -61,7 +61,7 @@ function contentSig(entity, r) {
     case 'wallets':
       return JSON.stringify([r.id, r.name || '', r.currency || '', r.status || 'active', r.order ?? 0, r.kind || 'cash', Number(r.rate) || 0, !!r.deleted]);
     case 'tags':
-      return JSON.stringify([r.name, !!r.deleted]);
+      return JSON.stringify([r.name, r.status || 'active', !!r.deleted]);
     case 'settings':
       return JSON.stringify([r.key, r.value ?? '']);
     default:

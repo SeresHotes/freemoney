@@ -79,14 +79,16 @@ export function AppProvider({ children }) {
     });
 
     // Разовый перенос: наполняем список тегов из уже проставленных в операциях.
+    // Теги — объекты { name, status } (архивирование вместо удаления).
     let tagList = tgs;
     if (settings.tagsBackfilled !== '1') {
+      const known = new Set(tgs.map((t) => t.name));
       const used = new Set();
       txs.forEach((t) => (t.tags || []).forEach((x) => used.add(x)));
-      const missing = [...used].filter((x) => !tgs.includes(x));
+      const missing = [...used].filter((x) => !known.has(x));
       for (const name of missing) await backend.addTag(name);
       await backend.setSetting('tagsBackfilled', '1');
-      if (missing.length) tagList = [...tgs, ...missing];
+      if (missing.length) tagList = [...tgs, ...missing.map((name) => ({ name, status: 'active' }))];
     }
 
     setCategories(cats);
@@ -539,11 +541,12 @@ export function AppProvider({ children }) {
     (name) => mutate(async () => { await backendRef.current.addTag(name); setTags(await backendRef.current.fetchTags()); }),
     [mutate],
   );
-  // Удаление тега = убрать из списка подсказок. Историю операций не трогаем.
-  const deleteTag = useCallback(
-    (name) => mutate(async () => {
-      await backendRef.current.deleteTag(name);
-      setTags((prev) => prev.filter((t) => t !== name));
+  // «Удаление» тега = архивирование (status): убираем из подсказок, но храним и
+  // можем вернуть. Историю операций не трогаем.
+  const setTagStatus = useCallback(
+    (name, newStatus) => mutate(async () => {
+      await backendRef.current.setTagStatus(name, newStatus);
+      setTags((prev) => prev.map((t) => (t.name === name ? { ...t, status: newStatus } : t)));
     }),
     [mutate],
   );
@@ -551,7 +554,7 @@ export function AppProvider({ children }) {
   const renameTag = useCallback(
     (oldName, newName) => mutate(async () => {
       await backendRef.current.renameTag(oldName, newName);
-      setTags((prev) => [...new Set(prev.map((t) => (t === oldName ? newName : t)))]);
+      setTags((prev) => prev.map((t) => (t.name === oldName ? { ...t, name: newName } : t)));
       setTransactions((prev) =>
         prev.map((t) => (
           (t.tags || []).includes(oldName)
@@ -631,7 +634,7 @@ export function AppProvider({ children }) {
     setWalletStatus,
     setWalletBalance,
     addTag,
-    deleteTag,
+    setTagStatus,
     renameTag,
     setBaseCurrencyPref,
     exportAll,

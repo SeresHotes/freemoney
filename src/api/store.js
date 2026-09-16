@@ -45,7 +45,7 @@ const TX_HEADER = [
 // (старая схема name|kind|status|icon) данные читались бы со сдвигом.
 const CAT_HEADER = ['name', 'kind', 'status', 'icon', 'id', 'order', 'updatedAt', 'deleted'];
 const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
-const TAG_HEADER = ['name', 'updatedAt', 'deleted'];
+const TAG_HEADER = ['name', 'status', 'updatedAt', 'deleted'];
 const SETTINGS_HEADER = ['key', 'value', 'updatedAt'];
 
 // --- Кодирование ячеек ------------------------------------------------------
@@ -139,10 +139,10 @@ function rowToWallet(r, index) {
 }
 
 function tagToRow(t) {
-  return [t.name, String(t.updatedAt || 0), encBool(t.deleted)];
+  return [t.name, t.status || 'active', String(t.updatedAt || 0), encBool(t.deleted)];
 }
 function rowToTag(r) {
-  return { name: r[0] || '', updatedAt: decNum(r[1]), deleted: decBool(r[2]) };
+  return { name: r[0] || '', status: r[1] || 'active', updatedAt: decNum(r[2]), deleted: decBool(r[3]) };
 }
 
 function settingToRow(s) {
@@ -157,7 +157,7 @@ const ENTITY = {
   transactions: { sheet: SHEET_TX, lastCol: 'O', toRow: txToRow, fromRow: rowToTx },
   categories: { sheet: SHEET_CAT, lastCol: 'H', toRow: catToRow, fromRow: rowToCat },
   wallets: { sheet: SHEET_WALLET, lastCol: 'J', toRow: walletToRow, fromRow: rowToWallet },
-  tags: { sheet: SHEET_TAG, lastCol: 'C', toRow: tagToRow, fromRow: rowToTag },
+  tags: { sheet: SHEET_TAG, lastCol: 'D', toRow: tagToRow, fromRow: rowToTag },
   settings: { sheet: SHEET_SETTINGS, lastCol: 'C', toRow: settingToRow, fromRow: rowToSetting },
 };
 
@@ -211,7 +211,7 @@ export async function ensureSyncSchema(id) {
       { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
       { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
       { range: `${SHEET_WALLET}!A1:J1`, values: [WALLET_HEADER] },
-      { range: `${SHEET_TAG}!A1:C1`, values: [TAG_HEADER] },
+      { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
       { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
     ]);
     localStorage.setItem(hdrKey, '1');
@@ -231,7 +231,7 @@ export async function fetchAllForSync(id) {
     `${SHEET_TX}!A2:O`,
     `${SHEET_CAT}!A2:H`,
     `${SHEET_WALLET}!A2:J`,
-    `${SHEET_TAG}!A2:C`,
+    `${SHEET_TAG}!A2:D`,
     `${SHEET_SETTINGS}!A2:C`,
   ]);
   return {

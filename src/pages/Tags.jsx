@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 export default function Tags() {
-  const { tags, addTag, deleteTag, renameTag } = useApp();
+  const { tags, addTag, setTagStatus, renameTag } = useApp();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -11,15 +11,25 @@ export default function Tags() {
   const [editing, setEditing] = useState(null); // редактируемый тег
   const [editValue, setEditValue] = useState('');
   const [editError, setEditError] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
 
-  const sorted = [...tags].sort((a, b) => a.localeCompare(b, 'ru'));
+  const byName = (a, b) => a.name.localeCompare(b.name, 'ru');
+  const { active, archived } = useMemo(
+    () => ({
+      active: tags.filter((t) => t.status === 'active').sort(byName),
+      archived: tags.filter((t) => t.status === 'archived').sort(byName),
+    }),
+    [tags],
+  );
+
+  const exists = (value) => tags.some((t) => t.name === value);
 
   const submit = async (e) => {
     e.preventDefault();
     setError(null);
     const value = name.trim();
     if (!value) return;
-    if (tags.includes(value)) { setError('Такой тег уже есть'); return; }
+    if (exists(value)) { setError('Такой тег уже есть'); return; }
     setBusy(true);
     try {
       await addTag(value);
@@ -31,10 +41,19 @@ export default function Tags() {
     }
   };
 
-  const remove = async (tag) => {
+  const archive = async (tag) => {
     setBusy(true);
     try {
-      await deleteTag(tag);
+      await setTagStatus(tag, 'archived');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restore = async (tag) => {
+    setBusy(true);
+    try {
+      await setTagStatus(tag, 'active');
     } finally {
       setBusy(false);
     }
@@ -47,7 +66,7 @@ export default function Tags() {
     const value = editValue.trim();
     if (!value) { setEditError('Введите имя'); return; }
     if (value === editing) { cancelEdit(); return; }
-    if (tags.includes(value)) { setEditError('Такой тег уже есть'); return; }
+    if (exists(value)) { setEditError('Такой тег уже есть'); return; }
     setBusy(true);
     try {
       await renameTag(editing, value);
@@ -78,12 +97,12 @@ export default function Tags() {
       {error && <p className="form-error">{error}</p>}
 
       <section>
-        <h2 className="section-title">Все теги ({sorted.length})</h2>
-        {sorted.length === 0 ? (
+        <h2 className="section-title">Все теги ({active.length})</h2>
+        {active.length === 0 ? (
           <p className="muted empty">Тегов пока нет. Создайте их здесь, а затем проставляйте в операциях.</p>
         ) : (
           <ul className="cat-list">
-            {sorted.map((t) => (
+            {active.map(({ name: t }) => (
               editing === t ? (
                 <li key={t} className="cat-item">
                   <input
@@ -101,7 +120,7 @@ export default function Tags() {
                 <li key={t} className="cat-item cat-item--clickable" onClick={() => navigate(`/transactions?tag=${encodeURIComponent(t)}`)}>
                   <span className="cat-item__name">{t}</span>
                   <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); startEdit(t); }} title="Переименовать">✏️</button>
-                  <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); remove(t); }} title="Удалить">🗑️</button>
+                  <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); archive(t); }} title="Удалить">🗑️</button>
                 </li>
               )
             ))}
@@ -109,9 +128,27 @@ export default function Tags() {
         )}
         {editError && <p className="form-error">{editError}</p>}
         <p className="muted hint">
-          Переименование меняет тег во всех операциях. Удаление убирает тег из подсказок при создании операции — уже проставленные теги в операциях остаются.
+          Переименование меняет тег во всех операциях. Удаление убирает тег из подсказок при создании операции — уже проставленные теги в операциях остаются, а сам тег можно вернуть из раздела «Удалённые».
         </p>
       </section>
+
+      {archived.length > 0 && (
+        <section>
+          <button className="link-btn-inline" onClick={() => setShowArchived((v) => !v)}>
+            {showArchived ? 'Скрыть удалённые' : `Показать удалённые (${archived.length})`}
+          </button>
+          {showArchived && (
+            <ul className="cat-list cat-list--archived">
+              {archived.map(({ name: t }) => (
+                <li key={t} className="cat-item cat-item--archived cat-item--clickable" onClick={() => navigate(`/transactions?tag=${encodeURIComponent(t)}`)}>
+                  <span className="cat-item__name">{t}</span>
+                  <button className="link-btn cat-item__action" disabled={busy} onClick={(e) => { e.stopPropagation(); restore(t); }} title="Восстановить">♻️</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }

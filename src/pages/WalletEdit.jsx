@@ -116,7 +116,7 @@ export default function WalletEdit() {
         <button className="btn btn--block btn--primary" type="submit" disabled={busy}>Сохранить</button>
         {editing && (
           <button type="button" className={`btn btn--block${current.status === 'active' ? ' btn--danger' : ''}`} onClick={toggleArchive} disabled={busy}>
-            {current.status === 'active' ? 'В архив' : 'Восстановить'}
+            {current.status === 'active' ? 'Удалить' : 'Восстановить'}
           </button>
         )}
       </form>

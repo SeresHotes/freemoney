@@ -232,7 +232,7 @@ export function createLocalBackend() {
         wallets: wls.filter(isLive)
           .map((w) => ({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-        tags: tgs.filter(isLive).map((r) => r.name),
+        tags: tgs.filter(isLive).map((r) => ({ name: r.name, status: r.status || 'active' })),
         settings: Object.fromEntries(settings.filter(isLive).map((r) => [r.key, r.value])),
       };
     },
@@ -268,7 +268,7 @@ export function createLocalBackend() {
       const db = await openDb();
       const rows = await getAll(db, STORE_TAG);
       db.close();
-      return rows.filter(isLive).map((r) => r.name);
+      return rows.filter(isLive).map((r) => ({ name: r.name, status: r.status || 'active' }));
     },
 
     fetchSettings: async () => {
@@ -378,22 +378,28 @@ export function createLocalBackend() {
 
     addTag: async (name) => {
       const db = await openDb();
-      await putStamped(db, STORE_TAG, { name, deleted: false });
+      await putStamped(db, STORE_TAG, { name, status: 'active', deleted: false });
       db.close();
     },
 
-    // Удаление тега = tombstone.
-    deleteTag: async (name) => {
+    // «Удаление» тега = архивирование (status), тег остаётся и восстановим.
+    // deleted (tombstone) для тегов ставит только rename — чтобы старое имя не
+    // воскресало при синхронизации.
+    setTagStatus: async (name, status) => {
       const db = await openDb();
-      await putStamped(db, STORE_TAG, { name, deleted: true });
+      const s = store(db, STORE_TAG, 'readwrite');
+      const tag = await reqToPromise(s.get(name));
+      if (tag) { tag.status = status; tag.updatedAt = nowStamp(); await reqToPromise(s.put(tag)); }
       db.close();
     },
 
     renameTag: async (oldName, newName) => {
       const db = await openDb();
       const tagStore = store(db, STORE_TAG, 'readwrite');
-      await reqToPromise(tagStore.put({ name: oldName, deleted: true, updatedAt: nowStamp() }));
-      await reqToPromise(tagStore.put({ name: newName, deleted: false, updatedAt: nowStamp() }));
+      const old = await reqToPromise(tagStore.get(oldName));
+      const status = old?.status || 'active';
+      await reqToPromise(tagStore.put({ name: oldName, status, deleted: true, updatedAt: nowStamp() }));
+      await reqToPromise(tagStore.put({ name: newName, status, deleted: false, updatedAt: nowStamp() }));
       const s = store(db, STORE_TX, 'readwrite');
       const all = await reqToPromise(s.getAll());
       for (const t of all) {
