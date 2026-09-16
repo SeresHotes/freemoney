@@ -11,8 +11,8 @@ const NEW = '__new__';
 export default function Debt() {
   const { wallets, transactions, recordDebt, updateTransfer, deleteTransaction } = useApp();
   const navigate = useNavigate();
-  const { transferId } = useParams();
-  const editing = Boolean(transferId);
+  const { groupId } = useParams();
+  const editing = Boolean(groupId);
 
   const cashWallets = useMemo(
     () => wallets.filter((w) => w.status === 'active' && !isDebtWallet(w)),
@@ -24,8 +24,8 @@ export default function Debt() {
   );
 
   const legs = useMemo(
-    () => (editing ? transactions.filter((t) => t.transferId === transferId) : []),
-    [editing, transferId, transactions],
+    () => (editing ? transactions.filter((t) => t.groupId === groupId) : []),
+    [editing, groupId, transactions],
   );
 
   // 'out' — деньги ушли из кошелька (дал в долг / погасил свой);
@@ -107,7 +107,7 @@ export default function Debt() {
         const legsPayload = direction === 'out'
           ? { outWallet: workWallet, inWallet: counterpartyName, amountOut: work_, amountIn: debt_ }
           : { outWallet: counterpartyName, inWallet: workWallet, amountOut: debt_, amountIn: work_ };
-        await updateTransfer({ transferId, ...legsPayload, date, time, note: note.trim() });
+        await updateTransfer({ groupId, ...legsPayload, date, time, note: note.trim() });
       } else {
         await recordDebt({
           counterparty: isNew ? null : counterpartyName,

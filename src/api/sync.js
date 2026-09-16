@@ -63,7 +63,7 @@ function contentSig(entity, r) {
         r.id, r.date, r.time, r.type, r.amount, r.category || '', r.note || '',
         [...(r.tags || [])].map((t) => t.trim()).filter(Boolean).sort(),
         r.wallet || '', r.currency || '', r.origAmount ?? null, r.origCurrency || '',
-        r.transferId || '', r.rate ?? null, !!r.deleted,
+        r.groupId || '', r.rate ?? null, !!r.deleted,
       ]);
     case 'categories':
       return JSON.stringify([r.name, r.kind || 'both', r.status || 'active', r.icon || '', r.order ?? 0, !!r.deleted]);

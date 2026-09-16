@@ -3,7 +3,7 @@
 // Схема листов — ПОЛНЫЙ суперсет полей приложения (ничего не теряется при
 // round-trip) плюс служебные колонки синхронизации `updatedAt` и `deleted`:
 //   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|
-//                 origAmount|origCurrency|transferId|rate|updatedAt|deleted   (A:O)
+//                 origAmount|origCurrency|groupId|rate|updatedAt|deleted   (A:O)
 //     datetime — всегда «YYYY-MM-DD HH:MM:SS» (в приложении хранится как date + time)
 //     type    — expense|income|transfer_in|transfer_out|adjust_in|adjust_out|
 //               interest_in|interest_out
@@ -49,7 +49,7 @@ export const SHEET_META = '_Meta'; // служебный: версия схем�
 
 const TX_HEADER = [
   'id', 'datetime', 'type', 'amount', 'category', 'note', 'tags',
-  'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'rate',
+  'wallet', 'currency', 'origAmount', 'origCurrency', 'groupId', 'rate',
   'updatedAt', 'deleted',
 ];
 // ВАЖНО: новые колонки (id/order/updatedAt/deleted) добавлены В КОНЕЦ, а старые
@@ -133,10 +133,15 @@ const decNum = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? 0 : Nu
 // Внутри приложения updatedAt остаётся числом мс (Date.now()) для LWW-мерджа; в
 // ячейку кладём посекундную метку (миллисекунды отбрасываем), декод восстанавливает
 // мс парсингом — точности до секунды для «последняя правка побеждает» достаточно.
+// Метка из будущего (сбой формата ячейки, автозаполнение даты в листе или сбитые
+// часы) ломает LWW-мердж: такая метка навсегда «побеждает» и откатывает любую
+// свежую правку. Поэтому будущее срезаем до «сейчас» и на записи, и на чтении —
+// корродированные значения не персистятся и не доминируют (см. CLAUDE.md).
 const encStamp = (ms) => {
   const n = Number(ms) || 0;
   if (n <= 0) return '';
-  const d = new Date(n);
+  const capped = Math.min(n, Date.now());
+  const d = new Date(capped);
   const p = (x) => String(x).padStart(2, '0');
   const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   return `${date} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -144,10 +149,11 @@ const encStamp = (ms) => {
 const decStamp = (v) => {
   if (v == null || v === '') return 0;
   const s = String(v).trim();
-  if (/^\d+$/.test(s)) return Number(s); // legacy: «сырые» миллисекунды
+  const now = Date.now();
+  if (/^\d+$/.test(s)) return Math.min(Number(s), now); // legacy: «сырые» миллисекунды
   // «YYYY-MM-DD HH:MM:SS» -> локальное время; ISO с суффиксом Z разберётся как UTC.
   const t = Date.parse(s.includes('T') ? s : s.replace(' ', 'T'));
-  return Number.isNaN(t) ? 0 : t;
+  return Number.isNaN(t) ? 0 : Math.min(t, now);
 };
 
 function parseTags(cell) {
@@ -165,7 +171,7 @@ function txToRow(t) {
   const datetime = toDatetime(t.date, t.time);
   return [
     t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
-    t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
+    t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.groupId || '',
     t.rate ?? '', encStamp(t.updatedAt), encBool(t.deleted),
   ];
 }
@@ -188,7 +194,7 @@ function rowToTx(r) {
     currency: r[8] || '',
     origAmount: r[9] ? Number(r[9]) : null,
     origCurrency: r[10] || '',
-    transferId: r[11] || '',
+    groupId: r[11] || '',
     rate,
     updatedAt: decStamp(r[13]),
     deleted: decBool(r[14]),

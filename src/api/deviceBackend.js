@@ -18,7 +18,7 @@ const FILES = {
   settings: 'settings.csv',
 };
 
-const TX_COLS = ['id', 'datetime', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'rate'];
+const TX_COLS = ['id', 'datetime', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'groupId', 'rate'];
 const CAT_COLS = ['id', 'name', 'kind', 'status', 'icon'];
 // Кошелёк идентифицируется по имени (колонка A), поле id упразднено.
 const WALLET_COLS = ['name', 'currency', 'status', 'order', 'kind', 'rate'];
@@ -48,7 +48,7 @@ async function writeRows(file, header, rows) {
 // --- Сериализация сущностей -------------------------------------------------
 const txToRow = (t) => [
   t.id, toDatetime(t.date, t.time), t.type, t.amount, t.category || '', t.note || '', (t.tags || []).join(', '),
-  t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '', t.rate ?? '',
+  t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.groupId || '', t.rate ?? '',
 ];
 const rowToTx = (r) => {
   const dt = r[1] || '';
@@ -58,7 +58,7 @@ const rowToTx = (r) => {
     category: r[4] || '', note: r[5] || '',
     tags: (r[6] || '').split(',').map((s) => s.trim()).filter(Boolean),
     wallet: r[7] || '', currency: r[8] || '', origAmount: r[9] ? Number(r[9]) : null,
-    origCurrency: r[10] || '', transferId: r[11] || '',
+    origCurrency: r[10] || '', groupId: r[11] || '',
     rate: r[12] != null && r[12] !== '' ? Number(r[12]) : null,
   };
 };

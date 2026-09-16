@@ -7,15 +7,15 @@ import { getRate } from '../api/rates';
 export default function Transfer() {
   const { wallets, transactions, addTransfer, updateTransfer, deleteTransaction } = useApp();
   const navigate = useNavigate();
-  const { transferId } = useParams();
-  const editing = Boolean(transferId);
+  const { groupId } = useParams();
+  const editing = Boolean(groupId);
 
   const active = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
 
   // В режиме правки достаём обе ноги пары.
   const legs = useMemo(
-    () => (editing ? transactions.filter((t) => t.transferId === transferId) : []),
-    [editing, transferId, transactions],
+    () => (editing ? transactions.filter((t) => t.groupId === groupId) : []),
+    [editing, groupId, transactions],
   );
   const outLeg = legs.find((t) => t.type === 'transfer_out');
   const inLeg = legs.find((t) => t.type === 'transfer_in');
@@ -86,7 +86,7 @@ export default function Transfer() {
     setSaving(true);
     try {
       if (editing) {
-        await updateTransfer({ transferId, outWallet: fromWallet, inWallet: toWallet, amountOut: out, amountIn: inc, date, time, note: note.trim() });
+        await updateTransfer({ groupId, outWallet: fromWallet, inWallet: toWallet, amountOut: out, amountIn: inc, date, time, note: note.trim() });
       } else {
         await addTransfer({ fromWallet, toWallet, amountOut: out, amountIn: inc, date, time, note: note.trim() });
       }

@@ -15,7 +15,7 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
     transactions: transactions.map((t) => ({
       id: t.id, date: t.date, type: t.type, amount: t.amount, category: t.category,
       note: t.note, tags: t.tags, wallet: t.wallet, currency: t.currency,
-      origAmount: t.origAmount, origCurrency: t.origCurrency, transferId: t.transferId,
+      origAmount: t.origAmount, origCurrency: t.origCurrency, groupId: t.groupId,
       time: t.time || '', rate: t.rate ?? null,
     })),
   };
@@ -74,7 +74,9 @@ export async function importBackup(text, backend, current) {
   const toAdd = [];
   for (const t of data.transactions || []) {
     if (existingIds.has(t.id)) continue;
-    toAdd.push({ ...t, wallet: oldIdToName.get(t.wallet) || t.wallet });
+    // Старые бэкапы хранят объединяющий id под именем transferId — переносим в groupId.
+    const { transferId, ...rest } = t;
+    toAdd.push({ ...rest, groupId: t.groupId ?? transferId ?? '', wallet: oldIdToName.get(t.wallet) || t.wallet });
     existingIds.add(t.id);
   }
   if (toAdd.length) {

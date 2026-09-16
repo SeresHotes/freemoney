@@ -320,12 +320,16 @@ export function createLocalBackend() {
       }
       // Бэкфилл updatedAt: существовавшие до синхронизации данные считаем
       // актуальными, чтобы они не проиграли пустой/старой таблице при первом мердже.
+      // Заодно лечим метки из будущего (сбой формата/часов): такая метка вечно
+      // выигрывает LWW и откатывает свежие правки — срезаем её до «сейчас».
       const stamp = nowStamp();
       for (const name of DATA_STORES) {
         const rows = await getAll(db, name);
         const s = store(db, name, 'readwrite');
         for (const r of rows) {
-          if (r.updatedAt == null) await reqToPromise(s.put({ ...r, updatedAt: stamp }));
+          if (r.updatedAt == null || r.updatedAt > stamp) {
+            await reqToPromise(s.put({ ...r, updatedAt: stamp }));
+          }
         }
       }
       db.close();

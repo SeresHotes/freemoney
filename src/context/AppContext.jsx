@@ -373,17 +373,17 @@ export function AppProvider({ children }) {
       mutate(async () => {
         const from = wallets.find((w) => w.name === fromWallet);
         const to = wallets.find((w) => w.name === toWallet);
-        const transferId = newId();
+        const groupId = newId();
         const legTime = time || nowTime();
         const out = {
           id: newId(), date, type: 'transfer_out', amount: amountOut, category: '',
           note: note || '', tags: [], wallet: fromWallet, currency: from?.currency || '',
-          origAmount: null, origCurrency: '', transferId, time: legTime,
+          origAmount: null, origCurrency: '', groupId, time: legTime,
         };
         const inc = {
           id: newId(), date, type: 'transfer_in', amount: amountIn, category: '',
           note: note || '', tags: [], wallet: toWallet, currency: to?.currency || '',
-          origAmount: null, origCurrency: '', transferId, time: legTime,
+          origAmount: null, origCurrency: '', groupId, time: legTime,
         };
         await backendRef.current.addTransactions([out, inc]);
         setTransactions((prev) => [...prev, out, inc]);
@@ -416,11 +416,11 @@ export function AppProvider({ children }) {
         const debtCurrency = debtWallet?.currency || workCurrency;
         const amtWork = Number(amountWork);
         const amtDebt = Number(amountDebt) || amtWork;
-        const transferId = newId();
+        const groupId = newId();
         const legTime = time || nowTime();
         const leg = (type, wallet, currency, amount) => ({
           id: newId(), date, type, amount, category: '', note: note || '',
-          tags: [], wallet, currency, origAmount: null, origCurrency: '', transferId, time: legTime,
+          tags: [], wallet, currency, origAmount: null, origCurrency: '', groupId, time: legTime,
         });
         const legs = cashDirection === 'out'
           ? [leg('transfer_out', workWallet, workCurrency, amtWork),
@@ -435,9 +435,9 @@ export function AppProvider({ children }) {
 
   // Правка перевода/долга: переписываем обе ноги пары одним действием.
   const updateTransfer = useCallback(
-    ({ transferId, outWallet, inWallet, amountOut, amountIn, date, note, time }) =>
+    ({ groupId, outWallet, inWallet, amountOut, amountIn, date, note, time }) =>
       mutate(async () => {
-        const legs = transactions.filter((t) => t.transferId === transferId);
+        const legs = transactions.filter((t) => t.groupId === groupId);
         const outLeg = legs.find((t) => t.type === 'transfer_out');
         const inLeg = legs.find((t) => t.type === 'transfer_in');
         if (!outLeg || !inLeg) throw new Error('Перевод не найден');
@@ -474,7 +474,7 @@ export function AppProvider({ children }) {
           type: subtract ? 'interest_out' : 'interest_in',
           amount, category: '', note: note || '', tags: [],
           wallet: wallet.name, currency: wallet.currency,
-          origAmount: null, origCurrency: '', transferId: '', rate: r,
+          origAmount: null, origCurrency: '', groupId: '', rate: r,
         };
         await backendRef.current.addTransaction(tx);
         setTransactions((prev) => [...prev, tx]);
@@ -497,8 +497,8 @@ export function AppProvider({ children }) {
     (id) =>
       mutate(async () => {
         const tx = transactions.find((t) => t.id === id);
-        const ids = tx?.transferId
-          ? transactions.filter((t) => t.transferId === tx.transferId).map((t) => t.id)
+        const ids = tx?.groupId
+          ? transactions.filter((t) => t.groupId === tx.groupId).map((t) => t.id)
           : [id];
         for (const legId of ids) await backendRef.current.deleteTransaction(legId);
         setTransactions((prev) => prev.filter((t) => !ids.includes(t.id)));
@@ -594,7 +594,7 @@ export function AppProvider({ children }) {
           currency: wallet.currency,
           origAmount: null,
           origCurrency: '',
-          transferId: '',
+          groupId: '',
         };
         await backendRef.current.addTransaction(tx);
         setTransactions((prev) => [...prev, tx]);

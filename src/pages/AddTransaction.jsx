@@ -200,7 +200,7 @@ export default function AddTransaction() {
       id: editingTx?.id || newId(),
       date, time, type, amount: finalAmount, category, note: note.trim(), tags,
       wallet: walletId, currency: walletCurrency, origAmount, origCurrency,
-      transferId: '',
+      groupId: '',
     };
     setSaving(true);
     try {
