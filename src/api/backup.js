@@ -1,6 +1,7 @@
 // Единая резервная копия: весь набор данных в одном JSON-файле.
 
 import { downloadFile } from '../utils/csv';
+import { normalizeTag } from '../utils/format';
 
 const VERSION = 1;
 
@@ -58,7 +59,7 @@ export async function importBackup(text, backend, current) {
   }
 
   // Теги — по имени (старые бэкапы хранят строки, новые — {name, status}).
-  const tagName = (t) => (typeof t === 'string' ? t : t.name);
+  const tagName = (t) => normalizeTag(typeof t === 'string' ? t : t.name);
   const tagSet = new Set((current.tags || []).map(tagName));
   for (const t of data.tags || []) {
     const name = tagName(t);
@@ -75,7 +76,8 @@ export async function importBackup(text, backend, current) {
   const toAdd = [];
   for (const t of data.transactions || []) {
     if (existingIds.has(t.id)) continue;
-    toAdd.push({ ...t, wallet: oldToNewWallet.get(t.wallet) || t.wallet });
+    const tags = t.tags ? [...new Set(t.tags.map(normalizeTag).filter(Boolean))] : t.tags;
+    toAdd.push({ ...t, tags, wallet: oldToNewWallet.get(t.wallet) || t.wallet });
     existingIds.add(t.id);
   }
   if (toAdd.length) {

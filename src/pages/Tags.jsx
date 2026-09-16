@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { normalizeTag } from '../utils/format';
 
 export default function Tags() {
   const { tags, addTag, setTagStatus, renameTag } = useApp();
@@ -27,7 +28,7 @@ export default function Tags() {
   const submit = async (e) => {
     e.preventDefault();
     setError(null);
-    const value = name.trim();
+    const value = normalizeTag(name);
     if (!value) return;
     if (exists(value)) { setError('Такой тег уже есть'); return; }
     setBusy(true);
@@ -63,7 +64,7 @@ export default function Tags() {
   const cancelEdit = () => { setEditing(null); setEditValue(''); setEditError(null); };
 
   const saveEdit = async () => {
-    const value = editValue.trim();
+    const value = normalizeTag(editValue);
     if (!value) { setEditError('Введите имя'); return; }
     if (value === editing) { cancelEdit(); return; }
     if (exists(value)) { setEditError('Такой тег уже есть'); return; }

@@ -98,6 +98,11 @@ export function compactNumber(value) {
   return compactFormatter.format(value || 0);
 }
 
+// Нормализация тега: убираем символы «#» и лишние пробелы.
+export function normalizeTag(name) {
+  return (name || '').replace(/#/g, '').trim();
+}
+
 export function newId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `${Date.now()}-${Math.round(Math.random() * 1e9)}`;

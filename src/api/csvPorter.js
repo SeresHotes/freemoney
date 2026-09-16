@@ -1,7 +1,7 @@
 // Экспорт и импорт данных в CSV. Работает поверх любого бэкенда хранилища.
 
 import { toCsv, parseCsv, downloadFile } from '../utils/csv';
-import { newId } from '../utils/format';
+import { newId, normalizeTag } from '../utils/format';
 
 const TX_COLUMNS = ['id', 'date', 'type', 'amount', 'category', 'note', 'tags'];
 const CAT_COLUMNS = ['name', 'kind', 'status', 'icon'];
@@ -50,7 +50,7 @@ export async function importTransactionsCsv(text, backend, existingTransactions)
     if (existingIds.has(id)) continue;
     const tags = (idx.tags >= 0 ? row[idx.tags] || '' : '')
       .split(',')
-      .map((s) => s.trim())
+      .map(normalizeTag)
       .filter(Boolean);
     await backend.addTransaction({
       id,

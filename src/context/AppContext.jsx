@@ -7,7 +7,7 @@ import { createLocalBackend, isLocalStoreReady, initLocalStore } from '../api/lo
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
 import { LS_SPREADSHEET_ID, LS_MODE, DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED } from '../config';
-import { newId, todayIso, nowTime } from '../utils/format';
+import { newId, todayIso, nowTime, normalizeTag } from '../utils/format';
 import { walletBalance } from '../utils/finance';
 
 const AppContext = createContext(null);
@@ -70,11 +70,31 @@ export function AppProvider({ children }) {
       if (missing.length) tagList = [...tgs, ...missing.map((name) => ({ name, status: 'active' }))];
     }
 
+    // Разовая чистка: убираем символ «#» из тегов — и в списке, и в операциях.
+    let txList = normalized;
+    if (settings.tagsHashStripped !== '1') {
+      const dirty = tagList.filter((t) => normalizeTag(t.name) !== t.name);
+      for (const t of dirty) {
+        const clean = normalizeTag(t.name);
+        if (clean) await backend.renameTag(t.name, clean);
+        else await backend.setTagStatus(t.name, 'archived'); // после чистки пусто — прячем
+      }
+      await backend.setSetting('tagsHashStripped', '1');
+      if (dirty.length) {
+        tagList = await backend.fetchTags();
+        txList = txList.map((t) => (
+          (t.tags || []).some((x) => normalizeTag(x) !== x)
+            ? { ...t, tags: [...new Set(t.tags.map(normalizeTag).filter(Boolean))] }
+            : t
+        ));
+      }
+    }
+
     setCategories(cats);
     setWallets(wls);
     setTags(tagList);
     setBaseCurrency(base);
-    setTransactions(normalized);
+    setTransactions(txList);
   }, []);
 
   const activateBackend = useCallback(
