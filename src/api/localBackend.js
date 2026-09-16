@@ -16,6 +16,7 @@ const STORE_SETTINGS = 'settings';
 // пересоздаём стор с keyPath 'name', переносим их без id и правим ссылки в
 // операциях (t.wallet: id → название). Выполняется внутри versionchange-транзакции.
 function migrateWalletsToNameKey(db, upgradeTx) {
+  console.info('[freemoney] Локально: миграция кошельков id → название');
   const walletsReq = upgradeTx.objectStore(STORE_WALLET).getAll();
   walletsReq.onsuccess = () => {
     const old = walletsReq.result || [];

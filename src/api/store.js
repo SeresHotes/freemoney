@@ -125,6 +125,7 @@ export async function ensureSchema(id) {
 async function migrateWalletsToNameKey(id) {
   const header = await getValues(id, `${SHEET_WALLET}!A1:A1`);
   if (header[0]?.[0] !== 'id') return; // уже мигрировано либо лист пуст
+  console.info('[freemoney] Google: миграция кошельков id → название');
 
   const rows = await getValues(id, `${SHEET_WALLET}!A2:G`);
   const old = rows

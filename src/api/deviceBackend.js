@@ -109,6 +109,7 @@ export function createDeviceBackend() {
   const migrateWalletsToNameKey = async () => {
     const rows = await readRows(FILES.wallets);
     if (!rows.length || rows[0][0] !== 'id') return;
+    console.info('[freemoney] Устройство: миграция кошельков id → название');
     const old = rows
       .slice(1)
       .filter((r) => r[0])
