@@ -5,7 +5,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { DEFAULT_CATEGORIES, DEFAULT_ICON } from './defaults';
 import { DEFAULT_BASE_CURRENCY } from '../config';
 import { toCsv, parseCsv } from '../utils/csv';
-import { newId } from '../utils/format';
+import { newId, toDatetime } from '../utils/format';
 
 const DIR = Directory.Documents;
 const FOLDER = 'freemoney';
@@ -47,7 +47,7 @@ async function writeRows(file, header, rows) {
 
 // --- Сериализация сущностей -------------------------------------------------
 const txToRow = (t) => [
-  t.id, t.date ? `${t.date} ${t.time || '00:00'}` : '', t.type, t.amount, t.category || '', t.note || '', (t.tags || []).join(', '),
+  t.id, toDatetime(t.date, t.time), t.type, t.amount, t.category || '', t.note || '', (t.tags || []).join(', '),
   t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '', t.rate ?? '',
 ];
 const rowToTx = (r) => {

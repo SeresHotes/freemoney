@@ -234,6 +234,15 @@ export async function replaceAllData({ transactions, categories, wallets, tags, 
   db.close();
 }
 
+// Жёстко удалить ключи из настроек (без tombstone). Нужно для одноразовой
+// чистки устаревших служебных ключей — у настроек нет механизма удаления в синке.
+export async function hardDeleteSettings(keys) {
+  const db = await openDb();
+  const s = store(db, STORE_SETTINGS, 'readwrite');
+  for (const key of keys) await reqToPromise(s.delete(key));
+  db.close();
+}
+
 // Число «живых» операций — признак того, что на устройстве есть реальные данные.
 export async function countActiveTransactions() {
   const db = await openDb();

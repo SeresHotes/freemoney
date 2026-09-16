@@ -25,6 +25,21 @@ export function nowTime() {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+// Нормализует время к «HH:MM:SS» (дополняет секундами и нулями, если их нет).
+// Пустое значение превращается в «00:00:00».
+export function normalizeTime(time) {
+  const [h = '', m = '', s = ''] = String(time || '').split(':');
+  const p = (n) => n.padStart(2, '0');
+  return `${p(h)}:${p(m)}:${p(s)}`;
+}
+
+// Единый формат даты-времени для хранения в таблице: «YYYY-MM-DD HH:MM:SS».
+// Колонка datetime всегда содержит и дату, и время — чтобы таблица была
+// единообразной и легко читаемой (см. правило в CLAUDE.md).
+export function toDatetime(date, time) {
+  return date ? `${date} ${normalizeTime(time)}` : '';
+}
+
 // Ключ месяца YYYY-MM из ISO-даты.
 export function monthKey(isoDate) {
   return (isoDate || '').slice(0, 7);

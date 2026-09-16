@@ -79,22 +79,9 @@ export function AppProvider({ children }) {
       return { ...t, wallet, currency };
     });
 
-    // Разовый перенос: наполняем список тегов из уже проставленных в операциях.
-    // Теги — объекты { name, status } (архивирование вместо удаления).
-    let tagList = tgs;
-    if (settings.tagsBackfilled !== '1') {
-      const known = new Set(tgs.map((t) => t.name));
-      const used = new Set();
-      txs.forEach((t) => (t.tags || []).forEach((x) => used.add(x)));
-      const missing = [...used].filter((x) => !known.has(x));
-      for (const name of missing) await backend.addTag(name);
-      await backend.setSetting('tagsBackfilled', '1');
-      if (missing.length) tagList = [...tgs, ...missing.map((name) => ({ name, status: 'active' }))];
-    }
-
     setCategories(cats);
     setWallets(wls);
-    setTags(tagList);
+    setTags(tgs);
     setBaseCurrency(base);
     setTransactions(normalized);
   }, []);
