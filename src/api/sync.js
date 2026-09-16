@@ -202,9 +202,9 @@ export async function syncNow(spreadsheetId) {
   let pushedEntities = 0;
 
   // Разовая миграция формата ячеек: один раз на таблицу переписываем все листы,
-  // чтобы старые «сырые» updatedAt и голые даты в datetime стали читаемыми
-  // (ISO-8601 / «YYYY-MM-DD HH:MM:SS»). Содержимое не меняется — только кодировка.
-  const fmtKey = `freemoney:fmtmig1:${spreadsheetId}`;
+  // чтобы «сырые»/ISO updatedAt и голые даты в datetime стали читаемым datetime
+  // «YYYY-MM-DD HH:MM:SS». Содержимое не меняется — только кодировка ячеек.
+  const fmtKey = `freemoney:fmtmig2:${spreadsheetId}`;
   const migrateFmt = !localStorage.getItem(fmtKey);
 
   for (const entity of ENTITIES) {

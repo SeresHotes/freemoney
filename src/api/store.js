@@ -13,7 +13,7 @@
 //   Settings:   key|value|updatedAt                                           (A:C)
 //
 // updatedAt — метка последнего изменения для LWW-мерджа; в таблице хранится
-// читаемой меткой ISO-8601 UTC («2026-09-16T14:30:00.123Z»), внутри приложения —
+// читаемым datetime «YYYY-MM-DD HH:MM:SS» (как время операций), внутри приложения —
 // число мс. deleted — tombstone ('1'/'').
 // Лист остаётся читаемым и правится руками: изменения, внесённые в таблицу
 // напрямую, sync распознаёт по расхождению со снапшотом (см. api/sync.js).
@@ -57,20 +57,25 @@ const encBool = (v) => (v ? '1' : '');
 const decBool = (v) => v === '1' || v === 'TRUE' || v === 'true' || v === true;
 const decNum = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
 
-// updatedAt хранится в таблице читаемой меткой ISO-8601 в UTC
-// («2026-09-16T14:30:00.123Z»), а не «сырыми» миллисекундами — чтобы колонка
-// была легко читаема. Внутри приложения updatedAt остаётся числом мс (Date.now())
-// для LWW-мерджа; ISO хранит миллисекунды, поэтому round-trip без потерь точности.
-// UTC (а не локальное время) — чтобы метка одинаково парсилась на разных устройствах.
+// updatedAt пишем тем же читаемым datetime-форматом, что и время операций:
+// «YYYY-MM-DD HH:MM:SS» (локальное время) — чтобы вся таблица читалась единообразно.
+// Внутри приложения updatedAt остаётся числом мс (Date.now()) для LWW-мерджа; в
+// ячейку кладём посекундную метку (миллисекунды отбрасываем), декод восстанавливает
+// мс парсингом — точности до секунды для «последняя правка побеждает» достаточно.
 const encStamp = (ms) => {
   const n = Number(ms) || 0;
-  return n > 0 ? new Date(n).toISOString() : '';
+  if (n <= 0) return '';
+  const d = new Date(n);
+  const p = (x) => String(x).padStart(2, '0');
+  const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${date} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
 const decStamp = (v) => {
   if (v == null || v === '') return 0;
   const s = String(v).trim();
   if (/^\d+$/.test(s)) return Number(s); // legacy: «сырые» миллисекунды
-  const t = Date.parse(s);
+  // «YYYY-MM-DD HH:MM:SS» -> локальное время; ISO с суффиксом Z разберётся как UTC.
+  const t = Date.parse(s.includes('T') ? s : s.replace(' ', 'T'));
   return Number.isNaN(t) ? 0 : t;
 };
 
