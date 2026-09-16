@@ -19,7 +19,7 @@ export default function EditInterest({ tx }) {
 
   const [date, setDate] = useState(tx.date);
   const [time, setTime] = useState(tx.time || '');
-  const [mode, setMode] = useState(tx.type === 'interest_out' ? 'subtract' : 'add');
+  const [mode, setMode] = useState(tx.amount < 0 ? 'subtract' : 'add');
   const [percent, setPercent] = useState(tx.rate != null ? String(tx.rate) : '');
   const [baseStr, setBaseStr] = useState('');
   const [baseTouched, setBaseTouched] = useState(false);
@@ -54,8 +54,8 @@ export default function EditInterest({ tx }) {
 
     const next = {
       ...tx,
-      type: subtract ? 'interest_out' : 'interest_in',
-      amount,
+      type: 'interest',
+      amount: subtract ? -amount : amount,
       rate,
       category: '',
       date,

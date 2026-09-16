@@ -2,20 +2,20 @@
 
 import { downloadFile } from '../utils/csv';
 
-const VERSION = 1;
+const VERSION = 2;
 
 export function exportBackup({ baseCurrency, wallets, categories, tags, transactions }) {
   const payload = {
     app: 'freemoney',
     version: VERSION,
     baseCurrency,
-    wallets: wallets.map((w) => ({ name: w.name, currency: w.currency, status: w.status, kind: w.kind || 'cash', rate: w.rate || 0 })),
-    categories: categories.map((c) => ({ name: c.name, kind: c.kind, status: c.status, icon: c.icon })),
-    tags: tags.map((t) => (typeof t === 'string' ? { name: t, status: 'active' } : { name: t.name, status: t.status || 'active' })),
+    wallets: wallets.map((w) => ({ name: w.name, currency: w.currency, archived: !!w.archived, kind: w.kind || 'cash', rate: w.rate || 0 })),
+    categories: categories.map((c) => ({ name: c.name, kind: c.kind, archived: !!c.archived, icon: c.icon })),
+    tags: tags.map((t) => (typeof t === 'string' ? { name: t, archived: false } : { name: t.name, archived: !!t.archived })),
     transactions: transactions.map((t) => ({
       id: t.id, date: t.date, type: t.type, amount: t.amount, category: t.category,
       note: t.note, tags: t.tags, wallet: t.wallet, currency: t.currency,
-      origAmount: t.origAmount, origCurrency: t.origCurrency, transferId: t.transferId,
+      origAmount: t.origAmount, origCurrency: t.origCurrency, groupId: t.groupId,
       time: t.time || '', rate: t.rate ?? null,
     })),
   };
@@ -55,15 +55,15 @@ export async function importBackup(text, backend, current) {
     }
   }
 
-  // Теги — по имени (старые бэкапы хранят строки, новые — {name, status}).
+  // Теги — по имени (старые бэкапы: строки или {name,status}; новые — {name,archived}).
   const tagName = (t) => (typeof t === 'string' ? t : t.name);
   const tagSet = new Set((current.tags || []).map(tagName));
   for (const t of data.tags || []) {
     const name = tagName(t);
     if (!name || tagSet.has(name)) continue;
     await backend.addTag(name);
-    const status = typeof t === 'string' ? 'active' : (t.status || 'active');
-    if (status === 'archived') await backend.setTagStatus(name, 'archived');
+    const archived = typeof t === 'string' ? false : (t.archived ?? (t.status === 'archived'));
+    if (archived) await backend.setTagArchived(name, true);
     tagSet.add(name);
     result.tags += 1;
   }
@@ -74,7 +74,9 @@ export async function importBackup(text, backend, current) {
   const toAdd = [];
   for (const t of data.transactions || []) {
     if (existingIds.has(t.id)) continue;
-    toAdd.push({ ...t, wallet: oldIdToName.get(t.wallet) || t.wallet });
+    // Старые бэкапы хранят объединяющий id под именем transferId — переносим в groupId.
+    const { transferId, ...rest } = t;
+    toAdd.push({ ...rest, groupId: t.groupId ?? transferId ?? '', wallet: oldIdToName.get(t.wallet) || t.wallet });
     existingIds.add(t.id);
   }
   if (toAdd.length) {

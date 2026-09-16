@@ -16,7 +16,7 @@ export default function Interest() {
   const { wallets, transactions, accrueInterest } = useApp();
   const navigate = useNavigate();
 
-  const active = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
+  const active = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
 
   const [walletId, setWalletId] = useState(active[0]?.name || '');
   const [percent, setPercent] = useState('');

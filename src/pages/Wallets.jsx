@@ -9,8 +9,8 @@ export default function Wallets() {
   const navigate = useNavigate();
   const [showArchived, setShowArchived] = useState(false);
 
-  const active = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
-  const archived = useMemo(() => wallets.filter((w) => w.status === 'archived'), [wallets]);
+  const active = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
+  const archived = useMemo(() => wallets.filter((w) => w.archived), [wallets]);
 
   return (
     <div className="page">
