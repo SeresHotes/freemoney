@@ -182,6 +182,7 @@ export function AppProvider({ children }) {
       try {
         await activateLocal();
       } catch (err) {
+        console.error('Не удалось открыть локальное хранилище:', err);
         if (!cancelled) { setError('Не удалось открыть локальное хранилище.'); setStatus('ready'); }
         return;
       }
