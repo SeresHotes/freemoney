@@ -22,10 +22,16 @@
 // смешивая её со свежесозданными дефолтами. Иначе — обычный merge без потерь.
 
 import { ensureSyncSchema, fetchAllForSync, overwriteEntity } from './store';
-import { rawDump, applyRecords, replaceAllData, getMeta, setMeta } from './localBackend';
+import { rawDump, applyRecords, replaceAllData, getMeta, setMeta, hardDeleteSettings } from './localBackend';
 import { nowStamp, newId } from '../utils/format';
 
 const ENTITIES = ['transactions', 'categories', 'wallets', 'tags', 'settings'];
+
+// Устаревшие служебные ключи настроек (флаги давно отработавших миграций).
+// Разово вычищаем их из листа и локального стора при синке; после этого
+// проверка становится no-op. У настроек нет tombstone, поэтому обычный merge
+// вернул бы ключ с одной стороны на другую — чистим обе явно.
+const DEAD_SETTINGS = ['tagsBackfilled', 'tagsHashStripped'];
 
 const norm = (s) => (s || '').trim().toLowerCase();
 
@@ -183,6 +189,15 @@ export async function syncNow(spreadsheetId) {
   const now = nowStamp();
 
   const [remote, local] = await Promise.all([fetchAllForSync(spreadsheetId), rawDump()]);
+
+  // Разовая чистка устаревших служебных ключей настроек — из листа и локально.
+  const isDead = (r) => DEAD_SETTINGS.includes(r.key);
+  if ((remote.settings || []).some(isDead) || (local.settings || []).some(isDead)) {
+    remote.settings = (remote.settings || []).filter((r) => !isDead(r));
+    local.settings = (local.settings || []).filter((r) => !isDead(r));
+    await hardDeleteSettings(DEAD_SETTINGS);
+    await overwriteEntity(spreadsheetId, 'settings', remote.settings);
+  }
 
   // Первый синк с пустым локальным стором и непустой таблицей — принять таблицу.
   const firstSync = !(await getMeta('lastSync'));
