@@ -46,7 +46,7 @@ export default function Transactions() {
   );
 
   const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
-  const walletById = useMemo(() => new Map(wallets.map((w) => [w.id, w])), [wallets]);
+  const walletByName = useMemo(() => new Map(wallets.map((w) => [w.name, w])), [wallets]);
 
   // Пары ног перевода/долга по transferId — берём из полного списка, чтобы
   // показать обе стороны (A → B) даже когда фильтр по кошельку оставил одну ногу.
@@ -64,7 +64,7 @@ export default function Transactions() {
 
   const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [categories]);
   const walletOptions = useMemo(
-    () => wallets.filter((w) => w.status === 'active').map((w) => ({ value: w.id, label: w.name })),
+    () => wallets.filter((w) => w.status === 'active').map((w) => ({ value: w.name, label: w.name })),
     [wallets],
   );
   const tagOptions = useMemo(() => {
@@ -129,8 +129,8 @@ export default function Transactions() {
     const pair = pairs.get(t.transferId) || {};
     const outLeg = pair.out;
     const inLeg = pair.in;
-    const outW = outLeg ? walletById.get(outLeg.wallet) : null;
-    const inW = inLeg ? walletById.get(inLeg.wallet) : null;
+    const outW = outLeg ? walletByName.get(outLeg.wallet) : null;
+    const inW = inLeg ? walletByName.get(inLeg.wallet) : null;
     const isDebt = isDebtWallet(outW) || isDebtWallet(inW);
 
     let icon;
@@ -145,7 +145,7 @@ export default function Transactions() {
       const debtLeg = cashOut ? inLeg : outLeg;
       const debtW = cashOut ? inW : outW;
       const cashLeg = cashOut ? outLeg : inLeg;
-      const balBefore = debtLeg ? debtBalanceBefore(transactions, debtW.id, debtLeg) : 0;
+      const balBefore = debtLeg ? debtBalanceBefore(transactions, debtW.name, debtLeg) : 0;
       const amt = cashLeg ? cashLeg.amount : debtLeg?.amount || 0;
       const cur = cashLeg ? cashLeg.currency : debtLeg?.currency;
       icon = '🤝';
@@ -199,7 +199,7 @@ export default function Transactions() {
         <div className="tx-item__main">
           <span className="tx-item__category">{title}</span>
           <span className="tx-item__note">
-            {walletById.get(t.wallet)?.name}
+            {walletByName.get(t.wallet)?.name}
             {t.origAmount ? ` · ${formatAmount(t.origAmount, t.origCurrency)}` : ''}
             {t.note ? ` · ${t.note}` : ''}
           </span>

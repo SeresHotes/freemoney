@@ -5,23 +5,53 @@ import { DEFAULT_BASE_CURRENCY } from '../config';
 import { newId } from '../utils/format';
 
 const DB_NAME = 'freemoney';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_TX = 'transactions';
 const STORE_CAT = 'categories';
 const STORE_WALLET = 'wallets';
 const STORE_TAG = 'tags';
 const STORE_SETTINGS = 'settings';
 
+// Перенос стора кошельков с ключа id на ключ name (v3): читаем старые записи,
+// пересоздаём стор с keyPath 'name', переносим их без id и правим ссылки в
+// операциях (t.wallet: id → название). Выполняется внутри versionchange-транзакции.
+function migrateWalletsToNameKey(db, upgradeTx) {
+  const walletsReq = upgradeTx.objectStore(STORE_WALLET).getAll();
+  walletsReq.onsuccess = () => {
+    const old = walletsReq.result || [];
+    const nameById = new Map(old.map((w) => [w.id, w.name]));
+    db.deleteObjectStore(STORE_WALLET);
+    const fresh = db.createObjectStore(STORE_WALLET, { keyPath: 'name' });
+    for (const w of old) {
+      const { id, ...rest } = w;
+      fresh.put(rest);
+    }
+    const txStore = upgradeTx.objectStore(STORE_TX);
+    const txReq = txStore.getAll();
+    txReq.onsuccess = () => {
+      for (const t of txReq.result || []) {
+        if (t.wallet && nameById.has(t.wallet)) txStore.put({ ...t, wallet: nameById.get(t.wallet) });
+      }
+    };
+  };
+}
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
+      const upgradeTx = request.transaction;
       if (!db.objectStoreNames.contains(STORE_TX)) db.createObjectStore(STORE_TX, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(STORE_CAT)) db.createObjectStore(STORE_CAT, { keyPath: 'id' });
-      if (!db.objectStoreNames.contains(STORE_WALLET)) db.createObjectStore(STORE_WALLET, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(STORE_TAG)) db.createObjectStore(STORE_TAG, { keyPath: 'name' });
       if (!db.objectStoreNames.contains(STORE_SETTINGS)) db.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
+
+      if (!db.objectStoreNames.contains(STORE_WALLET)) {
+        db.createObjectStore(STORE_WALLET, { keyPath: 'name' });
+      } else if (upgradeTx.objectStore(STORE_WALLET).keyPath !== 'name') {
+        migrateWalletsToNameKey(db, upgradeTx);
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -56,7 +86,6 @@ export async function initLocalStore() {
     put(db, STORE_CAT, { id: newId(), ...c, status: 'active', order: index }),
   );
   await put(db, STORE_WALLET, {
-    id: newId(),
     name: 'Основной',
     currency: DEFAULT_BASE_CURRENCY,
     status: 'active',
@@ -78,7 +107,6 @@ export function createLocalBackend() {
       const wallets = await getAll(db, STORE_WALLET);
       if (wallets.length === 0) {
         await put(db, STORE_WALLET, {
-          id: newId(),
           name: 'Основной',
           currency: DEFAULT_BASE_CURRENCY,
           status: 'active',
@@ -221,19 +249,21 @@ export function createLocalBackend() {
       const db = await openDb();
       const existing = await getAll(db, STORE_WALLET);
       await put(db, STORE_WALLET, {
-        id: newId(), name, currency, status: 'active', order: existing.length,
+        name, currency, status: 'active', order: existing.length,
         kind: kind || 'cash', rate: Number(rate) || 0,
       });
       db.close();
     },
 
+    // Название — ключ записи: при переименовании удаляем старый ключ и кладём новый.
     updateWallet: async (wallet, { name, currency, kind, rate }) => {
       const db = await openDb();
       const s = store(db, STORE_WALLET, 'readwrite');
-      const w = await reqToPromise(s.get(wallet.id));
+      const w = await reqToPromise(s.get(wallet.name));
       if (w) {
-        Object.assign(w, { name, currency, kind: kind || 'cash', rate: Number(rate) || 0 });
-        await reqToPromise(s.put(w));
+        const next = { ...w, name, currency, kind: kind || 'cash', rate: Number(rate) || 0 };
+        if (name !== wallet.name) await reqToPromise(s.delete(wallet.name));
+        await reqToPromise(s.put(next));
       }
       db.close();
     },
@@ -241,8 +271,19 @@ export function createLocalBackend() {
     setWalletStatus: async (wallet, status) => {
       const db = await openDb();
       const s = store(db, STORE_WALLET, 'readwrite');
-      const w = await reqToPromise(s.get(wallet.id));
+      const w = await reqToPromise(s.get(wallet.name));
       if (w) { w.status = status; await reqToPromise(s.put(w)); }
+      db.close();
+    },
+
+    // Переименование кошелька во всех операциях (название — ключ ссылки t.wallet).
+    renameWallet: async (oldName, newName) => {
+      const db = await openDb();
+      const s = store(db, STORE_TX, 'readwrite');
+      const all = await reqToPromise(s.getAll());
+      for (const t of all) {
+        if (t.wallet === oldName) { t.wallet = newName; await reqToPromise(s.put(t)); }
+      }
       db.close();
     },
 

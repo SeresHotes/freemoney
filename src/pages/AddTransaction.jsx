@@ -21,14 +21,14 @@ export default function AddTransaction() {
   const isExpense = type === 'expense';
 
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
-  const currencyOf = (id) => wallets.find((w) => w.id === id)?.currency || '';
+  const currencyOf = (name) => wallets.find((w) => w.name === name)?.currency || '';
 
   // Последний использованный кошелёк — из самой свежей операции с активным кошельком.
-  const lastUsedWalletId = useMemo(() => {
-    const activeIds = new Set(activeWallets.map((w) => w.id));
+  const lastUsedWallet = useMemo(() => {
+    const activeNames = new Set(activeWallets.map((w) => w.name));
     let latest = null;
     for (const tx of transactions) {
-      if (!activeIds.has(tx.wallet)) continue;
+      if (!activeNames.has(tx.wallet)) continue;
       const key = `${tx.date} ${tx.time || ''}`;
       if (!latest || key > latest.key) latest = { key, wallet: tx.wallet };
     }
@@ -40,16 +40,16 @@ export default function AddTransaction() {
     [categories, type],
   );
 
-  const [walletId, setWalletId] = useState(
-    () => editingTx?.wallet || lastUsedWalletId || activeWallets[0]?.id || '',
+  const [walletName, setWalletName] = useState(
+    () => editingTx?.wallet || lastUsedWallet || activeWallets[0]?.name || '',
   );
-  const walletCurrency = currencyOf(walletId);
+  const walletCurrency = currencyOf(walletName);
 
   const [amount, setAmount] = useState(() =>
     editingTx ? String(editingTx.origAmount ?? editingTx.amount) : '',
   );
   const [entryCurrency, setEntryCurrency] = useState(
-    () => editingTx?.origCurrency || editingTx?.currency || currencyOf(walletId),
+    () => editingTx?.origCurrency || editingTx?.currency || currencyOf(walletName),
   );
   const [walletAmount, setWalletAmount] = useState(() =>
     editingTx?.origCurrency ? String(editingTx.amount) : '',
@@ -65,9 +65,9 @@ export default function AddTransaction() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const changeWallet = (id) => {
-    setWalletId(id);
-    setEntryCurrency(currencyOf(id));
+  const changeWallet = (name) => {
+    setWalletName(name);
+    setEntryCurrency(currencyOf(name));
     setWalletAmountTouched(false);
   };
 
@@ -178,7 +178,7 @@ export default function AddTransaction() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
-    if (!walletId) { setFormError('Выберите кошелёк'); return; }
+    if (!walletName) { setFormError('Выберите кошелёк'); return; }
     const value = Number(String(amount).replace(',', '.'));
     if (!value || value <= 0) { setFormError('Введите сумму больше нуля'); return; }
     if (!category) { setFormError('Выберите категорию'); return; }
@@ -199,7 +199,7 @@ export default function AddTransaction() {
     const tx = {
       id: editingTx?.id || newId(),
       date, time, type, amount: finalAmount, category, note: note.trim(), tags,
-      wallet: walletId, currency: walletCurrency, origAmount, origCurrency,
+      wallet: walletName, currency: walletCurrency, origAmount, origCurrency,
       transferId: '',
     };
     setSaving(true);
@@ -235,8 +235,8 @@ export default function AddTransaction() {
       <form className="form" onSubmit={handleSubmit}>
         <label className="field">
           <span className="field__label">Кошелёк</span>
-          <select className="field__input field__input--select" value={walletId} onChange={(e) => changeWallet(e.target.value)}>
-            {activeWallets.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>)}
+          <select className="field__input field__input--select" value={walletName} onChange={(e) => changeWallet(e.target.value)}>
+            {activeWallets.map((w) => <option key={w.name} value={w.name}>{w.name} ({w.currency})</option>)}
           </select>
         </label>
 

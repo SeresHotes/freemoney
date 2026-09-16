@@ -14,7 +14,7 @@ export default function EditInterest({ tx }) {
   const navigate = useNavigate();
   const { wallets, transactions, updateTransaction, deleteTransaction } = useApp();
 
-  const wallet = wallets.find((w) => w.id === tx.wallet);
+  const wallet = wallets.find((w) => w.name === tx.wallet);
   const currency = wallet?.currency || tx.currency;
 
   const [date, setDate] = useState(tx.date);

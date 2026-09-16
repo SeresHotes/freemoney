@@ -14,10 +14,10 @@ export default function NewAdjustment() {
   const { wallets, transactions, setWalletBalance } = useApp();
 
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
-  const [walletId, setWalletId] = useState(() => activeWallets[0]?.id || '');
-  const wallet = wallets.find((w) => w.id === walletId);
+  const [walletName, setWalletName] = useState(() => activeWallets[0]?.name || '');
+  const wallet = wallets.find((w) => w.name === walletName);
   const currency = wallet?.currency || '';
-  const base = wallet ? walletBalance(transactions, wallet.id) : 0;
+  const base = wallet ? walletBalance(transactions, wallet.name) : 0;
 
   const [finalStr, setFinalStr] = useState('');
   const [changeStr, setChangeStr] = useState('');
@@ -29,7 +29,7 @@ export default function NewAdjustment() {
     if (!wallet) return;
     setFinalStr(fmt(base));
     setChangeStr('0');
-  }, [walletId]);
+  }, [walletName]);
 
   const onFinalChange = (v) => {
     setFinalStr(v);
@@ -87,8 +87,8 @@ export default function NewAdjustment() {
       <form className="form" onSubmit={handleSubmit}>
         <label className="field">
           <span className="field__label">Кошелёк</span>
-          <select className="field__input field__input--select" value={walletId} onChange={(e) => setWalletId(e.target.value)}>
-            {activeWallets.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>)}
+          <select className="field__input field__input--select" value={walletName} onChange={(e) => setWalletName(e.target.value)}>
+            {activeWallets.map((w) => <option key={w.name} value={w.name}>{w.name} ({w.currency})</option>)}
           </select>
         </label>
 

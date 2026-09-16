@@ -18,7 +18,7 @@ export default function Interest() {
 
   const active = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
 
-  const [walletId, setWalletId] = useState(active[0]?.id || '');
+  const [walletName, setWalletName] = useState(active[0]?.name || '');
   const [percent, setPercent] = useState('');
   const [mode, setMode] = useState('add'); // 'add' — начислить, 'subtract' — списать
   const [date, setDate] = useState(todayIso());
@@ -28,10 +28,10 @@ export default function Interest() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const wallet = active.find((w) => w.id === walletId);
+  const wallet = active.find((w) => w.name === walletName);
   // Баланс на выбранный момент (все операции с этим временем и раньше).
   const balanceAsOf = useMemo(
-    () => (wallet ? walletBalanceAsOf(transactions, wallet.id, `${date} ${time || '99:99'}`, null) : 0),
+    () => (wallet ? walletBalanceAsOf(transactions, wallet.name, `${date} ${time || '99:99'}`, null) : 0),
     [wallet, transactions, date, time],
   );
 
@@ -76,11 +76,11 @@ export default function Interest() {
           <span className="field__label">Счёт</span>
           <select
             className="field__input field__input--select"
-            value={walletId}
-            onChange={(e) => { setWalletId(e.target.value); setBaseTouched(false); }}
+            value={walletName}
+            onChange={(e) => { setWalletName(e.target.value); setBaseTouched(false); }}
           >
             {active.map((w) => (
-              <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>
+              <option key={w.name} value={w.name}>{w.name} ({w.currency})</option>
             ))}
           </select>
         </label>

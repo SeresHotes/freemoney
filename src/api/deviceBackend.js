@@ -20,7 +20,7 @@ const FILES = {
 
 const TX_COLS = ['id', 'datetime', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'rate'];
 const CAT_COLS = ['id', 'name', 'kind', 'status', 'icon'];
-const WALLET_COLS = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate'];
+const WALLET_COLS = ['name', 'currency', 'status', 'order', 'kind', 'rate'];
 const TAG_COLS = ['name', 'status'];
 
 const path = (file) => `${FOLDER}/${file}`;
@@ -63,8 +63,8 @@ const rowToTx = (r) => {
 };
 const catToRow = (c) => [c.id, c.name, c.kind, c.status, c.icon || DEFAULT_ICON];
 const rowToCat = (r, i) => ({ id: r[0], name: r[1], kind: r[2] || 'both', status: r[3] || 'active', icon: r[4] || DEFAULT_ICON, order: i });
-const walletToRow = (w) => [w.id, w.name, w.currency, w.status, w.order ?? 0, w.kind || 'cash', w.rate ?? 0];
-const rowToWallet = (r, i) => ({ id: r[0], name: r[1], currency: r[2] || DEFAULT_BASE_CURRENCY, status: r[3] || 'active', order: Number(r[4]) || i, kind: r[5] || 'cash', rate: Number(r[6]) || 0 });
+const walletToRow = (w) => [w.name, w.currency, w.status, w.order ?? 0, w.kind || 'cash', w.rate ?? 0];
+const rowToWallet = (r, i) => ({ name: r[0], currency: r[1] || DEFAULT_BASE_CURRENCY, status: r[2] || 'active', order: Number(r[3]) || i, kind: r[4] || 'cash', rate: Number(r[5]) || 0 });
 
 async function readAll(file, mapRow) {
   const rows = await readRows(file);
@@ -80,7 +80,7 @@ export async function initDeviceStore() {
   const cats = DEFAULT_CATEGORIES.map((c, i) => ({ id: newId(), ...c, status: 'active', order: i }));
   await writeRows(FILES.categories, CAT_COLS, cats.map(catToRow));
   await writeRows(FILES.wallets, WALLET_COLS, [
-    [newId(), 'Основной', DEFAULT_BASE_CURRENCY, 'active', 0, 'cash', 0],
+    ['Основной', DEFAULT_BASE_CURRENCY, 'active', 0, 'cash', 0],
   ]);
   await writeRows(FILES.transactions, TX_COLS, []);
   await writeRows(FILES.tags, TAG_COLS, []);
@@ -104,11 +104,30 @@ export function createDeviceBackend() {
   const saveTags = (list) => writeRows(FILES.tags, TAG_COLS, list.map((t) => [t.name, t.status || 'active']));
   const saveSettings = (obj) => writeRows(FILES.settings, ['key', 'value'], Object.entries(obj));
 
+  // Перенос старой раскладки wallets.csv (id|name|…) на новую (name|…): опознаём
+  // по заголовку, ремапим ссылки в операциях с id кошелька на его название.
+  const migrateWalletsToNameKey = async () => {
+    const rows = await readRows(FILES.wallets);
+    if (!rows.length || rows[0][0] !== 'id') return;
+    const old = rows
+      .slice(1)
+      .filter((r) => r[0])
+      .map((r) => ({
+        id: r[0], name: r[1] || '', currency: r[2] || DEFAULT_BASE_CURRENCY,
+        status: r[3] || 'active', order: Number(r[4]) || 0, kind: r[5] || 'cash', rate: Number(r[6]) || 0,
+      }));
+    const nameById = new Map(old.map((w) => [w.id, w.name]));
+    const txs = await loadTx();
+    await saveTx(txs.map((t) => (nameById.has(t.wallet) ? { ...t, wallet: nameById.get(t.wallet) } : t)));
+    await saveWallets(old.map(({ id, ...rest }) => rest));
+  };
+
   return {
     kind: 'device',
 
     ensureSchema: async () => {
-      if (!(await isDeviceStoreReady())) await initDeviceStore();
+      if (!(await isDeviceStoreReady())) { await initDeviceStore(); return; }
+      await migrateWalletsToNameKey();
     },
 
     fetchAll: async () => {
@@ -144,9 +163,10 @@ export function createDeviceBackend() {
     updateCategory: async (id, patch) => { const l = await loadCats(); await saveCats(l.map((c) => (c.id === id ? { ...c, ...patch } : c))); },
     renameCategory: async (oldName, newName) => { const l = await loadTx(); await saveTx(l.map((t) => (t.category === oldName ? { ...t, category: newName } : t))); },
 
-    addWallet: async ({ name, currency, kind, rate }) => { const l = await loadWallets(); l.push({ id: newId(), name, currency, status: 'active', order: l.length, kind: kind || 'cash', rate: Number(rate) || 0 }); await saveWallets(l); },
-    updateWallet: async (wallet, patch) => { const l = await loadWallets(); await saveWallets(l.map((w) => (w.id === wallet.id ? { ...w, ...patch } : w))); },
-    setWalletStatus: async (wallet, status) => { const l = await loadWallets(); await saveWallets(l.map((w) => (w.id === wallet.id ? { ...w, status } : w))); },
+    addWallet: async ({ name, currency, kind, rate }) => { const l = await loadWallets(); l.push({ name, currency, status: 'active', order: l.length, kind: kind || 'cash', rate: Number(rate) || 0 }); await saveWallets(l); },
+    updateWallet: async (wallet, patch) => { const l = await loadWallets(); await saveWallets(l.map((w) => (w.name === wallet.name ? { ...w, ...patch } : w))); },
+    setWalletStatus: async (wallet, status) => { const l = await loadWallets(); await saveWallets(l.map((w) => (w.name === wallet.name ? { ...w, status } : w))); },
+    renameWallet: async (oldName, newName) => { const l = await loadTx(); await saveTx(l.map((t) => (t.wallet === oldName ? { ...t, wallet: newName } : t))); },
 
     addTag: async (name) => { const l = await loadTags(); if (!l.some((t) => t.name === name)) { l.push({ name, status: 'active' }); await saveTags(l); } },
     setTagStatus: async (name, status) => { const l = await loadTags(); await saveTags(l.map((t) => (t.name === name ? { ...t, status } : t))); },

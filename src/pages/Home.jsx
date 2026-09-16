@@ -21,7 +21,7 @@ export default function Home() {
     let sum = 0;
     let hasUnknown = false;
     for (const w of activeWallets) {
-      const inBase = toBase(walletBalance(transactions, w.id), w.currency);
+      const inBase = toBase(walletBalance(transactions, w.name), w.currency);
       if (inBase == null) hasUnknown = true;
       else sum += inBase;
     }
@@ -70,9 +70,9 @@ export default function Home() {
       {activeWallets.length > 0 && (
         <section className="wallet-chips">
           {activeWallets.map((w) => (
-            <button key={w.id} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${w.id}`)}>
+            <button key={w.name} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
               <span className="wallet-chip__name">{w.name}</span>
-              <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.id), w.currency)}</span>
+              <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.name), w.currency)}</span>
             </button>
           ))}
         </section>

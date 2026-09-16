@@ -31,9 +31,9 @@ export default function Debt() {
   // 'out' — деньги ушли из кошелька (дал в долг / погасил свой);
   // 'in'  — деньги пришли в кошелёк (мне вернули / я занял).
   const [direction, setDirection] = useState('out');
-  const [counterpartyId, setCounterpartyId] = useState(NEW);
+  const [counterpartyName, setCounterpartyName] = useState(NEW);
   const [newName, setNewName] = useState('');
-  const [workWalletId, setWorkWalletId] = useState('');
+  const [workWalletName, setWorkWalletName] = useState('');
   const [amountWork, setAmountWork] = useState('');
   const [amountDebt, setAmountDebt] = useState('');
   const [amountDebtTouched, setAmountDebtTouched] = useState(false);
@@ -51,12 +51,12 @@ export default function Debt() {
       if (legs.length < 2) return; // ждём загрузки операций
       const outLeg = legs.find((t) => t.type === 'transfer_out');
       const inLeg = legs.find((t) => t.type === 'transfer_in');
-      const outIsDebt = wallets.find((w) => w.id === outLeg.wallet)?.kind === 'debt';
+      const outIsDebt = wallets.find((w) => w.name === outLeg.wallet)?.kind === 'debt';
       const debtLeg = outIsDebt ? outLeg : inLeg;
       const cashLeg = outIsDebt ? inLeg : outLeg;
       setDirection(outIsDebt ? 'in' : 'out'); // долг списывает → деньги пришли
-      setCounterpartyId(debtLeg.wallet);
-      setWorkWalletId(cashLeg.wallet);
+      setCounterpartyName(debtLeg.wallet);
+      setWorkWalletName(cashLeg.wallet);
       setAmountWork(String(cashLeg.amount));
       setAmountDebt(String(debtLeg.amount));
       setAmountDebtTouched(true);
@@ -64,15 +64,15 @@ export default function Debt() {
       setTime(outLeg.time || nowTime());
       setNote(outLeg.note || '');
     } else {
-      setCounterpartyId(debtWallets[0]?.id || NEW);
-      setWorkWalletId(cashWallets[0]?.id || '');
+      setCounterpartyName(debtWallets[0]?.name || NEW);
+      setWorkWalletName(cashWallets[0]?.name || '');
     }
     setReady(true);
   }, [editing, legs, wallets, debtWallets, cashWallets, ready]);
 
-  const isNew = !editing && (counterpartyId === NEW || debtWallets.length === 0);
-  const work = cashWallets.find((w) => w.id === workWalletId);
-  const counterparty = wallets.find((w) => w.id === counterpartyId);
+  const isNew = !editing && (counterpartyName === NEW || debtWallets.length === 0);
+  const work = cashWallets.find((w) => w.name === workWalletName);
+  const counterparty = wallets.find((w) => w.name === counterpartyName);
   const debtCurrency = isNew ? work?.currency : counterparty?.currency;
   const different = work && debtCurrency && work.currency !== debtCurrency;
 
@@ -95,7 +95,7 @@ export default function Debt() {
   const submit = async (e) => {
     e.preventDefault();
     setFormError(null);
-    if (!workWalletId) { setFormError('Выберите кошелёк'); return; }
+    if (!workWalletName) { setFormError('Выберите кошелёк'); return; }
     if (isNew && !newName.trim()) { setFormError('Введите имя'); return; }
     const work_ = Number(String(amountWork).replace(',', '.'));
     if (!work_ || work_ <= 0) { setFormError('Введите сумму'); return; }
@@ -105,15 +105,15 @@ export default function Debt() {
       if (editing) {
         // out — кошелёк→долг; in — долг→кошелёк.
         const legsPayload = direction === 'out'
-          ? { outWalletId: workWalletId, inWalletId: counterpartyId, amountOut: work_, amountIn: debt_ }
-          : { outWalletId: counterpartyId, inWalletId: workWalletId, amountOut: debt_, amountIn: work_ };
+          ? { outWallet: workWalletName, inWallet: counterpartyName, amountOut: work_, amountIn: debt_ }
+          : { outWallet: counterpartyName, inWallet: workWalletName, amountOut: debt_, amountIn: work_ };
         await updateTransfer({ transferId, ...legsPayload, date, time, note: note.trim() });
       } else {
         await recordDebt({
-          counterpartyId: isNew ? null : counterpartyId,
+          counterparty: isNew ? null : counterpartyName,
           newCounterpartyName: isNew ? newName.trim() : null,
           cashDirection: direction,
-          workWalletId,
+          workWallet: workWalletName,
           amountWork: work_,
           amountDebt: debt_,
           date,
@@ -160,13 +160,13 @@ export default function Debt() {
           <span className="field__label">Кому / от кого</span>
           <select
             className="field__input field__input--select"
-            value={isNew ? NEW : counterpartyId}
-            onChange={(e) => { setCounterpartyId(e.target.value); setAmountDebtTouched(false); }}
+            value={isNew ? NEW : counterpartyName}
+            onChange={(e) => { setCounterpartyName(e.target.value); setAmountDebtTouched(false); }}
             disabled={editing}
           >
             {debtWallets.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name} · {formatAmount(walletBalance(transactions, w.id), w.currency)}
+              <option key={w.name} value={w.name}>
+                {w.name} · {formatAmount(walletBalance(transactions, w.name), w.currency)}
               </option>
             ))}
             {!editing && <option value={NEW}>➕ Новый…</option>}
@@ -182,8 +182,8 @@ export default function Debt() {
 
         <label className="field">
           <span className="field__label">Кошелёк</span>
-          <select className="field__input field__input--select" value={workWalletId} onChange={(e) => setWorkWalletId(e.target.value)}>
-            {cashWallets.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>)}
+          <select className="field__input field__input--select" value={workWalletName} onChange={(e) => setWorkWalletName(e.target.value)}>
+            {cashWallets.map((w) => <option key={w.name} value={w.name}>{w.name} ({w.currency})</option>)}
           </select>
         </label>
 

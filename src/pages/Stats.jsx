@@ -58,14 +58,14 @@ export default function Stats() {
 
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
   const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [categories]);
-  const walletOptions = useMemo(() => activeWallets.map((w) => ({ value: w.id, label: w.name })), [activeWallets]);
+  const walletOptions = useMemo(() => activeWallets.map((w) => ({ value: w.name, label: w.name })), [activeWallets]);
   const tagOptions = useMemo(() => {
     const set = new Set(tags.filter((t) => t.status === 'active').map((t) => t.name));
     for (const t of transactions) (t.tags || []).forEach((x) => set.add(x));
     return [...set].sort().map((t) => ({ value: t, label: `#${t}` }));
   }, [tags, transactions]);
 
-  const singleWallet = wals.length === 1 ? activeWallets.find((w) => w.id === wals[0]) : null;
+  const singleWallet = wals.length === 1 ? activeWallets.find((w) => w.name === wals[0]) : null;
   const displayCurrency = singleWallet ? singleWallet.currency : baseCurrency;
   const toDisplay = (t) => (singleWallet ? t.amount : toBase(t.amount, t.currency));
 

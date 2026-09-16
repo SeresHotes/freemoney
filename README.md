@@ -55,15 +55,17 @@ Google Таблице** — своего бэкенда у приложения 
 
 | Лист           | Колонки                                   |
 | -------------- | ----------------------------------------- |
-| `Transactions` | `id`, `date`, `type`, `amount`, `category`, `note` |
+| `Transactions` | `id`, `date`, `type`, `amount`, `category`, `note`, `wallet` |
 | `Categories`   | `name`, `kind`, `status`                   |
-| `Wallets`      | `id`, `name`, `currency`, `status`, `order`, `kind`, `rate` |
+| `Wallets`      | `name`, `currency`, `status`, `order`, `kind`, `rate` |
 
 - `type` — `expense` или `income`
 - `kind` (категория) — `expense`, `income` или `both`
 - `status` — `active` или `archived`
 - `kind` (кошелёк) — `cash` (обычный) или `debt` (долговой, на контрагента)
 - `rate` — ставка процентов кошелька, % (0 — не начисляем)
+- `wallet` (в операции) — **название** кошелька: он опознаётся по имени, поэтому
+  названия уникальны, а переименование кошелька применяется и ко всем его операциям
 
 Таблица обычная — её можно открыть в Google Sheets и править руками.
 

@@ -6,12 +6,13 @@
 //     type    — 'expense' | 'income' | 'transfer_out' | 'transfer_in'
 //               | 'adjust_in' | 'adjust_out' | 'interest_in' | 'interest_out'
 //     amount  — сумма в валюте кошелька
-//     wallet  — id кошелька; currency — валюта кошелька (денормализовано)
+//     wallet  — название кошелька; currency — валюта кошелька (денормализовано)
 //     origAmount/origCurrency — если операция введена в другой валюте
 //     transferId — связывает две ноги перевода между кошельками
 //     rate    — ставка процентов (%), только для interest_in/out (колонка M)
 //   Categories:   name|kind|status|icon
-//   Wallets:      id|name|currency|status|order|kind|rate
+//   Wallets:      name|currency|status|order|kind|rate
+//     name — идентичность кошелька (уникальна); операции ссылаются на него по названию
 //     kind — 'cash' (обычный) | 'debt' (долговой кошелёк на контрагента)
 //     rate — ставка для ручного начисления процентов, % (0 = не начисляем)
 //   Tags:         name|status
@@ -32,7 +33,6 @@ import {
 } from './sheets';
 import { SPREADSHEET_TITLE, DEFAULT_BASE_CURRENCY } from '../config';
 import { DEFAULT_CATEGORIES, DEFAULT_ICON } from './defaults';
-import { newId } from '../utils/format';
 
 export const SHEET_TX = 'Transactions';
 export const SHEET_CAT = 'Categories';
@@ -45,14 +45,14 @@ const TX_HEADER = [
   'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId',
 ];
 const CAT_HEADER = ['name', 'kind', 'status', 'icon'];
-const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate'];
+const WALLET_HEADER = ['name', 'currency', 'status', 'order', 'kind', 'rate'];
 const TAG_HEADER = ['name', 'status'];
 const SETTINGS_HEADER = ['key', 'value'];
 
 const DEFAULT_CATEGORY_ROWS = DEFAULT_CATEGORIES.map((c) => [c.name, c.kind, 'active', c.icon]);
 
 function defaultWalletRow() {
-  return [newId(), 'Основной', DEFAULT_BASE_CURRENCY, 'active', 0, 'cash', 0];
+  return ['Основной', DEFAULT_BASE_CURRENCY, 'active', 0, 'cash', 0];
 }
 
 // --- Создание и схема -------------------------------------------------------
@@ -99,6 +99,10 @@ export async function ensureSchema(id) {
     ]);
   }
 
+  // Кошельки теперь опознаются по названию — убираем колонку id и
+  // переписываем ссылки в операциях с id на название (одноразово, по разметке листа).
+  await migrateWalletsToNameKey(id);
+
   // Разово обновляем шапки столбцов (после добавления новых полей они устарели).
   const hdrKey = `freemoney:hdr5:${id}`;
   if (!localStorage.getItem(hdrKey)) {
@@ -106,12 +110,48 @@ export async function ensureSchema(id) {
       // 13-й столбец (M) теперь rate — ставка процентов.
       { range: `${SHEET_TX}!A1:M1`, values: [[...TX_HEADER, 'rate']] },
       { range: `${SHEET_CAT}!A1:D1`, values: [CAT_HEADER] },
-      { range: `${SHEET_WALLET}!A1:G1`, values: [WALLET_HEADER] },
+      { range: `${SHEET_WALLET}!A1:F1`, values: [WALLET_HEADER] },
       { range: `${SHEET_TAG}!A1:B1`, values: [TAG_HEADER] },
       { range: `${SHEET_SETTINGS}!A1:B1`, values: [SETTINGS_HEADER] },
     ]);
     localStorage.setItem(hdrKey, '1');
   }
+}
+
+// Миграция старой раскладки листа Wallets (id|name|…) на новую (name|…).
+// Опознаём по заголовку A1: 'id' → старый лист. Ремапим ссылки в операциях
+// (колонка H) с id кошелька на его название и переписываем лист без колонки id.
+// Идемпотентна и не зависит от устройства (детект по содержимому листа).
+async function migrateWalletsToNameKey(id) {
+  const header = await getValues(id, `${SHEET_WALLET}!A1:A1`);
+  if (header[0]?.[0] !== 'id') return; // уже мигрировано либо лист пуст
+
+  const rows = await getValues(id, `${SHEET_WALLET}!A2:G`);
+  const old = rows
+    .filter((r) => r[0])
+    .map((r) => ({
+      id: r[0], name: r[1] || '', currency: r[2] || DEFAULT_BASE_CURRENCY,
+      status: r[3] || 'active', order: Number(r[4]) || 0, kind: r[5] || 'cash', rate: Number(r[6]) || 0,
+    }));
+  const nameById = new Map(old.map((w) => [w.id, w.name]));
+
+  // Ссылки в операциях: колонка H (индекс 7) — с id на название.
+  const txRows = await getValues(id, `${SHEET_TX}!A2:M`);
+  const txUpdates = [];
+  txRows.forEach((r, index) => {
+    const ref = r[7];
+    if (ref && nameById.has(ref)) {
+      txUpdates.push({ range: `${SHEET_TX}!H${index + 2}`, values: [[nameById.get(ref)]] });
+    }
+  });
+  if (txUpdates.length) await batchUpdateValues(id, txUpdates);
+
+  // Переписываем лист кошельков в новой раскладке (A:F), очищая бывшую колонку rate (G).
+  const newRows = old.map((w) => [w.name, w.currency, w.status, w.order, w.kind, w.rate, '']);
+  await updateValues(id, `${SHEET_WALLET}!A1:G${old.length + 1}`, [
+    [...WALLET_HEADER, ''],
+    ...newRows,
+  ]);
 }
 
 export async function findExistingSpreadsheets() {
@@ -257,37 +297,47 @@ function mapWalletRows(rows) {
     .filter((r) => r[0])
     .map((r, index) => ({
       row: index + 2,
-      id: r[0],
-      name: r[1] || '',
-      currency: r[2] || DEFAULT_BASE_CURRENCY,
-      status: r[3] || 'active',
-      order: Number(r[4]) || 0,
-      kind: r[5] || 'cash',
-      rate: Number(r[6]) || 0,
+      name: r[0] || '',
+      currency: r[1] || DEFAULT_BASE_CURRENCY,
+      status: r[2] || 'active',
+      order: Number(r[3]) || 0,
+      kind: r[4] || 'cash',
+      rate: Number(r[5]) || 0,
     }));
 }
 
 export async function fetchWallets(id) {
-  const rows = await getValues(id, `${SHEET_WALLET}!A2:G`);
+  const rows = await getValues(id, `${SHEET_WALLET}!A2:F`);
   return mapWalletRows(rows);
 }
 
 export async function addWallet(id, { name, currency, kind, rate }) {
   const existing = await fetchWallets(id);
   await appendRow(id, `${SHEET_WALLET}!A1`, [
-    newId(), name, currency, 'active', existing.length, kind || 'cash', rate || 0,
+    name, currency, 'active', existing.length, kind || 'cash', rate || 0,
   ]);
 }
 
 export async function updateWallet(id, rowNumber, { name, currency, kind, rate }) {
   await batchUpdateValues(id, [
-    { range: `${SHEET_WALLET}!B${rowNumber}:C${rowNumber}`, values: [[name, currency]] },
-    { range: `${SHEET_WALLET}!F${rowNumber}:G${rowNumber}`, values: [[kind || 'cash', rate || 0]] },
+    { range: `${SHEET_WALLET}!A${rowNumber}:B${rowNumber}`, values: [[name, currency]] },
+    { range: `${SHEET_WALLET}!E${rowNumber}:F${rowNumber}`, values: [[kind || 'cash', rate || 0]] },
   ]);
 }
 
 export async function setWalletStatus(id, rowNumber, status) {
-  await updateValues(id, `${SHEET_WALLET}!D${rowNumber}`, [[status]]);
+  await updateValues(id, `${SHEET_WALLET}!C${rowNumber}`, [[status]]);
+}
+
+// Переименование кошелька во всех операциях (колонка H) — название теперь ключ,
+// поэтому старые ссылки надо переписать на новое имя.
+export async function renameWalletInTransactions(id, oldName, newName) {
+  const rows = await getValues(id, `${SHEET_TX}!A2:M`);
+  const data = [];
+  rows.forEach((r, index) => {
+    if (r[7] === oldName) data.push({ range: `${SHEET_TX}!H${index + 2}`, values: [[newName]] });
+  });
+  if (data.length) await batchUpdateValues(id, data);
 }
 
 // --- Теги -------------------------------------------------------------------
@@ -360,7 +410,7 @@ export async function fetchAll(id) {
   const [txRows, catRows, walletRows, tagRows, settingsRows] = await getValuesBatch(id, [
     `${SHEET_TX}!A2:M`,
     `${SHEET_CAT}!A2:D`,
-    `${SHEET_WALLET}!A2:G`,
+    `${SHEET_WALLET}!A2:F`,
     `${SHEET_TAG}!A2:B`,
     `${SHEET_SETTINGS}!A2:B`,
   ]);

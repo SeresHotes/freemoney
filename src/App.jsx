@@ -62,7 +62,7 @@ function Shell() {
           <Route path="/categories/:id/edit" element={<CategoryEdit />} />
           <Route path="/wallets" element={<Wallets />} />
           <Route path="/wallets/new" element={<WalletEdit />} />
-          <Route path="/wallets/:id/edit" element={<WalletEdit />} />
+          <Route path="/wallets/:name/edit" element={<WalletEdit />} />
           <Route path="/transfer" element={<Transfer />} />
           <Route path="/transfer/:transferId" element={<Transfer />} />
           <Route path="/debt" element={<Debt />} />

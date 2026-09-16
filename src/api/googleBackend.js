@@ -1,5 +1,6 @@
 // Бэкенд «Google Таблицы»: адаптер над store.js к единому интерфейсу хранилища.
-// id категории/кошелька — номер строки на соответствующем листе.
+// id категории — номер строки на листе; кошелёк опознаётся по названию,
+// а его row нужен лишь для точечных правок строки листа.
 
 import {
   ensureSchema,
@@ -20,6 +21,7 @@ import {
   addWallet,
   updateWallet,
   setWalletStatus,
+  renameWalletInTransactions,
   addTag,
   setTagStatus,
   renameTag,
@@ -46,11 +48,7 @@ export function createGoogleBackend(spreadsheetId) {
       return cats.map((c) => ({ id: c.row, ...c }));
     },
 
-    fetchWallets: async () => {
-      const wallets = await fetchWallets(spreadsheetId);
-      // id кошелька — собственный (генерится), row нужен для правок.
-      return wallets;
-    },
+    fetchWallets: () => fetchWallets(spreadsheetId),
 
     fetchTags: () => fetchTags(spreadsheetId),
 
@@ -70,6 +68,7 @@ export function createGoogleBackend(spreadsheetId) {
     addWallet: (w) => addWallet(spreadsheetId, w),
     updateWallet: (wallet, patch) => updateWallet(spreadsheetId, wallet.row, patch),
     setWalletStatus: (wallet, status) => setWalletStatus(spreadsheetId, wallet.row, status),
+    renameWallet: (oldName, newName) => renameWalletInTransactions(spreadsheetId, oldName, newName),
 
     addTag: (name) => addTag(spreadsheetId, name),
     setTagStatus: (name, status) => setTagStatus(spreadsheetId, name, status),
