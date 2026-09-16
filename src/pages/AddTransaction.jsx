@@ -20,7 +20,7 @@ export default function AddTransaction() {
   const type = editing ? editingTx?.type : params.type; // 'expense' | 'income'
   const isExpense = type === 'expense';
 
-  const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
+  const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
   const currencyOf = (name) => wallets.find((w) => w.name === name)?.currency || '';
 
   // Последний использованный кошелёк — из самой свежей операции с активным кошельком.
@@ -36,7 +36,7 @@ export default function AddTransaction() {
   }, [transactions, activeWallets]);
 
   const available = useMemo(
-    () => categories.filter((c) => c.status === 'active' && (c.kind === type || c.kind === 'both')),
+    () => categories.filter((c) => !c.archived && (c.kind === type || c.kind === 'both')),
     [categories, type],
   );
 
@@ -96,7 +96,7 @@ export default function AddTransaction() {
   const allTags = useMemo(
     () =>
       knownTags
-        .filter((t) => t.status === 'active')
+        .filter((t) => !t.archived)
         .map((t) => t.name)
         .sort((a, b) => a.localeCompare(b, 'ru')),
     [knownTags],
@@ -142,13 +142,13 @@ export default function AddTransaction() {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
 
   // Корректировку и проценты правим отдельными формами; перевод — только удаляем.
-  if (editing && editingTx?.type.startsWith('adjust')) {
+  if (editing && editingTx?.type === 'adjust') {
     return <EditAdjustment tx={editingTx} />;
   }
-  if (editing && editingTx?.type.startsWith('interest')) {
+  if (editing && editingTx?.type === 'interest') {
     return <EditInterest tx={editingTx} />;
   }
-  const special = editingTx && editingTx.type.startsWith('transfer');
+  const special = editingTx && editingTx.type === 'transfer';
   if (editing && (!editingTx || special)) {
     return (
       <div className="page">
@@ -196,11 +196,15 @@ export default function AddTransaction() {
       origCurrency = entryCurrency;
     }
 
+    // amount знаковый: расход < 0, доход > 0. При кросс-валютной операции всегда
+    // пишем курс rate = сумма в валюте кошелька / сумма в валюте ввода.
+    const finalSigned = type === 'expense' ? -finalAmount : finalAmount;
+    const rate = origAmount ? finalAmount / origAmount : null;
     const tx = {
       id: editingTx?.id || newId(),
-      date, time, type, amount: finalAmount, category, note: note.trim(), tags,
+      date, time, type, amount: finalSigned, category, note: note.trim(), tags,
       wallet: walletId, currency: walletCurrency, origAmount, origCurrency,
-      groupId: '',
+      groupId: '', rate,
     };
     setSaving(true);
     try {

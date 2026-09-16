@@ -77,7 +77,7 @@ export function AppProvider({ children }) {
     const { categories: cats, transactions: txs, wallets: wls, tags: tgs, settings } =
       await backend.fetchAll();
     const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
-    const defaultWallet = wls.find((w) => w.status === 'active') || wls[0];
+    const defaultWallet = wls.find((w) => !w.archived) || wls[0];
     const walletCurrency = Object.fromEntries(wls.map((w) => [w.name, w.currency]));
     const normalized = txs.map((t) => {
       const wallet = t.wallet || defaultWallet?.name || '';
@@ -375,13 +375,14 @@ export function AppProvider({ children }) {
         const to = wallets.find((w) => w.name === toWallet);
         const groupId = newId();
         const legTime = time || nowTime();
+        // Знаковый amount: нога-источник < 0, нога-получатель > 0. Тип обеих — transfer.
         const out = {
-          id: newId(), date, type: 'transfer_out', amount: amountOut, category: '',
+          id: newId(), date, type: 'transfer', amount: -Math.abs(amountOut), category: '',
           note: note || '', tags: [], wallet: fromWallet, currency: from?.currency || '',
           origAmount: null, origCurrency: '', groupId, time: legTime,
         };
         const inc = {
-          id: newId(), date, type: 'transfer_in', amount: amountIn, category: '',
+          id: newId(), date, type: 'transfer', amount: Math.abs(amountIn), category: '',
           note: note || '', tags: [], wallet: toWallet, currency: to?.currency || '',
           origAmount: null, origCurrency: '', groupId, time: legTime,
         };
@@ -418,15 +419,16 @@ export function AppProvider({ children }) {
         const amtDebt = Number(amountDebt) || amtWork;
         const groupId = newId();
         const legTime = time || nowTime();
-        const leg = (type, wallet, currency, amount) => ({
-          id: newId(), date, type, amount, category: '', note: note || '',
+        // sign: −1 — деньги уходят со счёта, +1 — приходят. Тип обеих ног — transfer.
+        const leg = (sign, wallet, currency, amount) => ({
+          id: newId(), date, type: 'transfer', amount: sign * Math.abs(amount), category: '', note: note || '',
           tags: [], wallet, currency, origAmount: null, origCurrency: '', groupId, time: legTime,
         });
         const legs = cashDirection === 'out'
-          ? [leg('transfer_out', workWallet, workCurrency, amtWork),
-             leg('transfer_in', debtName, debtCurrency, amtDebt)]
-          : [leg('transfer_out', debtName, debtCurrency, amtDebt),
-             leg('transfer_in', workWallet, workCurrency, amtWork)];
+          ? [leg(-1, workWallet, workCurrency, amtWork),
+             leg(+1, debtName, debtCurrency, amtDebt)]
+          : [leg(-1, debtName, debtCurrency, amtDebt),
+             leg(+1, workWallet, workCurrency, amtWork)];
         await backendRef.current.addTransactions(legs);
         setTransactions((prev) => [...prev, ...legs]);
       }),
@@ -438,19 +440,20 @@ export function AppProvider({ children }) {
     ({ groupId, outWallet, inWallet, amountOut, amountIn, date, note, time }) =>
       mutate(async () => {
         const legs = transactions.filter((t) => t.groupId === groupId);
-        const outLeg = legs.find((t) => t.type === 'transfer_out');
-        const inLeg = legs.find((t) => t.type === 'transfer_in');
+        // Ноги различаем по знаку amount: источник < 0, получатель > 0.
+        const outLeg = legs.find((t) => t.amount < 0);
+        const inLeg = legs.find((t) => t.amount > 0);
         if (!outLeg || !inLeg) throw new Error('Перевод не найден');
         const outW = wallets.find((w) => w.name === outWallet);
         const inW = wallets.find((w) => w.name === inWallet);
         const legTime = time || outLeg.time;
         const newOut = {
           ...outLeg, wallet: outWallet, currency: outW?.currency || outLeg.currency,
-          amount: Number(amountOut), date, note: note || '', time: legTime,
+          amount: -Math.abs(Number(amountOut)), date, note: note || '', time: legTime,
         };
         const newIn = {
           ...inLeg, wallet: inWallet, currency: inW?.currency || inLeg.currency,
-          amount: Number(amountIn), date, note: note || '', time: legTime,
+          amount: Math.abs(Number(amountIn)), date, note: note || '', time: legTime,
         };
         await backendRef.current.updateTransaction(newOut);
         await backendRef.current.updateTransaction(newIn);
@@ -461,24 +464,25 @@ export function AppProvider({ children }) {
     [mutate, transactions, wallets],
   );
 
-  // Начислить/списать проценты — отдельный тип операции (interest_in/out).
+  // Начислить/списать проценты — тип interest, знак amount задаёт направление.
   const accrueInterest = useCallback(
     ({ wallet, base, rate, date, time, direction = 'add', note = '' }) =>
       mutate(async () => {
         const r = Number(rate) || 0;
-        const amount = Math.abs((Number(base) * r) / 100);
-        if (amount < 0.005) return null;
+        const magnitude = Math.abs((Number(base) * r) / 100);
+        if (magnitude < 0.005) return null;
         const subtract = direction === 'subtract';
+        const amount = subtract ? -magnitude : magnitude;
         const tx = {
           id: newId(), date: date || todayIso(), time: time || nowTime(),
-          type: subtract ? 'interest_out' : 'interest_in',
+          type: 'interest',
           amount, category: '', note: note || '', tags: [],
           wallet: wallet.name, currency: wallet.currency,
           origAmount: null, origCurrency: '', groupId: '', rate: r,
         };
         await backendRef.current.addTransaction(tx);
         setTransactions((prev) => [...prev, tx]);
-        return { amount: tx.amount, type: tx.type };
+        return { amount: magnitude, direction: subtract ? 'subtract' : 'add' };
       }),
     [mutate],
   );
@@ -516,11 +520,11 @@ export function AppProvider({ children }) {
     [mutate],
   );
 
-  const setCategoryStatus = useCallback(
-    (id, newStatus) =>
+  const setCategoryArchived = useCallback(
+    (id, archived) =>
       mutate(async () => {
-        await backendRef.current.setCategoryStatus(id, newStatus);
-        setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)));
+        await backendRef.current.setCategoryArchived(id, archived);
+        setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, archived } : c)));
       }),
     [mutate],
   );
@@ -569,8 +573,8 @@ export function AppProvider({ children }) {
     }),
     [mutate],
   );
-  const setWalletStatus = useCallback(
-    (wallet, s) => mutate(async () => { await backendRef.current.setWalletStatus(wallet.name, s); await reloadWallets(); }),
+  const setWalletArchived = useCallback(
+    (wallet, archived) => mutate(async () => { await backendRef.current.setWalletArchived(wallet.name, archived); await reloadWallets(); }),
     [mutate],
   );
 
@@ -585,8 +589,8 @@ export function AppProvider({ children }) {
           id: newId(),
           date: todayIso(),
           time: nowTime(),
-          type: diff > 0 ? 'adjust_in' : 'adjust_out',
-          amount: Math.abs(diff),
+          type: 'adjust',
+          amount: diff,
           category: '',
           note: 'Корректировка баланса',
           tags: [],
@@ -607,12 +611,12 @@ export function AppProvider({ children }) {
     (name) => mutate(async () => { await backendRef.current.addTag(name); setTags(await backendRef.current.fetchTags()); }),
     [mutate],
   );
-  // «Удаление» тега = архивирование (status): убираем из подсказок, но храним и
+  // «Удаление» тега = архивирование (archived): убираем из подсказок, но храним и
   // можем вернуть. Историю операций не трогаем.
-  const setTagStatus = useCallback(
-    (name, newStatus) => mutate(async () => {
-      await backendRef.current.setTagStatus(name, newStatus);
-      setTags((prev) => prev.map((t) => (t.name === name ? { ...t, status: newStatus } : t)));
+  const setTagArchived = useCallback(
+    (name, archived) => mutate(async () => {
+      await backendRef.current.setTagArchived(name, archived);
+      setTags((prev) => prev.map((t) => (t.name === name ? { ...t, archived } : t)));
     }),
     [mutate],
   );
@@ -715,14 +719,14 @@ export function AppProvider({ children }) {
     updateTransaction,
     deleteTransaction,
     addCategory,
-    setCategoryStatus,
+    setCategoryArchived,
     updateCategory,
     addWallet,
     updateWallet,
-    setWalletStatus,
+    setWalletArchived,
     setWalletBalance,
     addTag,
-    setTagStatus,
+    setTagArchived,
     renameTag,
     setBaseCurrencyPref,
     exportAll,

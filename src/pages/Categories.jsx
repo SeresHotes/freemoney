@@ -11,8 +11,8 @@ export default function Categories() {
 
   const { active, archived } = useMemo(
     () => ({
-      active: categories.filter((c) => c.status === 'active'),
-      archived: categories.filter((c) => c.status === 'archived'),
+      active: categories.filter((c) => !c.archived),
+      archived: categories.filter((c) => c.archived),
     }),
     [categories],
   );

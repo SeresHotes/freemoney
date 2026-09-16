@@ -4,7 +4,7 @@ import { toCsv, parseCsv, downloadFile } from '../utils/csv';
 import { newId } from '../utils/format';
 
 const TX_COLUMNS = ['id', 'date', 'type', 'amount', 'category', 'note', 'tags'];
-const CAT_COLUMNS = ['name', 'kind', 'status', 'icon'];
+const CAT_COLUMNS = ['name', 'kind', 'archived', 'icon'];
 
 // --- Экспорт ----------------------------------------------------------------
 
@@ -19,7 +19,7 @@ export function exportTransactionsCsv(transactions) {
 export function exportCategoriesCsv(categories) {
   const rows = [CAT_COLUMNS];
   for (const c of categories) {
-    rows.push([c.name, c.kind, c.status, c.icon]);
+    rows.push([c.name, c.kind, c.archived ? '1' : '', c.icon]);
   }
   downloadFile('freemoney-categories.csv', toCsv(rows));
 }

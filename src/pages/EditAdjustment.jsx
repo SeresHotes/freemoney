@@ -17,8 +17,8 @@ export default function EditAdjustment({ tx }) {
   const wallet = wallets.find((w) => w.name === tx.wallet);
   const currency = wallet?.currency || tx.currency;
 
-  // Знак текущей корректировки и баланс кошелька БЕЗ неё.
-  const signedThis = tx.type === 'adjust_in' ? tx.amount : -tx.amount;
+  // Текущая корректировка (amount уже знаковый) и баланс кошелька БЕЗ неё.
+  const signedThis = tx.amount;
   const base = walletBalance(transactions, tx.wallet) - signedThis;
 
   const [finalStr, setFinalStr] = useState(() => fmt(base + signedThis));
@@ -51,8 +51,8 @@ export default function EditAdjustment({ tx }) {
 
     const next = {
       ...tx,
-      type: change > 0 ? 'adjust_in' : 'adjust_out',
-      amount: Math.abs(change),
+      type: 'adjust',
+      amount: change,
       date, time, note: note.trim(),
     };
     setSaving(true);

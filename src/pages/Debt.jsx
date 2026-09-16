@@ -15,11 +15,11 @@ export default function Debt() {
   const editing = Boolean(groupId);
 
   const cashWallets = useMemo(
-    () => wallets.filter((w) => w.status === 'active' && !isDebtWallet(w)),
+    () => wallets.filter((w) => !w.archived && !isDebtWallet(w)),
     [wallets],
   );
   const debtWallets = useMemo(
-    () => wallets.filter((w) => w.status === 'active' && isDebtWallet(w)),
+    () => wallets.filter((w) => !w.archived && isDebtWallet(w)),
     [wallets],
   );
 
@@ -49,16 +49,17 @@ export default function Debt() {
     if (ready) return;
     if (editing) {
       if (legs.length < 2) return; // ждём загрузки операций
-      const outLeg = legs.find((t) => t.type === 'transfer_out');
-      const inLeg = legs.find((t) => t.type === 'transfer_in');
+      // Ноги пары различаем по знаку amount: источник < 0, получатель > 0.
+      const outLeg = legs.find((t) => t.amount < 0);
+      const inLeg = legs.find((t) => t.amount > 0);
       const outIsDebt = wallets.find((w) => w.name === outLeg.wallet)?.kind === 'debt';
       const debtLeg = outIsDebt ? outLeg : inLeg;
       const cashLeg = outIsDebt ? inLeg : outLeg;
       setDirection(outIsDebt ? 'in' : 'out'); // долг списывает → деньги пришли
       setCounterpartyName(debtLeg.wallet);
       setWorkWallet(cashLeg.wallet);
-      setAmountWork(String(cashLeg.amount));
-      setAmountDebt(String(debtLeg.amount));
+      setAmountWork(String(Math.abs(cashLeg.amount)));
+      setAmountDebt(String(Math.abs(debtLeg.amount)));
       setAmountDebtTouched(true);
       setDate(outLeg.date);
       setTime(outLeg.time || nowTime());

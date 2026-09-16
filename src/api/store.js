@@ -5,13 +5,16 @@
 //   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|
 //                 origAmount|origCurrency|groupId|rate|updatedAt|deleted   (A:O)
 //     datetime — всегда «YYYY-MM-DD HH:MM:SS» (в приложении хранится как date + time)
-//     type    — expense|income|transfer_in|transfer_out|adjust_in|adjust_out|
-//               interest_in|interest_out
-//   Categories: id|name|kind|status|icon|order|updatedAt|deleted              (A:H)
-//   Wallets:    name|currency|status|order|kind|rate|updatedAt|deleted         (A:H)
+//     type    — expense|income|transfer|adjust|interest
+//     amount  — ЗНАКОВЫЙ: расход/перевод-из/списание < 0, доход/перевод-в > 0
+//               (старые записи transfer_in/out и т.п. приводятся normalizeTx на чтении)
+//   Categories: id|name|kind|archived|icon|order|updatedAt|deleted            (A:H)
+//   Wallets:    name|currency|archived|order|kind|rate|updatedAt|deleted       (A:H)
 //     кошелёк идентифицируется по имени (колонка A); поле id упразднено. Старые
 //     таблицы со схемой id|name|... разово мигрируются в ensureSyncSchema.
-//   Tags:       name|updatedAt|deleted                                        (A:C)
+//     archived — булев ('1'/''), занимает слот бывшего строкового status
+//     (active/archived); чтение понимает оба варианта.
+//   Tags:       name|archived|updatedAt|deleted                              (A:D)
 //   Settings:   key|value|updatedAt                                           (A:C)
 //
 // updatedAt — метка последнего изменения для LWW-мерджа; в таблице хранится
@@ -39,6 +42,7 @@ import {
 import { SPREADSHEET_TITLE, DEFAULT_BASE_CURRENCY } from '../config';
 import { DEFAULT_ICON } from './defaults';
 import { toDatetime } from '../utils/format';
+import { normalizeTx } from '../utils/model';
 
 export const SHEET_TX = 'Transactions';
 export const SHEET_CAT = 'Categories';
@@ -55,9 +59,9 @@ const TX_HEADER = [
 // ВАЖНО: новые колонки (id/order/updatedAt/deleted) добавлены В КОНЕЦ, а старые
 // name|kind|status|icon остаются на местах A–D. Иначе у существующих таблиц
 // (старая схема name|kind|status|icon) данные читались бы со сдвигом.
-const CAT_HEADER = ['name', 'kind', 'status', 'icon', 'id', 'order', 'updatedAt', 'deleted'];
-const WALLET_HEADER = ['name', 'currency', 'status', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
-const TAG_HEADER = ['name', 'status', 'updatedAt', 'deleted'];
+const CAT_HEADER = ['name', 'kind', 'archived', 'icon', 'id', 'order', 'updatedAt', 'deleted'];
+const WALLET_HEADER = ['name', 'currency', 'archived', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
+const TAG_HEADER = ['name', 'archived', 'updatedAt', 'deleted'];
 const SETTINGS_HEADER = ['key', 'value', 'updatedAt'];
 const META_HEADER = ['key', 'value'];
 const SCHEMA_VERSION_KEY = 'schemaVersion';
@@ -116,6 +120,19 @@ const MIGRATIONS = [
     await clearValues(id, `${SHEET_WALLET}!A1:I`);
     await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER]);
     if (migratedW.length) await updateValues(id, `${SHEET_WALLET}!A2`, migratedW);
+  },
+  // v2 → v3: рефреш заголовков под актуальную схему (status → archived,
+  // transferId → groupId). Только строка заголовков — данные позиционные, не
+  // трогаются; сами значения (слитый тип, знаковый amount, булев archived)
+  // переписываются разовым full-rewrite в syncNow (см. флаг fmtmig3).
+  async (id) => {
+    await batchUpdateValues(id, [
+      { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
+      { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
+      { range: `${SHEET_WALLET}!A1:H1`, values: [WALLET_HEADER] },
+      { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
+      { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
+    ]);
   },
 ];
 // Текущая версия схемы = число миграций. Пре-версионные таблицы (без листа _Meta)
@@ -181,7 +198,9 @@ function rowToTx(r) {
   const time = dt.length > 10 ? dt.slice(11) : '00:00';
   const rateCell = r[12];
   const rate = rateCell != null && rateCell !== '' && !Number.isNaN(Number(rateCell)) ? Number(rateCell) : null;
-  return {
+  // normalizeTx приводит старые transfer_in/out|adjust_in/out|interest_in/out и
+  // положительный amount к слитому типу со знаковым amount (идемпотентно).
+  return normalizeTx({
     id: r[0],
     date,
     time,
@@ -198,12 +217,12 @@ function rowToTx(r) {
     rate,
     updatedAt: decStamp(r[13]),
     deleted: decBool(r[14]),
-  };
+  });
 }
 
 function catToRow(c) {
   return [
-    c.name, c.kind || 'both', c.status || 'active', c.icon || DEFAULT_ICON,
+    c.name, c.kind || 'both', encBool(c.archived), c.icon || DEFAULT_ICON,
     c.id || '', c.order ?? 0, encStamp(c.updatedAt), encBool(c.deleted),
   ];
 }
@@ -211,7 +230,8 @@ function rowToCat(r, index) {
   return {
     name: r[0] || '',
     kind: r[1] || 'both',
-    status: r[2] || 'active',
+    // Слот бывшего status: понимаем и старую строку 'archived', и новый булев '1'.
+    archived: r[2] === 'archived' || decBool(r[2]),
     icon: r[3] || DEFAULT_ICON,
     id: r[4] || '',
     order: r[5] === '' || r[5] == null ? index : decNum(r[5]),
@@ -222,7 +242,7 @@ function rowToCat(r, index) {
 
 function walletToRow(w) {
   return [
-    w.name || '', w.currency || DEFAULT_BASE_CURRENCY, w.status || 'active', w.order ?? 0,
+    w.name || '', w.currency || DEFAULT_BASE_CURRENCY, encBool(w.archived), w.order ?? 0,
     w.kind || 'cash', w.rate ?? 0, encStamp(w.updatedAt), encBool(w.deleted),
   ];
 }
@@ -230,7 +250,8 @@ function rowToWallet(r, index) {
   return {
     name: r[0] || '',
     currency: r[1] || DEFAULT_BASE_CURRENCY,
-    status: r[2] || 'active',
+    // Слот бывшего status: понимаем и старую строку 'archived', и новый булев '1'.
+    archived: r[2] === 'archived' || decBool(r[2]),
     order: r[3] === '' || r[3] == null ? index : decNum(r[3]),
     kind: r[4] || 'cash',
     rate: decNum(r[5]),
@@ -240,10 +261,10 @@ function rowToWallet(r, index) {
 }
 
 function tagToRow(t) {
-  return [t.name, t.status || 'active', encStamp(t.updatedAt), encBool(t.deleted)];
+  return [t.name, encBool(t.archived), encStamp(t.updatedAt), encBool(t.deleted)];
 }
 function rowToTag(r) {
-  return { name: r[0] || '', status: r[1] || 'active', updatedAt: decStamp(r[2]), deleted: decBool(r[3]) };
+  return { name: r[0] || '', archived: r[1] === 'archived' || decBool(r[1]), updatedAt: decStamp(r[2]), deleted: decBool(r[3]) };
 }
 
 function settingToRow(s) {

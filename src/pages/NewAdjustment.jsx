@@ -13,7 +13,7 @@ export default function NewAdjustment() {
   const navigate = useNavigate();
   const { wallets, transactions, setWalletBalance } = useApp();
 
-  const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
+  const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
   const [walletId, setWalletId] = useState(() => activeWallets[0]?.name || '');
   const wallet = wallets.find((w) => w.name === walletId);
   const currency = wallet?.currency || '';
