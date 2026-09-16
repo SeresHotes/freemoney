@@ -71,9 +71,9 @@ export function AppProvider({ children }) {
       await backend.fetchAll();
     const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
     const defaultWallet = wls.find((w) => w.status === 'active') || wls[0];
-    const walletCurrency = Object.fromEntries(wls.map((w) => [w.id, w.currency]));
+    const walletCurrency = Object.fromEntries(wls.map((w) => [w.name, w.currency]));
     const normalized = txs.map((t) => {
-      const wallet = t.wallet || defaultWallet?.id || '';
+      const wallet = t.wallet || defaultWallet?.name || '';
       const currency = t.currency || walletCurrency[wallet] || base;
       return { ...t, wallet, currency };
     });
@@ -319,20 +319,20 @@ export function AppProvider({ children }) {
   );
 
   const addTransfer = useCallback(
-    ({ fromWalletId, toWalletId, amountOut, amountIn, date, note, time }) =>
+    ({ fromWallet, toWallet, amountOut, amountIn, date, note, time }) =>
       mutate(async () => {
-        const from = wallets.find((w) => w.id === fromWalletId);
-        const to = wallets.find((w) => w.id === toWalletId);
+        const from = wallets.find((w) => w.name === fromWallet);
+        const to = wallets.find((w) => w.name === toWallet);
         const transferId = newId();
         const legTime = time || nowTime();
         const out = {
           id: newId(), date, type: 'transfer_out', amount: amountOut, category: '',
-          note: note || '', tags: [], wallet: fromWalletId, currency: from?.currency || '',
+          note: note || '', tags: [], wallet: fromWallet, currency: from?.currency || '',
           origAmount: null, origCurrency: '', transferId, time: legTime,
         };
         const inc = {
           id: newId(), date, type: 'transfer_in', amount: amountIn, category: '',
-          note: note || '', tags: [], wallet: toWalletId, currency: to?.currency || '',
+          note: note || '', tags: [], wallet: toWallet, currency: to?.currency || '',
           origAmount: null, origCurrency: '', transferId, time: legTime,
         };
         await backendRef.current.addTransactions([out, inc]);
@@ -343,12 +343,12 @@ export function AppProvider({ children }) {
 
   // Долг = движение денег между рабочим и долговым кошельком (пара transfer-ног).
   const recordDebt = useCallback(
-    ({ counterpartyId, newCounterpartyName, cashDirection, workWalletId, amountWork, amountDebt, date, note, time }) =>
+    ({ counterparty, newCounterpartyName, cashDirection, workWallet, amountWork, amountDebt, date, note, time }) =>
       mutate(async () => {
-        const work = wallets.find((w) => w.id === workWalletId);
-        let debtId = counterpartyId;
-        let debtWallet = wallets.find((w) => w.id === debtId);
-        if (!debtId && newCounterpartyName) {
+        const work = wallets.find((w) => w.name === workWallet);
+        let debtName = counterparty;
+        let debtWallet = wallets.find((w) => w.name === debtName);
+        if (!debtName && newCounterpartyName) {
           await backendRef.current.addWallet({
             name: newCounterpartyName,
             currency: work?.currency || DEFAULT_BASE_CURRENCY,
@@ -358,9 +358,9 @@ export function AppProvider({ children }) {
           const fresh = await backendRef.current.fetchWallets();
           setWallets(fresh);
           debtWallet = fresh.find((w) => w.kind === 'debt' && w.name === newCounterpartyName);
-          debtId = debtWallet?.id;
+          debtName = debtWallet?.name;
         }
-        if (!debtId || !workWalletId) throw new Error('Нужны контрагент и кошелёк');
+        if (!debtName || !workWallet) throw new Error('Нужны контрагент и кошелёк');
 
         const workCurrency = work?.currency || '';
         const debtCurrency = debtWallet?.currency || workCurrency;
@@ -373,10 +373,10 @@ export function AppProvider({ children }) {
           tags: [], wallet, currency, origAmount: null, origCurrency: '', transferId, time: legTime,
         });
         const legs = cashDirection === 'out'
-          ? [leg('transfer_out', workWalletId, workCurrency, amtWork),
-             leg('transfer_in', debtId, debtCurrency, amtDebt)]
-          : [leg('transfer_out', debtId, debtCurrency, amtDebt),
-             leg('transfer_in', workWalletId, workCurrency, amtWork)];
+          ? [leg('transfer_out', workWallet, workCurrency, amtWork),
+             leg('transfer_in', debtName, debtCurrency, amtDebt)]
+          : [leg('transfer_out', debtName, debtCurrency, amtDebt),
+             leg('transfer_in', workWallet, workCurrency, amtWork)];
         await backendRef.current.addTransactions(legs);
         setTransactions((prev) => [...prev, ...legs]);
       }),
@@ -385,21 +385,21 @@ export function AppProvider({ children }) {
 
   // Правка перевода/долга: переписываем обе ноги пары одним действием.
   const updateTransfer = useCallback(
-    ({ transferId, outWalletId, inWalletId, amountOut, amountIn, date, note, time }) =>
+    ({ transferId, outWallet, inWallet, amountOut, amountIn, date, note, time }) =>
       mutate(async () => {
         const legs = transactions.filter((t) => t.transferId === transferId);
         const outLeg = legs.find((t) => t.type === 'transfer_out');
         const inLeg = legs.find((t) => t.type === 'transfer_in');
         if (!outLeg || !inLeg) throw new Error('Перевод не найден');
-        const outW = wallets.find((w) => w.id === outWalletId);
-        const inW = wallets.find((w) => w.id === inWalletId);
+        const outW = wallets.find((w) => w.name === outWallet);
+        const inW = wallets.find((w) => w.name === inWallet);
         const legTime = time || outLeg.time;
         const newOut = {
-          ...outLeg, wallet: outWalletId, currency: outW?.currency || outLeg.currency,
+          ...outLeg, wallet: outWallet, currency: outW?.currency || outLeg.currency,
           amount: Number(amountOut), date, note: note || '', time: legTime,
         };
         const newIn = {
-          ...inLeg, wallet: inWalletId, currency: inW?.currency || inLeg.currency,
+          ...inLeg, wallet: inWallet, currency: inW?.currency || inLeg.currency,
           amount: Number(amountIn), date, note: note || '', time: legTime,
         };
         await backendRef.current.updateTransaction(newOut);
@@ -423,7 +423,7 @@ export function AppProvider({ children }) {
           id: newId(), date: date || todayIso(), time: time || nowTime(),
           type: subtract ? 'interest_out' : 'interest_in',
           amount, category: '', note: note || '', tags: [],
-          wallet: wallet.id, currency: wallet.currency,
+          wallet: wallet.name, currency: wallet.currency,
           origAmount: null, origCurrency: '', transferId: '', rate: r,
         };
         await backendRef.current.addTransaction(tx);
@@ -499,12 +499,28 @@ export function AppProvider({ children }) {
     (w) => mutate(async () => { await backendRef.current.addWallet(w); await reloadWallets(); }),
     [mutate],
   );
+  // Кошелёк идентифицируется по имени. Смена имени = переименование с каскадом
+  // в операции (t.wallet) и tombstone старого имени; остальные поля правятся
+  // по имени-ключу.
   const updateWallet = useCallback(
-    (wallet, patch) => mutate(async () => { await backendRef.current.updateWallet(wallet, patch); await reloadWallets(); }),
+    (wallet, patch) => mutate(async () => {
+      const oldName = wallet.name;
+      const newName = patch.name?.trim() || oldName;
+      if (newName !== oldName) {
+        await backendRef.current.renameWallet(oldName, newName);
+        setTransactions((prev) =>
+          prev.map((t) => (t.wallet === oldName ? { ...t, wallet: newName } : t)),
+        );
+      }
+      await backendRef.current.updateWallet(newName, {
+        currency: patch.currency, kind: patch.kind, rate: patch.rate,
+      });
+      await reloadWallets();
+    }),
     [mutate],
   );
   const setWalletStatus = useCallback(
-    (wallet, s) => mutate(async () => { await backendRef.current.setWalletStatus(wallet, s); await reloadWallets(); }),
+    (wallet, s) => mutate(async () => { await backendRef.current.setWalletStatus(wallet.name, s); await reloadWallets(); }),
     [mutate],
   );
 
@@ -512,7 +528,7 @@ export function AppProvider({ children }) {
   const setWalletBalance = useCallback(
     (wallet, actual) =>
       mutate(async () => {
-        const current = walletBalance(transactions, wallet.id);
+        const current = walletBalance(transactions, wallet.name);
         const diff = actual - current;
         if (Math.abs(diff) < 0.005) return; // уже совпадает
         const tx = {
@@ -524,7 +540,7 @@ export function AppProvider({ children }) {
           category: '',
           note: 'Корректировка баланса',
           tags: [],
-          wallet: wallet.id,
+          wallet: wallet.name,
           currency: wallet.currency,
           origAmount: null,
           origCurrency: '',

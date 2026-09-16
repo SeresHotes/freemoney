@@ -11,7 +11,7 @@ import { DEFAULT_BASE_CURRENCY } from '../config';
 import { newId, nowStamp } from '../utils/format';
 
 const DB_NAME = 'freemoney';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_TX = 'transactions';
 const STORE_CAT = 'categories';
 const STORE_WALLET = 'wallets';
@@ -29,17 +29,48 @@ const STORE_BY_ENTITY = {
 };
 const DATA_STORES = [STORE_TX, STORE_CAT, STORE_WALLET, STORE_TAG, STORE_SETTINGS];
 
+// v4: кошелёк идентифицируется по имени (keyPath 'name'), поле id упразднено.
+// Переносим существующий стор wallets (keyPath 'id') в стор с keyPath 'name' и
+// переводим ссылки операций t.wallet со старого id на имя кошелька. Всё внутри
+// versionchange-транзакции: getAll → пересоздание стора → перезапись операций.
+function migrateWalletsIdToName(db, tx) {
+  const getReq = tx.objectStore(STORE_WALLET).getAll();
+  getReq.onsuccess = () => {
+    const oldWallets = (getReq.result || []).filter((w) => w.name);
+    const idToName = new Map(oldWallets.map((w) => [w.id, w.name]));
+    db.deleteObjectStore(STORE_WALLET);
+    const newStore = db.createObjectStore(STORE_WALLET, { keyPath: 'name' });
+    // Дубли имён схлопываются в один кошелёк (последний побеждает) — намеренно.
+    for (const w of oldWallets) {
+      const { id, ...rest } = w;
+      newStore.put(rest);
+    }
+    const txStore = tx.objectStore(STORE_TX);
+    const txReq = txStore.getAll();
+    txReq.onsuccess = () => {
+      for (const t of txReq.result || []) {
+        const name = idToName.get(t.wallet);
+        if (name && name !== t.wallet) txStore.put({ ...t, wallet: name });
+      }
+    };
+  };
+}
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_TX)) db.createObjectStore(STORE_TX, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(STORE_CAT)) db.createObjectStore(STORE_CAT, { keyPath: 'id' });
-      if (!db.objectStoreNames.contains(STORE_WALLET)) db.createObjectStore(STORE_WALLET, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(STORE_TAG)) db.createObjectStore(STORE_TAG, { keyPath: 'name' });
       if (!db.objectStoreNames.contains(STORE_SETTINGS)) db.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
       if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META, { keyPath: 'key' });
+      if (!db.objectStoreNames.contains(STORE_WALLET)) {
+        db.createObjectStore(STORE_WALLET, { keyPath: 'name' });
+      } else if (event.oldVersion < 4) {
+        migrateWalletsIdToName(db, request.transaction);
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -91,7 +122,6 @@ export async function initLocalStore() {
     putStamped(db, STORE_CAT, { id: newId(), ...c, status: 'active', order: index }),
   );
   await putStamped(db, STORE_WALLET, {
-    id: newId(),
     name: 'Основной',
     currency: DEFAULT_BASE_CURRENCY,
     status: 'active',
@@ -137,7 +167,7 @@ export async function rawDump() {
 export async function applyRecords(entity, records) {
   if (!records?.length) return;
   const name = STORE_BY_ENTITY[entity];
-  const keyOf = (r) => (name === STORE_TAG ? r.name : name === STORE_SETTINGS ? r.key : r.id);
+  const keyOf = (r) => (name === STORE_TAG || name === STORE_WALLET ? r.name : name === STORE_SETTINGS ? r.key : r.id);
   const db = await openDb();
   await new Promise((resolve, reject) => {
     const tx = db.transaction(name, 'readwrite');
@@ -187,7 +217,6 @@ export function createLocalBackend() {
       const wallets = await getAll(db, STORE_WALLET);
       if (wallets.length === 0) {
         await put(db, STORE_WALLET, {
-          id: newId(),
           name: 'Основной',
           currency: DEFAULT_BASE_CURRENCY,
           status: 'active',
@@ -351,27 +380,50 @@ export function createLocalBackend() {
       const db = await openDb();
       const existing = (await getAll(db, STORE_WALLET)).filter(isLive);
       await putStamped(db, STORE_WALLET, {
-        id: newId(), name, currency, status: 'active', order: existing.length,
+        name, currency, status: 'active', order: existing.length,
         kind: kind || 'cash', rate: Number(rate) || 0, deleted: false,
       });
       db.close();
     },
 
-    updateWallet: async (wallet, { name, currency, kind, rate }) => {
+    // Правка полей кошелька (кроме имени) — по имени-ключу.
+    updateWallet: async (name, { currency, kind, rate }) => {
       const db = await openDb();
       const s = store(db, STORE_WALLET, 'readwrite');
-      const w = await reqToPromise(s.get(wallet.id));
+      const w = await reqToPromise(s.get(name));
       if (w) {
-        Object.assign(w, { name, currency, kind: kind || 'cash', rate: Number(rate) || 0, updatedAt: nowStamp() });
+        Object.assign(w, { currency, kind: kind || 'cash', rate: Number(rate) || 0, updatedAt: nowStamp() });
         await reqToPromise(s.put(w));
       }
       db.close();
     },
 
-    setWalletStatus: async (wallet, status) => {
+    // Переименование = tombstone старого имени + запись под новым + каскад в
+    // операции (t.wallet), по образцу renameTag. Имя — идентификатор кошелька.
+    renameWallet: async (oldName, newName) => {
       const db = await openDb();
       const s = store(db, STORE_WALLET, 'readwrite');
-      const w = await reqToPromise(s.get(wallet.id));
+      const old = await reqToPromise(s.get(oldName));
+      if (old) {
+        await reqToPromise(s.put({ ...old, name: oldName, deleted: true, updatedAt: nowStamp() }));
+        const { deleted, ...rest } = old;
+        await reqToPromise(s.put({ ...rest, name: newName, deleted: false, updatedAt: nowStamp() }));
+      }
+      const txs = store(db, STORE_TX, 'readwrite');
+      const all = await reqToPromise(txs.getAll());
+      for (const t of all) {
+        if (t.wallet === oldName) {
+          t.wallet = newName; t.updatedAt = nowStamp();
+          await reqToPromise(txs.put(t));
+        }
+      }
+      db.close();
+    },
+
+    setWalletStatus: async (name, status) => {
+      const db = await openDb();
+      const s = store(db, STORE_WALLET, 'readwrite');
+      const w = await reqToPromise(s.get(name));
       if (w) { w.status = status; w.updatedAt = nowStamp(); await reqToPromise(s.put(w)); }
       db.close();
     },

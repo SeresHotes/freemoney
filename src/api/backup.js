@@ -9,7 +9,7 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
     app: 'freemoney',
     version: VERSION,
     baseCurrency,
-    wallets: wallets.map((w) => ({ id: w.id, name: w.name, currency: w.currency, status: w.status, kind: w.kind || 'cash', rate: w.rate || 0 })),
+    wallets: wallets.map((w) => ({ name: w.name, currency: w.currency, status: w.status, kind: w.kind || 'cash', rate: w.rate || 0 })),
     categories: categories.map((c) => ({ name: c.name, kind: c.kind, status: c.status, icon: c.icon })),
     tags: tags.map((t) => (typeof t === 'string' ? { name: t, status: 'active' } : { name: t.name, status: t.status || 'active' })),
     transactions: transactions.map((t) => ({
@@ -22,8 +22,8 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
   downloadFile('freemoney-backup.json', JSON.stringify(payload, null, 2), 'application/json');
 }
 
-// Импорт бэкапа: добавляет отсутствующее, сопоставляя кошельки по имени
-// (id могут отличаться между устройствами). Возвращает счётчики добавленного.
+// Импорт бэкапа: добавляет отсутствующее, сопоставляя кошельки по имени.
+// Возвращает счётчики добавленного.
 export async function importBackup(text, backend, current) {
   // Убираем BOM (наш экспорт добавляет его для Excel) перед разбором JSON.
   const data = JSON.parse(text.replace(/^﻿/, ''));
@@ -31,20 +31,18 @@ export async function importBackup(text, backend, current) {
 
   const result = { wallets: 0, categories: 0, tags: 0, transactions: 0 };
 
-  // Кошельки — по имени. Строим карту old.id → актуальный id.
-  let wallets = current.wallets;
-  const walletIdByName = new Map(wallets.map((w) => [w.name, w.id]));
-  const oldToNewWallet = new Map();
+  // Кошельки — по имени. Для старых бэкапов (с полем id и t.wallet=id) строим
+  // карту old.id → имя, чтобы перевести ссылки операций на имя кошелька.
+  const walletNames = new Set(current.wallets.map((w) => w.name));
+  const oldIdToName = new Map();
 
   for (const w of data.wallets || []) {
-    if (!walletIdByName.has(w.name)) {
+    if (!walletNames.has(w.name)) {
       await backend.addWallet({ name: w.name, currency: w.currency, kind: w.kind, rate: w.rate });
+      walletNames.add(w.name);
       result.wallets += 1;
-      wallets = await backend.fetchWallets();
-      const created = wallets.find((x) => x.name === w.name);
-      if (created) walletIdByName.set(w.name, created.id);
     }
-    oldToNewWallet.set(w.id, walletIdByName.get(w.name));
+    if (w.id) oldIdToName.set(w.id, w.name);
   }
 
   // Категории — по имени.
@@ -70,12 +68,13 @@ export async function importBackup(text, backend, current) {
     result.tags += 1;
   }
 
-  // Операции — по id, с ремапом кошелька.
+  // Операции — по id. Кошелёк: в новых бэкапах t.wallet уже имя, в старых —
+  // переводим со старого id на имя (иначе оставляем как есть).
   const existingIds = new Set(current.transactions.map((t) => t.id));
   const toAdd = [];
   for (const t of data.transactions || []) {
     if (existingIds.has(t.id)) continue;
-    toAdd.push({ ...t, wallet: oldToNewWallet.get(t.wallet) || t.wallet });
+    toAdd.push({ ...t, wallet: oldIdToName.get(t.wallet) || t.wallet });
     existingIds.add(t.id);
   }
   if (toAdd.length) {

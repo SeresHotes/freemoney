@@ -5,12 +5,13 @@ import { CURRENCIES, formatAmount } from '../utils/currencies';
 import { walletBalance } from '../utils/finance';
 
 export default function WalletEdit() {
-  const { id } = useParams();
+  const { name: nameParam } = useParams();
   const navigate = useNavigate();
   const { wallets, transactions, addWallet, updateWallet, setWalletStatus, setWalletBalance } = useApp();
 
-  const editing = id != null;
-  const current = editing ? wallets.find((w) => String(w.id) === String(id)) : null;
+  const editing = nameParam != null;
+  const walletName = editing ? decodeURIComponent(nameParam) : null;
+  const current = editing ? wallets.find((w) => w.name === walletName) : null;
 
   const [name, setName] = useState(current?.name || '');
   const [currency, setCurrency] = useState(current?.currency || CURRENCIES[0].code);
@@ -31,13 +32,16 @@ export default function WalletEdit() {
     );
   }
 
-  const currentBalance = current ? walletBalance(transactions, current.id) : 0;
+  const currentBalance = current ? walletBalance(transactions, current.name) : 0;
 
   const submit = async (e) => {
     e.preventDefault();
     setFormError(null);
     const trimmed = name.trim();
     if (!trimmed) { setFormError('Введите название'); return; }
+    // Имя — идентификатор кошелька, поэтому оно должно быть уникальным.
+    const clash = wallets.some((w) => w.name === trimmed && w.name !== current?.name);
+    if (clash) { setFormError('Кошелёк с таким названием уже есть'); return; }
     setBusy(true);
     try {
       if (editing) {

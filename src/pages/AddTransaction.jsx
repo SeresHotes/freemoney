@@ -21,11 +21,11 @@ export default function AddTransaction() {
   const isExpense = type === 'expense';
 
   const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
-  const currencyOf = (id) => wallets.find((w) => w.id === id)?.currency || '';
+  const currencyOf = (name) => wallets.find((w) => w.name === name)?.currency || '';
 
   // Последний использованный кошелёк — из самой свежей операции с активным кошельком.
   const lastUsedWalletId = useMemo(() => {
-    const activeIds = new Set(activeWallets.map((w) => w.id));
+    const activeIds = new Set(activeWallets.map((w) => w.name));
     let latest = null;
     for (const tx of transactions) {
       if (!activeIds.has(tx.wallet)) continue;
@@ -41,7 +41,7 @@ export default function AddTransaction() {
   );
 
   const [walletId, setWalletId] = useState(
-    () => editingTx?.wallet || lastUsedWalletId || activeWallets[0]?.id || '',
+    () => editingTx?.wallet || lastUsedWalletId || activeWallets[0]?.name || '',
   );
   const walletCurrency = currencyOf(walletId);
 
@@ -236,7 +236,7 @@ export default function AddTransaction() {
         <label className="field">
           <span className="field__label">Кошелёк</span>
           <select className="field__input field__input--select" value={walletId} onChange={(e) => changeWallet(e.target.value)}>
-            {activeWallets.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>)}
+            {activeWallets.map((w) => <option key={w.name} value={w.name}>{w.name} ({w.currency})</option>)}
           </select>
         </label>
 

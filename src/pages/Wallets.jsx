@@ -24,15 +24,15 @@ export default function Wallets() {
         <h2 className="section-title">Активные ({active.length})</h2>
         <ul className="cat-list">
           {active.map((w) => (
-            <li key={w.id} className="cat-item cat-item--clickable" onClick={() => navigate(`/transactions?wallet=${w.id}`)}>
+            <li key={w.name} className="cat-item cat-item--clickable" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
               <div className="cat-item__main">
                 <span className="cat-item__name">{w.name}</span>
                 <span className="kind-badge">{w.currency}</span>
                 {isDebtWallet(w) && <span className="kind-badge">долг</span>}
               </div>
               <div className="cat-item__right">
-                <span className="wallet-balance">{formatAmount(walletBalance(transactions, w.id), w.currency)}</span>
-                <button className="link-btn cat-item__action" onClick={(e) => { e.stopPropagation(); navigate(`/wallets/${w.id}/edit`); }} title="Редактировать">✏️</button>
+                <span className="wallet-balance">{formatAmount(walletBalance(transactions, w.name), w.currency)}</span>
+                <button className="link-btn cat-item__action" onClick={(e) => { e.stopPropagation(); navigate(`/wallets/${encodeURIComponent(w.name)}/edit`); }} title="Редактировать">✏️</button>
               </div>
             </li>
           ))}
@@ -48,7 +48,7 @@ export default function Wallets() {
           {showArchived && (
             <ul className="cat-list cat-list--archived">
               {archived.map((w) => (
-                <li key={w.id} className="cat-item cat-item--archived cat-item--clickable" onClick={() => navigate(`/wallets/${w.id}/edit`)}>
+                <li key={w.name} className="cat-item cat-item--archived cat-item--clickable" onClick={() => navigate(`/wallets/${encodeURIComponent(w.name)}/edit`)}>
                   <div className="cat-item__main">
                     <span className="cat-item__name">{w.name}</span>
                     <span className="kind-badge">{w.currency}</span>

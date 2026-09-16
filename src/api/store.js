@@ -8,7 +8,9 @@
 //     type    — expense|income|transfer_in|transfer_out|adjust_in|adjust_out|
 //               interest_in|interest_out
 //   Categories: id|name|kind|status|icon|order|updatedAt|deleted              (A:H)
-//   Wallets:    id|name|currency|status|order|kind|rate|updatedAt|deleted      (A:J)
+//   Wallets:    _|name|currency|status|order|kind|rate|updatedAt|deleted       (A:J)
+//     кошелёк идентифицируется по имени (колонка B); колонка A — legacy-слот
+//     бывшего id, пишется пустой (позиции колонок не сдвигаем ради старых таблиц)
 //   Tags:       name|updatedAt|deleted                                        (A:C)
 //   Settings:   key|value|updatedAt                                           (A:C)
 //
@@ -120,13 +122,12 @@ function rowToCat(r, index) {
 
 function walletToRow(w) {
   return [
-    w.id, w.name || '', w.currency || DEFAULT_BASE_CURRENCY, w.status || 'active', w.order ?? 0,
+    '', w.name || '', w.currency || DEFAULT_BASE_CURRENCY, w.status || 'active', w.order ?? 0,
     w.kind || 'cash', w.rate ?? 0, String(w.updatedAt || 0), encBool(w.deleted),
   ];
 }
 function rowToWallet(r, index) {
   return {
-    id: r[0],
     name: r[1] || '',
     currency: r[2] || DEFAULT_BASE_CURRENCY,
     status: r[3] || 'active',
@@ -237,7 +238,8 @@ export async function fetchAllForSync(id) {
   return {
     transactions: txRows.filter((r) => r[0]).map(rowToTx),
     categories: catRows.filter((r) => r[0]).map(rowToCat),
-    wallets: walletRows.filter((r) => r[0]).map(rowToWallet),
+    // Кошельки идентифицируются по имени (колонка B), колонка A — legacy-пустая.
+    wallets: walletRows.filter((r) => r[1]).map(rowToWallet),
     tags: tagRows.filter((r) => r[0]).map(rowToTag),
     settings: settingsRows.filter((r) => r[0]).map(rowToSetting),
   };

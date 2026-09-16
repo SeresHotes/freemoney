@@ -46,7 +46,7 @@ export default function Transactions() {
   );
 
   const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
-  const walletById = useMemo(() => new Map(wallets.map((w) => [w.id, w])), [wallets]);
+  const walletById = useMemo(() => new Map(wallets.map((w) => [w.name, w])), [wallets]);
 
   // Пары ног перевода/долга по transferId — берём из полного списка, чтобы
   // показать обе стороны (A → B) даже когда фильтр по кошельку оставил одну ногу.
@@ -64,7 +64,7 @@ export default function Transactions() {
 
   const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [categories]);
   const walletOptions = useMemo(
-    () => wallets.filter((w) => w.status === 'active').map((w) => ({ value: w.id, label: w.name })),
+    () => wallets.filter((w) => w.status === 'active').map((w) => ({ value: w.name, label: w.name })),
     [wallets],
   );
   const tagOptions = useMemo(() => {
@@ -145,7 +145,7 @@ export default function Transactions() {
       const debtLeg = cashOut ? inLeg : outLeg;
       const debtW = cashOut ? inW : outW;
       const cashLeg = cashOut ? outLeg : inLeg;
-      const balBefore = debtLeg ? debtBalanceBefore(transactions, debtW.id, debtLeg) : 0;
+      const balBefore = debtLeg ? debtBalanceBefore(transactions, debtW.name, debtLeg) : 0;
       const amt = cashLeg ? cashLeg.amount : debtLeg?.amount || 0;
       const cur = cashLeg ? cashLeg.currency : debtLeg?.currency;
       icon = '🤝';
