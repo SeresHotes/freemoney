@@ -33,6 +33,7 @@ function SyncSection() {
   const [busy, setBusy] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const [sheets, setSheets] = useState([]);
+  const [loadingSheets, setLoadingSheets] = useState(false);
   const [sheetName, setSheetName] = useState(SPREADSHEET_TITLE);
   const [manualId, setManualId] = useState('');
   const [localError, setLocalError] = useState(null);
@@ -49,6 +50,9 @@ function SyncSection() {
   useEffect(() => {
     if (!choosing) return undefined;
     let cancelled = false;
+    setLoadingSheets(true);
+    setSheets([]);
+    setLocalError(null);
     listSyncSheets()
       .then((f) => { if (!cancelled) setSheets(f); })
       .catch((err) => {
@@ -56,7 +60,8 @@ function SyncSection() {
         // приходится вводить ссылку вручную. Показываем причину.
         console.error('Не удалось получить список таблиц:', err);
         if (!cancelled) setLocalError('Не удалось загрузить список ваших таблиц. Введите ссылку вручную ниже или откройте выбор ещё раз.');
-      });
+      })
+      .finally(() => { if (!cancelled) setLoadingSheets(false); });
     return () => { cancelled = true; };
   }, [choosing, listSyncSheets]);
 
@@ -159,7 +164,17 @@ function SyncSection() {
             </button>
           </div>
 
-          {sheets.length > 0 && (
+          {loadingSheets && (
+            <div className="gate__section">
+              <h3 className="section-title">Ваши таблицы</h3>
+              <div className="cat-item">
+                <div className="spinner" />
+                <span className="muted">Ищем ваши таблицы, подождите…</span>
+              </div>
+            </div>
+          )}
+
+          {!loadingSheets && sheets.length > 0 && (
             <div className="gate__section">
               <h3 className="section-title">Ваши таблицы</h3>
               <ul className="cat-list">
