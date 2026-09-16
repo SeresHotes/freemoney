@@ -4,7 +4,7 @@
 // round-trip) плюс служебные колонки синхронизации `updatedAt` и `deleted`:
 //   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|
 //                 origAmount|origCurrency|transferId|rate|updatedAt|deleted   (A:O)
-//     datetime — «YYYY-MM-DD HH:MM[:SS]» (в приложении хранится как date + time)
+//     datetime — всегда «YYYY-MM-DD HH:MM:SS» (в приложении хранится как date + time)
 //     type    — expense|income|transfer_in|transfer_out|adjust_in|adjust_out|
 //               interest_in|interest_out
 //   Categories: id|name|kind|status|icon|order|updatedAt|deleted              (A:H)
@@ -12,7 +12,9 @@
 //   Tags:       name|updatedAt|deleted                                        (A:C)
 //   Settings:   key|value|updatedAt                                           (A:C)
 //
-// updatedAt — метка изменения (мс) для LWW-мерджа; deleted — tombstone ('1'/'').
+// updatedAt — метка последнего изменения для LWW-мерджа; в таблице хранится
+// читаемым datetime «YYYY-MM-DD HH:MM:SS» (как время операций), внутри приложения —
+// число мс. deleted — tombstone ('1'/'').
 // Лист остаётся читаемым и правится руками: изменения, внесённые в таблицу
 // напрямую, sync распознаёт по расхождению со снапшотом (см. api/sync.js).
 //
@@ -34,6 +36,7 @@ import {
 } from './sheets';
 import { SPREADSHEET_TITLE, DEFAULT_BASE_CURRENCY } from '../config';
 import { DEFAULT_ICON } from './defaults';
+import { toDatetime } from '../utils/format';
 
 export const SHEET_TX = 'Transactions';
 export const SHEET_CAT = 'Categories';
@@ -87,6 +90,28 @@ const encBool = (v) => (v ? '1' : '');
 const decBool = (v) => v === '1' || v === 'TRUE' || v === 'true' || v === true;
 const decNum = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
 
+// updatedAt пишем тем же читаемым datetime-форматом, что и время операций:
+// «YYYY-MM-DD HH:MM:SS» (локальное время) — чтобы вся таблица читалась единообразно.
+// Внутри приложения updatedAt остаётся числом мс (Date.now()) для LWW-мерджа; в
+// ячейку кладём посекундную метку (миллисекунды отбрасываем), декод восстанавливает
+// мс парсингом — точности до секунды для «последняя правка побеждает» достаточно.
+const encStamp = (ms) => {
+  const n = Number(ms) || 0;
+  if (n <= 0) return '';
+  const d = new Date(n);
+  const p = (x) => String(x).padStart(2, '0');
+  const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${date} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+};
+const decStamp = (v) => {
+  if (v == null || v === '') return 0;
+  const s = String(v).trim();
+  if (/^\d+$/.test(s)) return Number(s); // legacy: «сырые» миллисекунды
+  // «YYYY-MM-DD HH:MM:SS» -> локальное время; ISO с суффиксом Z разберётся как UTC.
+  const t = Date.parse(s.includes('T') ? s : s.replace(' ', 'T'));
+  return Number.isNaN(t) ? 0 : t;
+};
+
 function parseTags(cell) {
   if (!cell) return [];
   return [...new Set(String(cell).split(',').map((t) => t.trim()).filter(Boolean))];
@@ -99,11 +124,11 @@ function serializeTags(tags) {
 // --- Строка ↔ каноническая запись (по одной паре на сущность) ----------------
 
 function txToRow(t) {
-  const datetime = t.date ? `${t.date} ${t.time || '00:00'}` : '';
+  const datetime = toDatetime(t.date, t.time);
   return [
     t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
     t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
-    t.rate ?? '', String(t.updatedAt || 0), encBool(t.deleted),
+    t.rate ?? '', encStamp(t.updatedAt), encBool(t.deleted),
   ];
 }
 function rowToTx(r) {
@@ -127,7 +152,7 @@ function rowToTx(r) {
     origCurrency: r[10] || '',
     transferId: r[11] || '',
     rate,
-    updatedAt: decNum(r[13]),
+    updatedAt: decStamp(r[13]),
     deleted: decBool(r[14]),
   };
 }
@@ -135,7 +160,7 @@ function rowToTx(r) {
 function catToRow(c) {
   return [
     c.name, c.kind || 'both', c.status || 'active', c.icon || DEFAULT_ICON,
-    c.id || '', c.order ?? 0, String(c.updatedAt || 0), encBool(c.deleted),
+    c.id || '', c.order ?? 0, encStamp(c.updatedAt), encBool(c.deleted),
   ];
 }
 function rowToCat(r, index) {
@@ -146,7 +171,7 @@ function rowToCat(r, index) {
     icon: r[3] || DEFAULT_ICON,
     id: r[4] || '',
     order: r[5] === '' || r[5] == null ? index : decNum(r[5]),
-    updatedAt: decNum(r[6]),
+    updatedAt: decStamp(r[6]),
     deleted: decBool(r[7]),
   };
 }
@@ -154,7 +179,7 @@ function rowToCat(r, index) {
 function walletToRow(w) {
   return [
     w.id, w.name || '', w.currency || DEFAULT_BASE_CURRENCY, w.status || 'active', w.order ?? 0,
-    w.kind || 'cash', w.rate ?? 0, String(w.updatedAt || 0), encBool(w.deleted),
+    w.kind || 'cash', w.rate ?? 0, encStamp(w.updatedAt), encBool(w.deleted),
   ];
 }
 function rowToWallet(r, index) {
@@ -166,23 +191,23 @@ function rowToWallet(r, index) {
     order: r[4] === '' || r[4] == null ? index : decNum(r[4]),
     kind: r[5] || 'cash',
     rate: decNum(r[6]),
-    updatedAt: decNum(r[7]),
+    updatedAt: decStamp(r[7]),
     deleted: decBool(r[8]),
   };
 }
 
 function tagToRow(t) {
-  return [t.name, t.status || 'active', String(t.updatedAt || 0), encBool(t.deleted)];
+  return [t.name, t.status || 'active', encStamp(t.updatedAt), encBool(t.deleted)];
 }
 function rowToTag(r) {
-  return { name: r[0] || '', status: r[1] || 'active', updatedAt: decNum(r[2]), deleted: decBool(r[3]) };
+  return { name: r[0] || '', status: r[1] || 'active', updatedAt: decStamp(r[2]), deleted: decBool(r[3]) };
 }
 
 function settingToRow(s) {
-  return [s.key, s.value ?? '', String(s.updatedAt || 0)];
+  return [s.key, s.value ?? '', encStamp(s.updatedAt)];
 }
 function rowToSetting(r) {
-  return { key: r[0] || '', value: r[1] ?? '', updatedAt: decNum(r[2]), deleted: false };
+  return { key: r[0] || '', value: r[1] ?? '', updatedAt: decStamp(r[2]), deleted: false };
 }
 
 // Диапазоны данных (без строки заголовка) и мапперы по сущностям.
