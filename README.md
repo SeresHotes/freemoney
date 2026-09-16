@@ -67,7 +67,7 @@ PWA-приложение для учёта доходов и расходов. �
 | Лист           | Колонки                                   |
 | -------------- | ----------------------------------------- |
 | `Transactions` | `id`, `datetime`, `type`, `amount`, `category`, `note`, `tags`, `wallet`, `currency`, `origAmount`, `origCurrency`, `transferId`, `rate`, `updatedAt`, `deleted` |
-| `Categories`   | `id`, `name`, `kind`, `status`, `icon`, `order`, `updatedAt`, `deleted` |
+| `Categories`   | `name`, `kind`, `status`, `icon`, `id`, `order`, `updatedAt`, `deleted` |
 | `Wallets`      | `id`, `name`, `currency`, `status`, `order`, `kind`, `rate`, `updatedAt`, `deleted` |
 | `Tags`         | `name`, `updatedAt`, `deleted`            |
 | `Settings`     | `key`, `value`, `updatedAt`               |

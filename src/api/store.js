@@ -40,7 +40,10 @@ const TX_HEADER = [
   'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'rate',
   'updatedAt', 'deleted',
 ];
-const CAT_HEADER = ['id', 'name', 'kind', 'status', 'icon', 'order', 'updatedAt', 'deleted'];
+// ВАЖНО: новые колонки (id/order/updatedAt/deleted) добавлены В КОНЕЦ, а старые
+// name|kind|status|icon остаются на местах A–D. Иначе у существующих таблиц
+// (старая схема name|kind|status|icon) данные читались бы со сдвигом.
+const CAT_HEADER = ['name', 'kind', 'status', 'icon', 'id', 'order', 'updatedAt', 'deleted'];
 const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
 const TAG_HEADER = ['name', 'updatedAt', 'deleted'];
 const SETTINGS_HEADER = ['key', 'value', 'updatedAt'];
@@ -98,17 +101,17 @@ function rowToTx(r) {
 
 function catToRow(c) {
   return [
-    c.id || '', c.name, c.kind || 'both', c.status || 'active', c.icon || DEFAULT_ICON,
-    c.order ?? 0, String(c.updatedAt || 0), encBool(c.deleted),
+    c.name, c.kind || 'both', c.status || 'active', c.icon || DEFAULT_ICON,
+    c.id || '', c.order ?? 0, String(c.updatedAt || 0), encBool(c.deleted),
   ];
 }
 function rowToCat(r, index) {
   return {
-    id: r[0] || '',
-    name: r[1] || '',
-    kind: r[2] || 'both',
-    status: r[3] || 'active',
-    icon: r[4] || DEFAULT_ICON,
+    name: r[0] || '',
+    kind: r[1] || 'both',
+    status: r[2] || 'active',
+    icon: r[3] || DEFAULT_ICON,
+    id: r[4] || '',
     order: r[5] === '' || r[5] == null ? index : decNum(r[5]),
     updatedAt: decNum(r[6]),
     deleted: decBool(r[7]),
@@ -202,7 +205,7 @@ export async function ensureSyncSchema(id) {
     await updateValues(id, `${SHEET_SETTINGS}!A1`, [SETTINGS_HEADER]);
   }
 
-  const hdrKey = `freemoney:hdr6:${id}`;
+  const hdrKey = `freemoney:hdr7:${id}`;
   if (!localStorage.getItem(hdrKey)) {
     await batchUpdateValues(id, [
       { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
@@ -233,7 +236,7 @@ export async function fetchAllForSync(id) {
   ]);
   return {
     transactions: txRows.filter((r) => r[0]).map(rowToTx),
-    categories: catRows.filter((r) => r[1]).map(rowToCat),
+    categories: catRows.filter((r) => r[0]).map(rowToCat),
     wallets: walletRows.filter((r) => r[0]).map(rowToWallet),
     tags: tagRows.filter((r) => r[0]).map(rowToTag),
     settings: settingsRows.filter((r) => r[0]).map(rowToSetting),
