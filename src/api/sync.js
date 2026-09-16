@@ -79,11 +79,22 @@ function contentSig(entity, r) {
 }
 
 // Эффективная метка удалённой записи с поправкой на ручные правки листа:
-// если содержимое отличается от снапшота, но метка не выросла — правили руками,
-// считаем изменение свежим (иначе оно проиграло бы локальной версии).
-function effectiveRemoteTs(entity, r, snapEntry, now) {
+// если содержимое листа отличается от снапшота, но метка не выросла — правили
+// руками, считаем изменение свежим (иначе оно проиграло бы локальной версии).
+//
+// ВАЖНО: эту поправку применяем ТОЛЬКО когда локальная сторона с прошлого синка
+// не менялась. Иначе (обе стороны изменились относительно снапшота) это обычный
+// конфликт — и «сейчас» на удалённой стороне затирал бы реальную локальную
+// правку. Так, например, локально заархивированный кошелёк не воскресал бы из
+// листа: метка листа хранится посекундно и почти всегда `<= snapEntry.ts`
+// (в снапшоте — полные мс), поэтому без этой проверки любое расхождение
+// сигнатуры листа ложно трактовалось как ручная правка.
+function effectiveRemoteTs(entity, r, l, snapEntry, now) {
   const ts = r.updatedAt || 0;
-  if (snapEntry && contentSig(entity, r) !== snapEntry.sig && ts <= snapEntry.ts) {
+  if (!snapEntry) return ts;
+  const remoteChanged = contentSig(entity, r) !== snapEntry.sig;
+  const localChanged = l != null && contentSig(entity, l) !== snapEntry.sig;
+  if (remoteChanged && !localChanged && ts <= snapEntry.ts) {
     return now;
   }
   return ts;
@@ -130,7 +141,7 @@ function mergeCore(entity, pairs, snap, now) {
     if (l && !r) winner = l;
     else if (r && !l) winner = r;
     else {
-      const rEff = effectiveRemoteTs(entity, r, snap[snapKeyOf(entity, r)], now);
+      const rEff = effectiveRemoteTs(entity, r, l, snap[snapKeyOf(entity, r)], now);
       winner = rEff > (l.updatedAt || 0) ? r : l;
     }
 
