@@ -15,7 +15,7 @@ export default function Home() {
   const navigate = useNavigate();
   const { toBase, ready } = useBaseRates(baseCurrency);
 
-  const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
+  const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
 
   const netWorth = useMemo(() => {
     let sum = 0;
@@ -38,10 +38,12 @@ export default function Home() {
       if (monthKey(t.date) !== key) continue;
       const inBase = toBase(t.amount, t.currency);
       if (inBase == null) continue;
-      if (isIncome(t)) inc += inBase;
+      // amount знаковый (расход < 0); в суммах доход/расход показываем величину.
+      const mag = Math.abs(inBase);
+      if (isIncome(t)) inc += mag;
       else if (isExpense(t)) {
-        exp += inBase;
-        catMap.set(t.category || 'Без категории', (catMap.get(t.category) || 0) + inBase);
+        exp += mag;
+        catMap.set(t.category || 'Без категории', (catMap.get(t.category) || 0) + mag);
       }
     }
     const cats = [...catMap.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);

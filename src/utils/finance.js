@@ -16,26 +16,20 @@ export function isRealFlow(t) {
 }
 
 import { monthKey } from './format';
+import { normalizeType, signedAmount } from './model';
 
 // Укрупнённый тип операции: expense | income | transfer | adjust | interest.
 export function txKind(t) {
-  if (t.type.startsWith('transfer')) return 'transfer';
-  if (t.type.startsWith('adjust')) return 'adjust';
-  if (t.type.startsWith('interest')) return 'interest';
-  return t.type;
+  return normalizeType(t.type);
 }
 
-// Знаковый вклад операции в баланс кошелька (в его валюте).
-// Проценты (interest_in/out) — как корректировки: влияют на баланс, но это
-// не доход/расход (в статистику потоков не попадают, категории не требуют).
+// Знаковый вклад операции в баланс кошелька (в его валюте). amount уже знаковый
+// в новой модели; signedAmount дополнительно понимает старый формат (положительный
+// amount + суффикс _in/_out), поэтому расчёт корректен и на немигрированных записях.
+// Проценты (interest) — как корректировки: влияют на баланс, но это не доход/расход
+// (в статистику потоков не попадают, категории не требуют).
 export function signedDelta(t) {
-  if (t.type === 'income' || t.type === 'transfer_in' || t.type === 'adjust_in' || t.type === 'interest_in') {
-    return t.amount;
-  }
-  if (t.type === 'expense' || t.type === 'transfer_out' || t.type === 'adjust_out' || t.type === 'interest_out') {
-    return -t.amount;
-  }
-  return 0;
+  return signedAmount(t.type, t.amount);
 }
 
 // Проверка операции по набору фильтров (пустой массив = без ограничения).
@@ -107,9 +101,8 @@ export function expenseTotalsByCategory(transactions, toDisplay) {
   return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 }
 
-// Баланс кошелька в его валюте.
-// adjust_in / adjust_out — корректировки, interest_in / out — проценты
-// (тоже влияют на баланс, но не доход/расход).
+// Баланс кошелька в его валюте. Корректировки (adjust) и проценты (interest)
+// тоже влияют на баланс, но это не доход/расход — знак берётся из amount.
 export function walletBalance(transactions, walletName) {
   let balance = 0;
   for (const t of transactions) {

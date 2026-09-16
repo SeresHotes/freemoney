@@ -66,9 +66,9 @@ function Shell() {
           <Route path="/wallets/new" element={<WalletEdit />} />
           <Route path="/wallets/:name/edit" element={<WalletEdit />} />
           <Route path="/transfer" element={<Transfer />} />
-          <Route path="/transfer/:transferId" element={<Transfer />} />
+          <Route path="/transfer/:groupId" element={<Transfer />} />
           <Route path="/debt" element={<Debt />} />
-          <Route path="/debt/:transferId" element={<Debt />} />
+          <Route path="/debt/:groupId" element={<Debt />} />
           <Route path="/interest" element={<Interest />} />
           <Route path="/adjust" element={<NewAdjustment />} />
           <Route path="/tags" element={<Tags />} />
