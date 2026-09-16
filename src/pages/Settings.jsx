@@ -25,6 +25,7 @@ const SYNC_STATUS_TEXT = {
 function SyncSection() {
   const {
     mode, syncEnabled, syncStatus, lastSyncAt, syncError, needsSignIn, isClientConfigured,
+    syncSetup, clearSyncSetup,
     beginSync, listSyncSheets, createSyncSheet, connectSyncSheet, disableSync, disconnectSync,
     syncNow,
   } = useApp();
@@ -35,6 +36,14 @@ function SyncSection() {
   const [sheetName, setSheetName] = useState(SPREADSHEET_TITLE);
   const [manualId, setManualId] = useState('');
   const [localError, setLocalError] = useState(null);
+
+  // Вернулись из входа в Google (redirect) — сразу открываем выбор таблицы.
+  useEffect(() => {
+    if (syncSetup) {
+      setChoosing(true);
+      clearSyncSetup();
+    }
+  }, [syncSetup, clearSyncSetup]);
 
   // Подтянуть список ранее созданных таблиц, когда открыт выбор.
   useEffect(() => {

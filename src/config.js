@@ -42,6 +42,10 @@ export const LS_SPREADSHEET_ID = 'freemoney:spreadsheetId';
 export const LS_MODE = 'freemoney:mode';
 // Включена ли синхронизация с Google Таблицей ('1' | отсутствует).
 export const LS_SYNC_ENABLED = 'freemoney:syncEnabled';
+// Намерение включить синхронизацию, выставляется перед входом в Google ('1' |
+// отсутствует). В backend-режиме вход — полный редирект, поэтому после возврата
+// по этому флагу возобновляем настройку синка (получить токен → выбрать таблицу).
+export const LS_SYNC_PENDING = 'freemoney:syncPending';
 // Время последней успешной синхронизации (мс, Date.now()).
 export const LS_LAST_SYNC = 'freemoney:lastSyncAt';
 

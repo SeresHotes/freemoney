@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import NavBar from './components/NavBar';
 import UpdatePrompt from './components/UpdatePrompt';
@@ -33,6 +33,17 @@ function BusyOverlay() {
       </div>
     </div>
   );
+}
+
+// После возврата из входа в Google (redirect приходит на корень) уводим в
+// настройки, где откроется выбор таблицы для синхронизации.
+function SyncSetupRedirect() {
+  const { syncSetup } = useApp();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (syncSetup) navigate('/settings');
+  }, [syncSetup, navigate]);
+  return null;
 }
 
 function Shell() {
@@ -76,6 +87,7 @@ function Shell() {
       <NavBar />
       <SyncIndicator />
       <BusyOverlay />
+      <SyncSetupRedirect />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { initAuth, signIn, signOut, ensureToken } from '../auth/googleAuth';
+import { initAuth, signIn, signOut, ensureToken, isSignedIn, consumeAuthError } from '../auth/googleAuth';
 import { AuthError } from '../api/sheets';
 import { initSpreadsheet, findExistingSpreadsheets } from '../api/store';
 import { syncNow } from '../api/sync';
@@ -10,7 +10,7 @@ import {
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
 import {
-  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_LAST_SYNC,
+  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_SYNC_PENDING, LS_LAST_SYNC,
   DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED,
 } from '../config';
 import { newId, todayIso, nowTime } from '../utils/format';
@@ -39,6 +39,9 @@ export function AppProvider({ children }) {
   const [lastSyncAt, setLastSyncAt] = useState(Number(localStorage.getItem(LS_LAST_SYNC)) || null);
   const [syncError, setSyncError] = useState(null);
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  // Вошли в Google, но таблица ещё не выбрана — нужно показать выбор таблицы
+  // (в т.ч. после возврата из редиректа входа в backend-режиме).
+  const [syncSetup, setSyncSetup] = useState(false);
 
   const backendRef = useRef(null);
   const spreadsheetIdRef = useRef(localStorage.getItem(LS_SPREADSHEET_ID) || null);
@@ -188,6 +191,26 @@ export function AppProvider({ children }) {
       }
       spreadsheetIdRef.current = localStorage.getItem(LS_SPREADSHEET_ID) || null;
 
+      // Возврат из входа в Google (backend-режим — полный редирект). Если Google
+      // отказал — показываем причину, а не молчим.
+      const authErr = consumeAuthError();
+      if (authErr && !cancelled) {
+        setSyncError('Google не выдал доступ. Попробуйте включить синхронизацию ещё раз.');
+      }
+      // Мы намеренно начинали вход (LS_SYNC_PENDING) и теперь вошли — доводим
+      // включение до конца: либо синк на уже привязанной таблице, либо выбор новой.
+      const pending = localStorage.getItem(LS_SYNC_PENDING) === '1';
+      const resuming = pending && isSignedIn() && IS_CLIENT_ID_CONFIGURED;
+      if (pending) {
+        // Снимаем намерение в любом исходе: либо доводим сейчас, либо вход не
+        // удался (нет сессии) — чтобы флаг не залипал до следующего входа.
+        localStorage.removeItem(LS_SYNC_PENDING);
+      }
+      if (resuming && spreadsheetIdRef.current) {
+        enabled = true;
+        localStorage.setItem(LS_SYNC_ENABLED, '1');
+      }
+
       // UI показываем сразу — локальные данные уже загружены.
       setStatus('ready');
 
@@ -199,6 +222,8 @@ export function AppProvider({ children }) {
         doSync();
       } else {
         setSyncStatus('disabled');
+        // Вошли, но таблицы ещё нет — предложить выбрать/создать её.
+        if (resuming && !spreadsheetIdRef.current && !cancelled) setSyncSetup(true);
       }
     })();
     return () => {
@@ -226,8 +251,10 @@ export function AppProvider({ children }) {
       spreadsheetIdRef.current = id;
       localStorage.setItem(LS_SPREADSHEET_ID, id);
       localStorage.setItem(LS_SYNC_ENABLED, '1');
+      localStorage.removeItem(LS_SYNC_PENDING);
       syncEnabledRef.current = true;
       setSyncEnabled(true);
+      setSyncSetup(false);
       await syncNowManual();
     },
     [syncNowManual],
@@ -235,10 +262,16 @@ export function AppProvider({ children }) {
 
   // Шаг 1: вход в Google. Если таблица уже привязана — сразу включает синк и
   // возвращает false. Иначе возвращает true — нужно выбрать/создать таблицу.
+  // Флаг LS_SYNC_PENDING выставляем ДО входа: в backend-режиме signIn уводит в
+  // редирект и не возвращается, поэтому продолжение подхватит маунт-эффект после
+  // возврата. В GIS-режиме signIn резолвится здесь же — флаг сразу снимаем.
   const beginSync = useCallback(async () => {
     setError(null);
+    setSyncError(null);
+    localStorage.setItem(LS_SYNC_PENDING, '1');
     await initAuth();
     await signIn(); // в backend-режиме уходит в редирект и не возвращается
+    localStorage.removeItem(LS_SYNC_PENDING);
     await ensureToken();
     if (spreadsheetIdRef.current) {
       await finalizeSync(spreadsheetIdRef.current);
@@ -261,12 +294,14 @@ export function AppProvider({ children }) {
   const disableSync = useCallback(() => {
     clearTimeout(syncTimer.current);
     localStorage.removeItem(LS_SYNC_ENABLED);
+    localStorage.removeItem(LS_SYNC_PENDING);
     localStorage.removeItem(LS_MODE); // снимаем legacy 'google', чтобы не включалось заново
     syncEnabledRef.current = false;
     setSyncEnabled(false);
     setSyncStatus('disabled');
     setSyncError(null);
     setNeedsSignIn(false);
+    setSyncSetup(false);
   }, []);
 
   // Полностью отключить и выйти из Google (забыть таблицу).
@@ -599,6 +634,8 @@ export function AppProvider({ children }) {
     [wallets, categories, tags, transactions, track, loadData, scheduleSync],
   );
 
+  const clearSyncSetup = useCallback(() => setSyncSetup(false), []);
+
   const value = {
     status,
     mode,
@@ -615,6 +652,8 @@ export function AppProvider({ children }) {
     lastSyncAt,
     syncError,
     needsSignIn,
+    syncSetup,
+    clearSyncSetup,
     isClientConfigured: IS_CLIENT_ID_CONFIGURED,
     beginSync,
     listSyncSheets,
