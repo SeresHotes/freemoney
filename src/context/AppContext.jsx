@@ -268,22 +268,41 @@ export function AppProvider({ children }) {
 
   // Шаг 1: вход в Google. Если таблица уже привязана — сразу включает синк и
   // возвращает false. Иначе возвращает true — нужно выбрать/создать таблицу.
-  // Флаг LS_SYNC_PENDING выставляем ДО входа: в backend-режиме signIn уводит в
-  // редирект и не возвращается, поэтому продолжение подхватит маунт-эффект после
-  // возврата. В GIS-режиме signIn резолвится здесь же — флаг сразу снимаем.
   const beginSync = useCallback(async () => {
     setError(null);
     setSyncError(null);
+
+    // Довести включение до конца при действующем токене: таблица привязана —
+    // включаем синк (false = выбор таблицы не нужен), иначе просим выбрать (true).
+    const finishWithToken = async () => {
+      await ensureToken();
+      if (spreadsheetIdRef.current) {
+        await finalizeSync(spreadsheetIdRef.current);
+        return false;
+      }
+      return true;
+    };
+
+    // Уже вошли в Google — пробуем без редиректа: после «Выключить» повторное
+    // включение становится одним кликом (сессия сохранена). Если сессия
+    // недействительна (refresh-токен протух/отозван) — падаем в полноценный вход.
+    if (isSignedIn()) {
+      try {
+        await initAuth();
+        return await finishWithToken();
+      } catch {
+        /* сессия недействительна — ниже полноценный вход */
+      }
+    }
+
+    // Полноценный вход. Флаг LS_SYNC_PENDING выставляем ДО входа: в backend-режиме
+    // signIn уводит в редирект и не возвращается, поэтому продолжение подхватит
+    // маунт-эффект после возврата. В GIS-режиме signIn резолвится здесь же.
     localStorage.setItem(LS_SYNC_PENDING, '1');
     await initAuth();
-    await signIn(); // в backend-режиме уходит в редирект и не возвращается
+    await signIn();
     localStorage.removeItem(LS_SYNC_PENDING);
-    await ensureToken();
-    if (spreadsheetIdRef.current) {
-      await finalizeSync(spreadsheetIdRef.current);
-      return false;
-    }
-    return true;
+    return finishWithToken();
   }, [finalizeSync]);
 
   const createSyncSheet = useCallback(
