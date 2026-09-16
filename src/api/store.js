@@ -1,38 +1,33 @@
-// Высокоуровневая модель данных поверх Google Sheets.
+// Google Таблица как реплика локальных данных для синхронизации.
 //
-// Листы:
-//   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|origAmount|origCurrency|transferId|rate
-//     datetime — «YYYY-MM-DD HH:MM» или «YYYY-MM-DD» (в приложении хранится как date + time)
-//     type    — 'expense' | 'income' | 'transfer_out' | 'transfer_in'
-//               | 'adjust_in' | 'adjust_out' | 'interest_in' | 'interest_out'
-//     amount  — сумма в валюте кошелька
-//     wallet  — id кошелька; currency — валюта кошелька (денормализовано)
-//     origAmount/origCurrency — если операция введена в другой валюте
-//     transferId — связывает две ноги перевода между кошельками
-//     rate    — ставка процентов (%), только для interest_in/out (колонка M)
-//   Categories:   name|kind|status|icon
-//   Wallets:      id|name|currency|status|order|kind|rate
-//     kind — 'cash' (обычный) | 'debt' (долговой кошелёк на контрагента)
-//     rate — ставка для ручного начисления процентов, % (0 = не начисляем)
-//   Tags:         name|status
-//     status — 'active' | 'archived' ('archived' = удалённый тег, скрыт из подсказок)
-//   Settings:     key|value
+// Схема листов — ПОЛНЫЙ суперсет полей приложения (ничего не теряется при
+// round-trip) плюс служебные колонки синхронизации `updatedAt` и `deleted`:
+//   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|
+//                 origAmount|origCurrency|transferId|rate|updatedAt|deleted   (A:O)
+//     datetime — «YYYY-MM-DD HH:MM[:SS]» (в приложении хранится как date + time)
+//     type    — expense|income|transfer_in|transfer_out|adjust_in|adjust_out|
+//               interest_in|interest_out
+//   Categories: id|name|kind|status|icon|order|updatedAt|deleted              (A:H)
+//   Wallets:    id|name|currency|status|order|kind|rate|updatedAt|deleted      (A:J)
+//   Tags:       name|updatedAt|deleted                                        (A:C)
+//   Settings:   key|value|updatedAt                                           (A:C)
+//
+// updatedAt — метка изменения (мс) для LWW-мерджа; deleted — tombstone ('1'/'').
+// Лист остаётся читаемым и правится руками: изменения, внесённые в таблицу
+// напрямую, sync распознаёт по расхождению со снапшотом (см. api/sync.js).
 
 import {
   createSpreadsheet,
-  getValues,
   getValuesBatch,
-  appendRow,
-  appendRows,
   updateValues,
   batchUpdateValues,
+  clearValues,
   getSpreadsheetMeta,
   addSheet,
   listAppSpreadsheets,
 } from './sheets';
 import { SPREADSHEET_TITLE, DEFAULT_BASE_CURRENCY } from '../config';
-import { DEFAULT_CATEGORIES, DEFAULT_ICON } from './defaults';
-import { newId } from '../utils/format';
+import { DEFAULT_ICON } from './defaults';
 
 export const SHEET_TX = 'Transactions';
 export const SHEET_CAT = 'Categories';
@@ -42,21 +37,135 @@ export const SHEET_SETTINGS = 'Settings';
 
 const TX_HEADER = [
   'id', 'datetime', 'type', 'amount', 'category', 'note', 'tags',
-  'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId',
+  'wallet', 'currency', 'origAmount', 'origCurrency', 'transferId', 'rate',
+  'updatedAt', 'deleted',
 ];
-const CAT_HEADER = ['name', 'kind', 'status', 'icon'];
-const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate'];
-const TAG_HEADER = ['name', 'status'];
-const SETTINGS_HEADER = ['key', 'value'];
+// ВАЖНО: новые колонки (id/order/updatedAt/deleted) добавлены В КОНЕЦ, а старые
+// name|kind|status|icon остаются на местах A–D. Иначе у существующих таблиц
+// (старая схема name|kind|status|icon) данные читались бы со сдвигом.
+const CAT_HEADER = ['name', 'kind', 'status', 'icon', 'id', 'order', 'updatedAt', 'deleted'];
+const WALLET_HEADER = ['id', 'name', 'currency', 'status', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
+const TAG_HEADER = ['name', 'status', 'updatedAt', 'deleted'];
+const SETTINGS_HEADER = ['key', 'value', 'updatedAt'];
 
-const DEFAULT_CATEGORY_ROWS = DEFAULT_CATEGORIES.map((c) => [c.name, c.kind, 'active', c.icon]);
+// --- Кодирование ячеек ------------------------------------------------------
 
-function defaultWalletRow() {
-  return [newId(), 'Основной', DEFAULT_BASE_CURRENCY, 'active', 0, 'cash', 0];
+const encBool = (v) => (v ? '1' : '');
+const decBool = (v) => v === '1' || v === 'TRUE' || v === 'true' || v === true;
+const decNum = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
+
+function parseTags(cell) {
+  if (!cell) return [];
+  return [...new Set(String(cell).split(',').map((t) => t.trim()).filter(Boolean))];
 }
+function serializeTags(tags) {
+  if (!Array.isArray(tags)) return '';
+  return [...new Set(tags.map((t) => t.trim()).filter(Boolean))].join(', ');
+}
+
+// --- Строка ↔ каноническая запись (по одной паре на сущность) ----------------
+
+function txToRow(t) {
+  const datetime = t.date ? `${t.date} ${t.time || '00:00'}` : '';
+  return [
+    t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
+    t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
+    t.rate ?? '', String(t.updatedAt || 0), encBool(t.deleted),
+  ];
+}
+function rowToTx(r) {
+  const dt = r[1] || '';
+  const date = dt.slice(0, 10);
+  const time = dt.length > 10 ? dt.slice(11) : '00:00';
+  const rateCell = r[12];
+  const rate = rateCell != null && rateCell !== '' && !Number.isNaN(Number(rateCell)) ? Number(rateCell) : null;
+  return {
+    id: r[0],
+    date,
+    time,
+    type: r[2] || 'expense',
+    amount: Number(r[3]) || 0,
+    category: r[4] || '',
+    note: r[5] || '',
+    tags: parseTags(r[6]),
+    wallet: r[7] || '',
+    currency: r[8] || '',
+    origAmount: r[9] ? Number(r[9]) : null,
+    origCurrency: r[10] || '',
+    transferId: r[11] || '',
+    rate,
+    updatedAt: decNum(r[13]),
+    deleted: decBool(r[14]),
+  };
+}
+
+function catToRow(c) {
+  return [
+    c.name, c.kind || 'both', c.status || 'active', c.icon || DEFAULT_ICON,
+    c.id || '', c.order ?? 0, String(c.updatedAt || 0), encBool(c.deleted),
+  ];
+}
+function rowToCat(r, index) {
+  return {
+    name: r[0] || '',
+    kind: r[1] || 'both',
+    status: r[2] || 'active',
+    icon: r[3] || DEFAULT_ICON,
+    id: r[4] || '',
+    order: r[5] === '' || r[5] == null ? index : decNum(r[5]),
+    updatedAt: decNum(r[6]),
+    deleted: decBool(r[7]),
+  };
+}
+
+function walletToRow(w) {
+  return [
+    w.id, w.name || '', w.currency || DEFAULT_BASE_CURRENCY, w.status || 'active', w.order ?? 0,
+    w.kind || 'cash', w.rate ?? 0, String(w.updatedAt || 0), encBool(w.deleted),
+  ];
+}
+function rowToWallet(r, index) {
+  return {
+    id: r[0],
+    name: r[1] || '',
+    currency: r[2] || DEFAULT_BASE_CURRENCY,
+    status: r[3] || 'active',
+    order: r[4] === '' || r[4] == null ? index : decNum(r[4]),
+    kind: r[5] || 'cash',
+    rate: decNum(r[6]),
+    updatedAt: decNum(r[7]),
+    deleted: decBool(r[8]),
+  };
+}
+
+function tagToRow(t) {
+  return [t.name, t.status || 'active', String(t.updatedAt || 0), encBool(t.deleted)];
+}
+function rowToTag(r) {
+  return { name: r[0] || '', status: r[1] || 'active', updatedAt: decNum(r[2]), deleted: decBool(r[3]) };
+}
+
+function settingToRow(s) {
+  return [s.key, s.value ?? '', String(s.updatedAt || 0)];
+}
+function rowToSetting(r) {
+  return { key: r[0] || '', value: r[1] ?? '', updatedAt: decNum(r[2]), deleted: false };
+}
+
+// Диапазоны данных (без строки заголовка) и мапперы по сущностям.
+const ENTITY = {
+  transactions: { sheet: SHEET_TX, lastCol: 'O', toRow: txToRow, fromRow: rowToTx },
+  categories: { sheet: SHEET_CAT, lastCol: 'H', toRow: catToRow, fromRow: rowToCat },
+  wallets: { sheet: SHEET_WALLET, lastCol: 'J', toRow: walletToRow, fromRow: rowToWallet },
+  tags: { sheet: SHEET_TAG, lastCol: 'D', toRow: tagToRow, fromRow: rowToTag },
+  settings: { sheet: SHEET_SETTINGS, lastCol: 'C', toRow: settingToRow, fromRow: rowToSetting },
+};
 
 // --- Создание и схема -------------------------------------------------------
 
+// Создаём таблицу ТОЛЬКО с заголовками: наполнение придёт из локального стора
+// при первой синхронизации (источник правды — локальные данные). Пустая таблица
+// исключает дубли базовых категорий/кошелька при первом push.
 export async function initSpreadsheet(title = SPREADSHEET_TITLE) {
   const name = title.trim() || SPREADSHEET_TITLE;
   const spreadsheet = await createSpreadsheet(name, [
@@ -68,24 +177,24 @@ export async function initSpreadsheet(title = SPREADSHEET_TITLE) {
   ]);
   const id = spreadsheet.spreadsheetId;
   await updateValues(id, `${SHEET_TX}!A1`, [TX_HEADER]);
-  await updateValues(id, `${SHEET_CAT}!A1`, [CAT_HEADER, ...DEFAULT_CATEGORY_ROWS]);
-  await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER, defaultWalletRow()]);
+  await updateValues(id, `${SHEET_CAT}!A1`, [CAT_HEADER]);
+  await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER]);
   await updateValues(id, `${SHEET_TAG}!A1`, [TAG_HEADER]);
-  await updateValues(id, `${SHEET_SETTINGS}!A1`, [
-    SETTINGS_HEADER,
-    ['baseCurrency', DEFAULT_BASE_CURRENCY],
-  ]);
+  await updateValues(id, `${SHEET_SETTINGS}!A1`, [SETTINGS_HEADER]);
   return id;
 }
 
-// Дозавести недостающие листы в уже существующей таблице (миграция).
-export async function ensureSchema(id) {
+// Дозавести недостающие листы и обновить шапки до текущей схемы-суперсета.
+// Старые таблицы (без колонок updatedAt/deleted/id/order) при этом остаются
+// читаемыми: недостающие ячейки sync прочитает как 0/пусто и заполнит при записи.
+export async function ensureSyncSchema(id) {
   const meta = await getSpreadsheetMeta(id);
   const titles = new Set((meta.sheets || []).map((s) => s.properties.title));
 
+  // Недостающие листы заводим только с заголовками — данные придут из синка.
   if (!titles.has(SHEET_WALLET)) {
     await addSheet(id, SHEET_WALLET);
-    await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER, defaultWalletRow()]);
+    await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER]);
   }
   if (!titles.has(SHEET_TAG)) {
     await addSheet(id, SHEET_TAG);
@@ -93,22 +202,17 @@ export async function ensureSchema(id) {
   }
   if (!titles.has(SHEET_SETTINGS)) {
     await addSheet(id, SHEET_SETTINGS);
-    await updateValues(id, `${SHEET_SETTINGS}!A1`, [
-      SETTINGS_HEADER,
-      ['baseCurrency', DEFAULT_BASE_CURRENCY],
-    ]);
+    await updateValues(id, `${SHEET_SETTINGS}!A1`, [SETTINGS_HEADER]);
   }
 
-  // Разово обновляем шапки столбцов (после добавления новых полей они устарели).
-  const hdrKey = `freemoney:hdr5:${id}`;
+  const hdrKey = `freemoney:hdr7:${id}`;
   if (!localStorage.getItem(hdrKey)) {
     await batchUpdateValues(id, [
-      // 13-й столбец (M) теперь rate — ставка процентов.
-      { range: `${SHEET_TX}!A1:M1`, values: [[...TX_HEADER, 'rate']] },
-      { range: `${SHEET_CAT}!A1:D1`, values: [CAT_HEADER] },
-      { range: `${SHEET_WALLET}!A1:G1`, values: [WALLET_HEADER] },
-      { range: `${SHEET_TAG}!A1:B1`, values: [TAG_HEADER] },
-      { range: `${SHEET_SETTINGS}!A1:B1`, values: [SETTINGS_HEADER] },
+      { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
+      { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
+      { range: `${SHEET_WALLET}!A1:J1`, values: [WALLET_HEADER] },
+      { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
+      { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
     ]);
     localStorage.setItem(hdrKey, '1');
   }
@@ -118,267 +222,34 @@ export async function findExistingSpreadsheets() {
   return listAppSpreadsheets();
 }
 
-// --- Транзакции -------------------------------------------------------------
+// --- Чтение/запись для синхронизации ----------------------------------------
 
-function parseTags(cell) {
-  if (!cell) return [];
-  return [...new Set(String(cell).split(',').map((t) => t.trim()).filter(Boolean))];
-}
-
-function serializeTags(tags) {
-  if (!Array.isArray(tags)) return '';
-  return [...new Set(tags.map((t) => t.trim()).filter(Boolean))].join(', ');
-}
-
-function mapTxRows(rows) {
-  return rows
-    .filter((r) => r[0])
-    .map((r) => {
-      // Колонка datetime: «YYYY-MM-DD HH:MM» либо просто «YYYY-MM-DD».
-      const dt = r[1] || '';
-      const date = dt.slice(0, 10);
-      // Время из datetime (HH:MM или HH:MM:SS), либо из старой колонки; иначе 00:00.
-      const time = dt.length > 10 ? dt.slice(11) : (r[12] || '00:00');
-      // Колонка M переиспользована под ставку процентов (rate). Для старых
-      // строк там могло лежать время — но rate читают только процентные операции.
-      const rateNum = Number(r[12]);
-      const rate = r[12] != null && r[12] !== '' && !Number.isNaN(rateNum) ? rateNum : null;
-      return {
-        id: r[0],
-        date,
-        time,
-        type: r[2] || 'expense',
-        amount: Number(r[3]) || 0,
-        category: r[4] || '',
-        note: r[5] || '',
-        tags: parseTags(r[6]),
-        wallet: r[7] || '',
-        currency: r[8] || '',
-        origAmount: r[9] ? Number(r[9]) : null,
-        origCurrency: r[10] || '',
-        transferId: r[11] || '',
-        rate,
-      };
-    });
-}
-
-export async function fetchTransactions(id) {
-  const rows = await getValues(id, `${SHEET_TX}!A2:M`);
-  return mapTxRows(rows);
-}
-
-function txToRow(t) {
-  const datetime = t.date ? `${t.date} ${t.time || '00:00'}` : '';
-  // 13-я колонка (M) — ставка процентов rate (только для interest_*).
-  return [
-    t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
-    t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
-    t.rate ?? '',
-  ];
-}
-
-export async function addTransaction(id, tx) {
-  await appendRow(id, `${SHEET_TX}!A1`, txToRow(tx));
-}
-
-// Добавить несколько транзакций одним запросом (перевод, импорт).
-export async function addTransactions(id, txs) {
-  if (!txs.length) return;
-  await appendRows(id, `${SHEET_TX}!A1`, txs.map(txToRow));
-}
-
-async function findTxRow(id, txId) {
-  const ids = await getValues(id, `${SHEET_TX}!A2:A`);
-  const index = ids.findIndex((r) => r[0] === txId);
-  return index < 0 ? null : index + 2;
-}
-
-export async function updateTransaction(id, tx) {
-  const row = await findTxRow(id, tx.id);
-  if (row == null) throw new Error('Операция не найдена');
-  // 13 колонок A:M, последняя (M) — rate.
-  await updateValues(id, `${SHEET_TX}!A${row}:M${row}`, [txToRow(tx)]);
-}
-
-// Удаление = очистка строки (пустые строки отфильтровываются при чтении).
-export async function deleteTransaction(id, txId) {
-  const row = await findTxRow(id, txId);
-  if (row == null) return;
-  await updateValues(id, `${SHEET_TX}!A${row}:M${row}`, [Array(13).fill('')]);
-}
-
-// --- Категории --------------------------------------------------------------
-
-function mapCatRows(rows) {
-  return rows
-    .filter((r) => r[0])
-    .map((r, index) => ({
-      row: index + 2,
-      name: r[0],
-      kind: r[1] || 'both',
-      status: r[2] || 'active',
-      icon: r[3] || DEFAULT_ICON,
-    }));
-}
-
-export async function fetchCategories(id) {
-  const rows = await getValues(id, `${SHEET_CAT}!A2:D`);
-  return mapCatRows(rows);
-}
-
-export async function addCategory(id, { name, kind, icon }) {
-  await appendRow(id, `${SHEET_CAT}!A1`, [name, kind, 'active', icon || DEFAULT_ICON]);
-}
-
-export async function setCategoryStatus(id, rowNumber, status) {
-  await updateValues(id, `${SHEET_CAT}!C${rowNumber}`, [[status]]);
-}
-
-export async function updateCategory(id, rowNumber, { name, kind, icon }) {
-  await batchUpdateValues(id, [
-    { range: `${SHEET_CAT}!A${rowNumber}:B${rowNumber}`, values: [[name, kind]] },
-    { range: `${SHEET_CAT}!D${rowNumber}`, values: [[icon]] },
-  ]);
-}
-
-export async function renameCategoryInTransactions(id, oldName, newName) {
-  const rows = await getValues(id, `${SHEET_TX}!A2:M`);
-  const data = [];
-  rows.forEach((r, index) => {
-    if (r[4] === oldName) data.push({ range: `${SHEET_TX}!E${index + 2}`, values: [[newName]] });
-  });
-  await batchUpdateValues(id, data);
-}
-
-// --- Кошельки ---------------------------------------------------------------
-
-function mapWalletRows(rows) {
-  return rows
-    .filter((r) => r[0])
-    .map((r, index) => ({
-      row: index + 2,
-      id: r[0],
-      name: r[1] || '',
-      currency: r[2] || DEFAULT_BASE_CURRENCY,
-      status: r[3] || 'active',
-      order: Number(r[4]) || 0,
-      kind: r[5] || 'cash',
-      rate: Number(r[6]) || 0,
-    }));
-}
-
-export async function fetchWallets(id) {
-  const rows = await getValues(id, `${SHEET_WALLET}!A2:G`);
-  return mapWalletRows(rows);
-}
-
-export async function addWallet(id, { name, currency, kind, rate }) {
-  const existing = await fetchWallets(id);
-  await appendRow(id, `${SHEET_WALLET}!A1`, [
-    newId(), name, currency, 'active', existing.length, kind || 'cash', rate || 0,
-  ]);
-}
-
-export async function updateWallet(id, rowNumber, { name, currency, kind, rate }) {
-  await batchUpdateValues(id, [
-    { range: `${SHEET_WALLET}!B${rowNumber}:C${rowNumber}`, values: [[name, currency]] },
-    { range: `${SHEET_WALLET}!F${rowNumber}:G${rowNumber}`, values: [[kind || 'cash', rate || 0]] },
-  ]);
-}
-
-export async function setWalletStatus(id, rowNumber, status) {
-  await updateValues(id, `${SHEET_WALLET}!D${rowNumber}`, [[status]]);
-}
-
-// --- Теги -------------------------------------------------------------------
-
-function mapTagRows(rows) {
-  return rows
-    .filter((r) => r[0])
-    .map((r) => ({ name: r[0], status: r[1] || 'active' }));
-}
-
-export async function fetchTags(id) {
-  const rows = await getValues(id, `${SHEET_TAG}!A2:B`);
-  return mapTagRows(rows);
-}
-
-export async function addTag(id, name) {
-  await appendRow(id, `${SHEET_TAG}!A1`, [name, 'active']);
-}
-
-// «Удаление» тега = архивирование: убираем из подсказок, но храним и операции не трогаем.
-export async function setTagStatus(id, name, status) {
-  const rows = await getValues(id, `${SHEET_TAG}!A2:A`);
-  const index = rows.findIndex((r) => r[0] === name);
-  if (index < 0) return;
-  await updateValues(id, `${SHEET_TAG}!B${index + 2}`, [[status]]);
-}
-
-// Переименование тега: и в списке подсказок, и во всех операциях. Статус сохраняем.
-export async function renameTag(id, oldName, newName) {
-  const seen = new Set();
-  const nextTags = [];
-  for (const t of await fetchTags(id)) {
-    const name = t.name === oldName ? newName : t.name;
-    if (seen.has(name)) continue;
-    seen.add(name);
-    nextTags.push({ name, status: t.status });
-  }
-  await updateValues(id, `${SHEET_TAG}!A2:B1000`, Array.from({ length: 999 }, () => ['', '']));
-  if (nextTags.length) {
-    await updateValues(id, `${SHEET_TAG}!A2`, nextTags.map((t) => [t.name, t.status]));
-  }
-  const rows = await getValues(id, `${SHEET_TX}!A2:M`);
-  const data = [];
-  rows.forEach((r, index) => {
-    const rowTags = parseTags(r[6]);
-    if (!rowTags.includes(oldName)) return;
-    const renamed = [...new Set(rowTags.map((t) => (t === oldName ? newName : t)))];
-    data.push({ range: `${SHEET_TX}!G${index + 2}`, values: [[serializeTags(renamed)]] });
-  });
-  if (data.length) await batchUpdateValues(id, data);
-}
-
-// --- Настройки --------------------------------------------------------------
-
-function mapSettingsRows(rows) {
-  const map = {};
-  rows.forEach((r) => {
-    if (r[0]) map[r[0]] = r[1] ?? '';
-  });
-  return map;
-}
-
-export async function fetchSettings(id) {
-  const rows = await getValues(id, `${SHEET_SETTINGS}!A2:B`);
-  return mapSettingsRows(rows);
-}
-
-// Одно чтение всех данных сразу (экономит квоту API).
-export async function fetchAll(id) {
+// Прочитать все сущности одним batch-запросом. Возвращает канонические записи
+// ВКЛЮЧАЯ tombstones (deleted:true) — их видит мердж.
+export async function fetchAllForSync(id) {
   const [txRows, catRows, walletRows, tagRows, settingsRows] = await getValuesBatch(id, [
-    `${SHEET_TX}!A2:M`,
-    `${SHEET_CAT}!A2:D`,
-    `${SHEET_WALLET}!A2:G`,
-    `${SHEET_TAG}!A2:B`,
-    `${SHEET_SETTINGS}!A2:B`,
+    `${SHEET_TX}!A2:O`,
+    `${SHEET_CAT}!A2:H`,
+    `${SHEET_WALLET}!A2:J`,
+    `${SHEET_TAG}!A2:D`,
+    `${SHEET_SETTINGS}!A2:C`,
   ]);
   return {
-    transactions: mapTxRows(txRows),
-    categories: mapCatRows(catRows),
-    wallets: mapWalletRows(walletRows),
-    tags: mapTagRows(tagRows),
-    settings: mapSettingsRows(settingsRows),
+    transactions: txRows.filter((r) => r[0]).map(rowToTx),
+    categories: catRows.filter((r) => r[0]).map(rowToCat),
+    wallets: walletRows.filter((r) => r[0]).map(rowToWallet),
+    tags: tagRows.filter((r) => r[0]).map(rowToTag),
+    settings: settingsRows.filter((r) => r[0]).map(rowToSetting),
   };
 }
 
-export async function setSetting(id, key, value) {
-  const rows = await getValues(id, `${SHEET_SETTINGS}!A2:B`);
-  const index = rows.findIndex((r) => r[0] === key);
-  if (index >= 0) {
-    await updateValues(id, `${SHEET_SETTINGS}!B${index + 2}`, [[value]]);
-  } else {
-    await appendRow(id, `${SHEET_SETTINGS}!A1`, [key, value]);
-  }
+// Полностью перезаписать лист сущности набором записей (со 2-й строки).
+// Позиционная адресация листа тут не важна — переписываем весь блок целиком,
+// это исключает рассинхрон номеров строк между устройствами.
+export async function overwriteEntity(id, entity, records) {
+  const meta = ENTITY[entity];
+  if (!meta) throw new Error(`Неизвестная сущность: ${entity}`);
+  await clearValues(id, `${meta.sheet}!A2:${meta.lastCol}`);
+  const rows = records.map(meta.toRow);
+  if (rows.length) await updateValues(id, `${meta.sheet}!A2`, rows);
 }

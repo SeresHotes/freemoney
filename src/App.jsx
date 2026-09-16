@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import NavBar from './components/NavBar';
 import UpdatePrompt from './components/UpdatePrompt';
+import SyncIndicator from './components/SyncIndicator';
 import Home from './pages/Home';
 import AddTransaction from './pages/AddTransaction';
 import Transactions from './pages/Transactions';
@@ -16,13 +17,7 @@ import Debt from './pages/Debt';
 import Interest from './pages/Interest';
 import NewAdjustment from './pages/NewAdjustment';
 import Settings from './pages/Settings';
-import {
-  LoadingScreen,
-  NoConfigScreen,
-  SignInScreen,
-  NoSheetScreen,
-  ModeSelectScreen,
-} from './pages/Gate';
+import { LoadingScreen } from './pages/Gate';
 
 // Статистика тянет recharts — грузим её отдельным чанком по требованию.
 const Stats = lazy(() => import('./pages/Stats'));
@@ -44,10 +39,6 @@ function Shell() {
   const { status } = useApp();
 
   if (status === 'loading') return <LoadingScreen />;
-  if (status === 'select-mode') return <ModeSelectScreen />;
-  if (status === 'no-config') return <NoConfigScreen />;
-  if (status === 'signed-out') return <SignInScreen />;
-  if (status === 'no-sheet') return <NoSheetScreen />;
 
   return (
     <div className="app">
@@ -83,6 +74,7 @@ function Shell() {
         </Routes>
       </main>
       <NavBar />
+      <SyncIndicator />
       <BusyOverlay />
     </div>
   );

@@ -36,8 +36,14 @@ export const OTHER_CHANNEL_URL = IS_DEV_CHANNEL ? PROD_URL : DEV_URL;
 
 // Ключи в localStorage.
 export const LS_SPREADSHEET_ID = 'freemoney:spreadsheetId';
-// Выбранный режим хранения: 'google' | 'local'.
+// Устаревший ключ выбора режима ('google' | 'local' | 'device').
+// Оставлен ради миграции: данные всегда локальные, Google — опция синхронизации.
+// Единственное живое значение — 'device' (нативная сборка на .csv-файлах).
 export const LS_MODE = 'freemoney:mode';
+// Включена ли синхронизация с Google Таблицей ('1' | отсутствует).
+export const LS_SYNC_ENABLED = 'freemoney:syncEnabled';
+// Время последней успешной синхронизации (мс, Date.now()).
+export const LS_LAST_SYNC = 'freemoney:lastSyncAt';
 
 // Признак, что Client ID не настроен (плейсхолдер).
 export const IS_CLIENT_ID_CONFIGURED = !GOOGLE_CLIENT_ID.startsWith('YOUR_');
