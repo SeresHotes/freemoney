@@ -4,7 +4,7 @@
 // round-trip) плюс служебные колонки синхронизации `updatedAt` и `deleted`:
 //   Transactions: id|datetime|type|amount|category|note|tags|wallet|currency|
 //                 origAmount|origCurrency|transferId|rate|updatedAt|deleted   (A:O)
-//     datetime — «YYYY-MM-DD HH:MM[:SS]» (в приложении хранится как date + time)
+//     datetime — всегда «YYYY-MM-DD HH:MM:SS» (в приложении хранится как date + time)
 //     type    — expense|income|transfer_in|transfer_out|adjust_in|adjust_out|
 //               interest_in|interest_out
 //   Categories: id|name|kind|status|icon|order|updatedAt|deleted              (A:H)
@@ -28,6 +28,7 @@ import {
 } from './sheets';
 import { SPREADSHEET_TITLE, DEFAULT_BASE_CURRENCY } from '../config';
 import { DEFAULT_ICON } from './defaults';
+import { toDatetime } from '../utils/format';
 
 export const SHEET_TX = 'Transactions';
 export const SHEET_CAT = 'Categories';
@@ -66,7 +67,7 @@ function serializeTags(tags) {
 // --- Строка ↔ каноническая запись (по одной паре на сущность) ----------------
 
 function txToRow(t) {
-  const datetime = t.date ? `${t.date} ${t.time || '00:00'}` : '';
+  const datetime = toDatetime(t.date, t.time);
   return [
     t.id, datetime, t.type, t.amount, t.category || '', t.note || '', serializeTags(t.tags),
     t.wallet || '', t.currency || '', t.origAmount ?? '', t.origCurrency || '', t.transferId || '',
