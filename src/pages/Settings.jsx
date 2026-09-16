@@ -49,7 +49,14 @@ function SyncSection() {
   useEffect(() => {
     if (!choosing) return undefined;
     let cancelled = false;
-    listSyncSheets().then((f) => { if (!cancelled) setSheets(f); }).catch(() => {});
+    listSyncSheets()
+      .then((f) => { if (!cancelled) setSheets(f); })
+      .catch((err) => {
+        // Не глушим молча: иначе сбой запроса выглядит как «таблиц нет» и
+        // приходится вводить ссылку вручную. Показываем причину.
+        console.error('Не удалось получить список таблиц:', err);
+        if (!cancelled) setLocalError('Не удалось загрузить список ваших таблиц. Введите ссылку вручную ниже или откройте выбор ещё раз.');
+      });
     return () => { cancelled = true; };
   }, [choosing, listSyncSheets]);
 
