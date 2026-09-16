@@ -20,8 +20,8 @@ export default function Transfer() {
   const outLeg = legs.find((t) => t.type === 'transfer_out');
   const inLeg = legs.find((t) => t.type === 'transfer_in');
 
-  const [fromId, setFromId] = useState('');
-  const [toId, setToId] = useState('');
+  const [fromWallet, setFromWallet] = useState('');
+  const [toWallet, setToWallet] = useState('');
   const [amountOut, setAmountOut] = useState('');
   const [amountIn, setAmountIn] = useState('');
   const [amountInTouched, setAmountInTouched] = useState(false);
@@ -37,8 +37,8 @@ export default function Transfer() {
     if (ready) return;
     if (editing) {
       if (!outLeg || !inLeg) return; // ждём загрузки операций
-      setFromId(outLeg.wallet);
-      setToId(inLeg.wallet);
+      setFromWallet(outLeg.wallet);
+      setToWallet(inLeg.wallet);
       setAmountOut(String(outLeg.amount));
       setAmountIn(String(inLeg.amount));
       setAmountInTouched(true);
@@ -46,14 +46,14 @@ export default function Transfer() {
       setTime(outLeg.time || nowTime());
       setNote(outLeg.note || '');
     } else {
-      setFromId(active[0]?.id || '');
-      setToId(active[1]?.id || active[0]?.id || '');
+      setFromWallet(active[0]?.name || '');
+      setToWallet(active[1]?.name || active[0]?.name || '');
     }
     setReady(true);
   }, [editing, outLeg, inLeg, active, ready]);
 
-  const from = active.find((w) => w.id === fromId);
-  const to = active.find((w) => w.id === toId);
+  const from = active.find((w) => w.name === fromWallet);
+  const to = active.find((w) => w.name === toWallet);
   const different = from && to && from.currency !== to.currency;
 
   // Подсказка суммы получения по текущему курсу, если валюты разные.
@@ -75,7 +75,7 @@ export default function Transfer() {
   const submit = async (e) => {
     e.preventDefault();
     setFormError(null);
-    if (!fromId || !toId || fromId === toId) {
+    if (!fromWallet || !toWallet || fromWallet === toWallet) {
       setFormError('Выберите два разных кошелька');
       return;
     }
@@ -86,9 +86,9 @@ export default function Transfer() {
     setSaving(true);
     try {
       if (editing) {
-        await updateTransfer({ transferId, outWalletId: fromId, inWalletId: toId, amountOut: out, amountIn: inc, date, time, note: note.trim() });
+        await updateTransfer({ transferId, outWallet: fromWallet, inWallet: toWallet, amountOut: out, amountIn: inc, date, time, note: note.trim() });
       } else {
-        await addTransfer({ fromWalletId: fromId, toWalletId: toId, amountOut: out, amountIn: inc, date, time, note: note.trim() });
+        await addTransfer({ fromWallet, toWallet, amountOut: out, amountIn: inc, date, time, note: note.trim() });
       }
       navigate('/');
     } catch {
@@ -119,8 +119,8 @@ export default function Transfer() {
       <form className="form" onSubmit={submit}>
         <label className="field">
           <span className="field__label">Откуда</span>
-          <select className="field__input field__input--select" value={fromId} onChange={(e) => setFromId(e.target.value)}>
-            {active.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>)}
+          <select className="field__input field__input--select" value={fromWallet} onChange={(e) => setFromWallet(e.target.value)}>
+            {active.map((w) => <option key={w.name} value={w.name}>{w.name} ({w.currency})</option>)}
           </select>
         </label>
 
@@ -131,8 +131,8 @@ export default function Transfer() {
 
         <label className="field">
           <span className="field__label">Куда</span>
-          <select className="field__input field__input--select" value={toId} onChange={(e) => setToId(e.target.value)}>
-            {active.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.currency})</option>)}
+          <select className="field__input field__input--select" value={toWallet} onChange={(e) => setToWallet(e.target.value)}>
+            {active.map((w) => <option key={w.name} value={w.name}>{w.name} ({w.currency})</option>)}
           </select>
         </label>
 

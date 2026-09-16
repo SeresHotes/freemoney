@@ -110,10 +110,10 @@ export function expenseTotalsByCategory(transactions, toDisplay) {
 // Баланс кошелька в его валюте.
 // adjust_in / adjust_out — корректировки, interest_in / out — проценты
 // (тоже влияют на баланс, но не доход/расход).
-export function walletBalance(transactions, walletId) {
+export function walletBalance(transactions, walletName) {
   let balance = 0;
   for (const t of transactions) {
-    if (t.wallet !== walletId) continue;
+    if (t.wallet !== walletName) continue;
     balance += signedDelta(t);
   }
   return balance;
@@ -127,10 +127,10 @@ function txOrderKey(t) {
 // Баланс кошелька на момент orderKey (все операции с ключом <= orderKey), кроме
 // операции excludeId. Нужен для «сколько было денег на тот момент» — база
 // начисления процентов и хронология долгов.
-export function walletBalanceAsOf(transactions, walletId, orderKey, excludeId) {
+export function walletBalanceAsOf(transactions, walletName, orderKey, excludeId) {
   let balance = 0;
   for (const t of transactions) {
-    if (t.wallet !== walletId || t.id === excludeId) continue;
+    if (t.wallet !== walletName || t.id === excludeId) continue;
     if (txOrderKey(t) > orderKey) continue;
     balance += signedDelta(t);
   }
@@ -139,8 +139,8 @@ export function walletBalanceAsOf(transactions, walletId, orderKey, excludeId) {
 
 // Баланс долгового кошелька ДО указанной операции (по хронологии) — нужен, чтобы
 // понять, растёт долг по модулю (дал/взял) или гасится (возврат/погашение).
-export function debtBalanceBefore(transactions, walletId, beforeTx) {
-  return walletBalanceAsOf(transactions, walletId, txOrderKey(beforeTx), beforeTx.id);
+export function debtBalanceBefore(transactions, walletName, beforeTx) {
+  return walletBalanceAsOf(transactions, walletName, txOrderKey(beforeTx), beforeTx.id);
 }
 
 // Человеческая подпись операции долга. cashOut — деньги ушли из моего кошелька

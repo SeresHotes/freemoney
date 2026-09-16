@@ -9,8 +9,10 @@
 // сравнением со снапшотом прошлой синхронизации и считаются свежими.
 //
 // Идентичность сущностей:
-//   transactions/wallets — по стабильному id;
-//   tags/settings — по имени/ключу;
+//   transactions — по стабильному id;
+//   wallets/tags/settings — по имени/ключу; tx ссылается на кошелёк/тег по
+//     имени, поэтому переименование каскадится в операции, а старое имя уходит
+//     tombstone'ом (см. renameWallet/renameTag).
 //   categories — сначала по id, затем по имени. Сопоставление по id ловит
 //     переименование (строка листа с тем же id — та же категория, а не новая),
 //     сопоставление по имени — совпадение базовых категорий на разных
@@ -38,7 +40,7 @@ const norm = (s) => (s || '').trim().toLowerCase();
 const KEY = {
   transactions: (r) => r.id,
   categories: (r) => `n:${norm(r.name)}`,
-  wallets: (r) => r.id,
+  wallets: (r) => `n:${norm(r.name)}`,
   tags: (r) => (r.name || '').trim(),
   settings: (r) => r.key,
 };
@@ -65,7 +67,7 @@ function contentSig(entity, r) {
     case 'categories':
       return JSON.stringify([r.name, r.kind || 'both', r.status || 'active', r.icon || '', r.order ?? 0, !!r.deleted]);
     case 'wallets':
-      return JSON.stringify([r.id, r.name || '', r.currency || '', r.status || 'active', r.order ?? 0, r.kind || 'cash', Number(r.rate) || 0, !!r.deleted]);
+      return JSON.stringify([r.name || '', r.currency || '', r.status || 'active', r.order ?? 0, r.kind || 'cash', Number(r.rate) || 0, !!r.deleted]);
     case 'tags':
       return JSON.stringify([r.name, r.status || 'active', !!r.deleted]);
     case 'settings':
