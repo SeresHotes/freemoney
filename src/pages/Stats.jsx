@@ -62,7 +62,7 @@ export default function Stats() {
   const tagOptions = useMemo(() => {
     const set = new Set(tags.filter((t) => t.status === 'active').map((t) => t.name));
     for (const t of transactions) (t.tags || []).forEach((x) => set.add(x));
-    return [...set].sort().map((t) => ({ value: t, label: `#${t}` }));
+    return [...set].sort().map((t) => ({ value: t, label: t }));
   }, [tags, transactions]);
 
   const singleWallet = wals.length === 1 ? activeWallets.find((w) => w.id === wals[0]) : null;
