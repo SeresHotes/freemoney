@@ -50,12 +50,19 @@ export function matchesFilters(t, f) {
   return true;
 }
 
+// Ключ временного бакета: день (YYYY-MM-DD), месяц (YYYY-MM) или год (YYYY).
+function timeBucketKey(date, granularity) {
+  if (granularity === 'day') return date;
+  if (granularity === 'year') return (date || '').slice(0, 4);
+  return monthKey(date);
+}
+
 // Ряд доход/расход по дням или месяцам. toDisplay(t) -> сумма в валюте показа.
 export function buildTimeSeries(transactions, granularity, toDisplay) {
   const map = new Map();
   for (const t of transactions) {
     if (!isIncome(t) && !isExpense(t)) continue;
-    const key = granularity === 'day' ? t.date : monthKey(t.date);
+    const key = timeBucketKey(t.date, granularity);
     if (!key) continue;
     const value = toDisplay(t);
     if (value == null) continue;
@@ -74,7 +81,7 @@ export function buildCategoryTimeSeries(transactions, granularity, toDisplay, to
   const map = new Map();
   for (const t of transactions) {
     if (!isExpense(t)) continue;
-    const key = granularity === 'day' ? t.date : monthKey(t.date);
+    const key = timeBucketKey(t.date, granularity);
     if (!key) continue;
     const value = toDisplay(t);
     if (value == null) continue;

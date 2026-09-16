@@ -38,6 +38,16 @@ export function monthRange(key) {
   return { from: `${key}-01`, to: `${key}-${String(lastDay).padStart(2, '0')}` };
 }
 
+// Сдвиг ключа месяца на delta месяцев: shiftMonth("2026-01", -1) -> "2025-12".
+export function shiftMonth(key, delta) {
+  if (!key) return key;
+  const [year, month] = key.split('-').map(Number);
+  const date = new Date(year, month - 1 + delta, 1);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
 // Человекочитаемое название месяца: "2026-08" -> "август 2026".
 export function monthLabel(key) {
   if (!key) return '';
