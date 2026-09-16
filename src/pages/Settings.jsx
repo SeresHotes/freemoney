@@ -25,6 +25,7 @@ const SYNC_STATUS_TEXT = {
 function SyncSection() {
   const {
     mode, syncEnabled, syncStatus, lastSyncAt, syncError, needsSignIn, isClientConfigured,
+    syncSetup, clearSyncSetup, hasBackup, restoreLocalBackup,
     beginSync, listSyncSheets, createSyncSheet, connectSyncSheet, disableSync, disconnectSync,
     syncNow,
   } = useApp();
@@ -32,15 +33,35 @@ function SyncSection() {
   const [busy, setBusy] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const [sheets, setSheets] = useState([]);
+  const [loadingSheets, setLoadingSheets] = useState(false);
   const [sheetName, setSheetName] = useState(SPREADSHEET_TITLE);
   const [manualId, setManualId] = useState('');
   const [localError, setLocalError] = useState(null);
+
+  // Вернулись из входа в Google (redirect) — сразу открываем выбор таблицы.
+  useEffect(() => {
+    if (syncSetup) {
+      setChoosing(true);
+      clearSyncSetup();
+    }
+  }, [syncSetup, clearSyncSetup]);
 
   // Подтянуть список ранее созданных таблиц, когда открыт выбор.
   useEffect(() => {
     if (!choosing) return undefined;
     let cancelled = false;
-    listSyncSheets().then((f) => { if (!cancelled) setSheets(f); }).catch(() => {});
+    setLoadingSheets(true);
+    setSheets([]);
+    setLocalError(null);
+    listSyncSheets()
+      .then((f) => { if (!cancelled) setSheets(f); })
+      .catch((err) => {
+        // Не глушим молча: иначе сбой запроса выглядит как «таблиц нет» и
+        // приходится вводить ссылку вручную. Показываем причину.
+        console.error('Не удалось получить список таблиц:', err);
+        if (!cancelled) setLocalError('Не удалось загрузить список ваших таблиц. Введите ссылку вручную ниже или откройте выбор ещё раз.');
+      })
+      .finally(() => { if (!cancelled) setLoadingSheets(false); });
     return () => { cancelled = true; };
   }, [choosing, listSyncSheets]);
 
@@ -59,6 +80,11 @@ function SyncSection() {
   const handleEnable = () => run(async () => {
     const needSheet = await beginSync();
     if (needSheet) setChoosing(true);
+  });
+
+  const handleRestore = () => run(async () => {
+    const ok = await restoreLocalBackup();
+    if (!ok) setLocalError('Резервный снимок не найден.');
   });
 
   const handleCreate = () => run(async () => {
@@ -90,6 +116,18 @@ function SyncSection() {
   return (
     <section>
       <h2 className="section-title">Синхронизация с Google</h2>
+
+      {hasBackup && (
+        <div className="gate__section">
+          <p className="muted" style={{ marginBottom: '0.5rem' }}>
+            Перед первой синхронизацией сохранён снимок данных этого устройства.
+            Если синхронизация заменила ваши данные — их можно вернуть.
+          </p>
+          <button className="btn btn--block" onClick={handleRestore} disabled={busy}>
+            ↩️ Восстановить данные до синхронизации
+          </button>
+        </div>
+      )}
 
       {!syncEnabled && !choosing && (
         <>
@@ -126,7 +164,17 @@ function SyncSection() {
             </button>
           </div>
 
-          {sheets.length > 0 && (
+          {loadingSheets && (
+            <div className="gate__section">
+              <h3 className="section-title">Ваши таблицы</h3>
+              <div className="cat-item">
+                <div className="spinner" />
+                <span className="muted">Ищем ваши таблицы, подождите…</span>
+              </div>
+            </div>
+          )}
+
+          {!loadingSheets && sheets.length > 0 && (
             <div className="gate__section">
               <h3 className="section-title">Ваши таблицы</h3>
               <ul className="cat-list">

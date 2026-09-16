@@ -13,6 +13,7 @@ const LS_SID = 'freemoney:sid';
 let tokenClient = null;
 let accessToken = null;
 let tokenExpiry = 0; // timestamp в мс, когда токен считаем протухшим
+let lastAuthError = null; // 'auth=error' с бэкенда — Google не выдал доступ
 
 // --- Кэш access-токена (общий для обоих режимов) ----------------------------
 function persistToken() {
@@ -37,14 +38,17 @@ function loadCachedToken() {
   }
 }
 
-// После возврата с бэкенда в URL приходит ?sid=... — сохраняем и чистим адрес.
+// После возврата с бэкенда в URL приходит ?sid=... (успех) либо ?auth=error
+// (Google не выдал доступ). Сохраняем sid / запоминаем ошибку и чистим адрес.
 function captureSidFromUrl() {
   if (!AUTH_BACKEND) return;
   try {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get('sid');
-    if (!sid) return;
-    localStorage.setItem(LS_SID, sid);
+    const authResult = params.get('auth');
+    if (!sid && authResult !== 'error') return;
+    if (sid) localStorage.setItem(LS_SID, sid);
+    if (authResult === 'error') lastAuthError = 'auth_failed';
     params.delete('sid');
     params.delete('auth');
     const query = params.toString();
@@ -154,6 +158,13 @@ export async function ensureToken() {
   }
   if (AUTH_BACKEND) return fetchTokenFromBackend();
   return requestGisToken({ prompt: '' });
+}
+
+// Одноразово забрать ошибку возврата с бэкенда (?auth=error), если она была.
+export function consumeAuthError() {
+  const err = lastAuthError;
+  lastAuthError = null;
+  return err;
 }
 
 export function isSignedIn() {

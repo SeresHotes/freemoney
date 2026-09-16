@@ -40,6 +40,19 @@ const DATA_STORES = [STORE_TX, STORE_CAT, STORE_WALLET, STORE_TAG, STORE_SETTING
 //   3) ensureSchema — заливает кошельки из _meta в новый стор.
 const WALLET_REKEY_META = 'walletRekeyV4';
 
+// Открыть базу без указания версии (текущую, какая есть). Нужен как запасной
+// путь, если база уже на БОЛЕЕ ВЫСОКОЙ версии (например, после теста другой
+// сборки на том же домене): открытие с меньшей версией кидает VersionError и
+// забрасывает всё локальное хранилище. Открытие без версии читает существующую
+// базу как есть (наши сторы — её подмножество), данные не теряются.
+function openDbCurrentVersion() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -59,7 +72,15 @@ function openDb() {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      const err = request.error;
+      if (err && err.name === 'VersionError') {
+        // База новее нашей версии — открываем как есть, чтобы не потерять данные.
+        openDbCurrentVersion().then(resolve, reject);
+      } else {
+        reject(err);
+      }
+    };
   });
 }
 
@@ -241,6 +262,21 @@ export async function hardDeleteSettings(keys) {
   const s = store(db, STORE_SETTINGS, 'readwrite');
   for (const key of keys) await reqToPromise(s.delete(key));
   db.close();
+}
+
+// Есть ли страховочный снимок локальных данных, сделанный перед adopt-синком.
+export async function hasPreSyncBackup() {
+  return Boolean(await getMeta('preSyncBackup'));
+}
+
+// Восстановить локальные данные из страховочного снимка (см. sync.js, adopt).
+// Возвращает true, если снимок был и данные восстановлены.
+export async function restorePreSyncBackup() {
+  const backup = await getMeta('preSyncBackup');
+  if (!backup?.data) return false;
+  await replaceAllData(backup.data);
+  await setMeta('preSyncBackup', null); // снимок использован — больше не предлагаем откат
+  return true;
 }
 
 // Число «живых» операций — признак того, что на устройстве есть реальные данные.

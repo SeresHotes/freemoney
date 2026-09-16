@@ -26,6 +26,7 @@
 import { ensureSyncSchema, fetchAllForSync, overwriteEntity } from './store';
 import { rawDump, applyRecords, replaceAllData, getMeta, setMeta, hardDeleteSettings } from './localBackend';
 import { nowStamp, newId } from '../utils/format';
+import { DEFAULT_CATEGORIES } from './defaults';
 
 const ENTITIES = ['transactions', 'categories', 'wallets', 'tags', 'settings'];
 
@@ -78,11 +79,22 @@ function contentSig(entity, r) {
 }
 
 // Эффективная метка удалённой записи с поправкой на ручные правки листа:
-// если содержимое отличается от снапшота, но метка не выросла — правили руками,
-// считаем изменение свежим (иначе оно проиграло бы локальной версии).
-function effectiveRemoteTs(entity, r, snapEntry, now) {
+// если содержимое листа отличается от снапшота, но метка не выросла — правили
+// руками, считаем изменение свежим (иначе оно проиграло бы локальной версии).
+//
+// ВАЖНО: эту поправку применяем ТОЛЬКО когда локальная сторона с прошлого синка
+// не менялась. Иначе (обе стороны изменились относительно снапшота) это обычный
+// конфликт — и «сейчас» на удалённой стороне затирал бы реальную локальную
+// правку. Так, например, локально заархивированный кошелёк не воскресал бы из
+// листа: метка листа хранится посекундно и почти всегда `<= snapEntry.ts`
+// (в снапшоте — полные мс), поэтому без этой проверки любое расхождение
+// сигнатуры листа ложно трактовалось как ручная правка.
+function effectiveRemoteTs(entity, r, l, snapEntry, now) {
   const ts = r.updatedAt || 0;
-  if (snapEntry && contentSig(entity, r) !== snapEntry.sig && ts <= snapEntry.ts) {
+  if (!snapEntry) return ts;
+  const remoteChanged = contentSig(entity, r) !== snapEntry.sig;
+  const localChanged = l != null && contentSig(entity, l) !== snapEntry.sig;
+  if (remoteChanged && !localChanged && ts <= snapEntry.ts) {
     return now;
   }
   return ts;
@@ -129,7 +141,7 @@ function mergeCore(entity, pairs, snap, now) {
     if (l && !r) winner = l;
     else if (r && !l) winner = r;
     else {
-      const rEff = effectiveRemoteTs(entity, r, snap[snapKeyOf(entity, r)], now);
+      const rEff = effectiveRemoteTs(entity, r, l, snap[snapKeyOf(entity, r)], now);
       winner = rEff > (l.updatedAt || 0) ? r : l;
     }
 
@@ -201,12 +213,26 @@ export async function syncNow(spreadsheetId) {
     await overwriteEntity(spreadsheetId, 'settings', remote.settings);
   }
 
-  // Первый синк с пустым локальным стором и непустой таблицей — принять таблицу.
+  // Первый синк с ПУСТЫМ локальным стором и непустой таблицей — принять таблицу
+  // (adopt: replaceAllData затирает локальное). Это разрушающая операция, поэтому
+  // «пусто» проверяем по ВСЕМ сущностям, а не только по операциям: у пользователя
+  // могли быть заведены кошельки/категории/теги без единой операции — их adopt
+  // затёр бы. Считаем локальное нетронутым, только если нет живых операций и
+  // тегов, а кошельки/категории не превышают исходный дефолтный посев. Иначе —
+  // обычный merge (union по LWW), который ничего локально не удаляет.
+  const live = (rows) => (rows || []).filter((x) => !x.deleted).length;
+  const localPristine =
+    live(local.transactions) === 0 &&
+    live(local.tags) === 0 &&
+    live(local.wallets) <= 1 &&
+    live(local.categories) <= DEFAULT_CATEGORIES.length;
   const firstSync = !(await getMeta('lastSync'));
-  const localEmpty = (local.transactions || []).filter((t) => !t.deleted).length === 0;
   const remoteHasData = ENTITIES.some((e) => (remote[e] || []).length > 0);
-  if (firstSync && localEmpty && remoteHasData) {
+  if (firstSync && localPristine && remoteHasData) {
     const adopted = withCategoryIds(remote);
+    // Страховка: перед разрушающей заменой сохраняем снимок локальных данных,
+    // чтобы включение синхронизации никогда не приводило к безвозвратной потере.
+    await setMeta('preSyncBackup', { at: now, reason: 'adopt', data: local });
     await replaceAllData(adopted);
     await setMeta('syncSnapshot', buildSnapshot(adopted));
     await setMeta('lastSync', now);

@@ -1,16 +1,16 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { initAuth, signIn, signOut, ensureToken } from '../auth/googleAuth';
+import { initAuth, signIn, signOut, ensureToken, isSignedIn, consumeAuthError } from '../auth/googleAuth';
 import { AuthError } from '../api/sheets';
 import { initSpreadsheet, findExistingSpreadsheets } from '../api/store';
 import { syncNow } from '../api/sync';
 import {
   createLocalBackend, isLocalStoreReady, initLocalStore, requestPersistentStorage,
-  prepareWalletKeyMigration,
+  prepareWalletKeyMigration, hasPreSyncBackup, restorePreSyncBackup,
 } from '../api/localBackend';
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
 import {
-  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_LAST_SYNC,
+  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_SYNC_PENDING, LS_LAST_SYNC,
   DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED,
 } from '../config';
 import { newId, todayIso, nowTime } from '../utils/format';
@@ -39,6 +39,12 @@ export function AppProvider({ children }) {
   const [lastSyncAt, setLastSyncAt] = useState(Number(localStorage.getItem(LS_LAST_SYNC)) || null);
   const [syncError, setSyncError] = useState(null);
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  // Вошли в Google, но таблица ещё не выбрана — нужно показать выбор таблицы
+  // (в т.ч. после возврата из редиректа входа в backend-режиме).
+  const [syncSetup, setSyncSetup] = useState(false);
+  // Есть страховочный снимок локальных данных (сделан перед adopt-синком) —
+  // значит можно предложить откат, если синхронизация заменила данные.
+  const [hasBackup, setHasBackup] = useState(false);
 
   const backendRef = useRef(null);
   const spreadsheetIdRef = useRef(localStorage.getItem(LS_SPREADSHEET_ID) || null);
@@ -99,6 +105,7 @@ export function AppProvider({ children }) {
       await ensureToken();
       const res = await syncNow(id);
       if (backendRef.current) await loadData(backendRef.current);
+      if (res.adopted) setHasBackup(true); // синк заменил локальные данные — есть откат
       setLastSyncAt(res.at);
       localStorage.setItem(LS_LAST_SYNC, String(res.at));
       setNeedsSignIn(false);
@@ -175,6 +182,7 @@ export function AppProvider({ children }) {
       try {
         await activateLocal();
       } catch (err) {
+        console.error('Не удалось открыть локальное хранилище:', err);
         if (!cancelled) { setError('Не удалось открыть локальное хранилище.'); setStatus('ready'); }
         return;
       }
@@ -188,8 +196,29 @@ export function AppProvider({ children }) {
       }
       spreadsheetIdRef.current = localStorage.getItem(LS_SPREADSHEET_ID) || null;
 
+      // Возврат из входа в Google (backend-режим — полный редирект). Если Google
+      // отказал — показываем причину, а не молчим.
+      const authErr = consumeAuthError();
+      if (authErr && !cancelled) {
+        setSyncError('Google не выдал доступ. Попробуйте включить синхронизацию ещё раз.');
+      }
+      // Мы намеренно начинали вход (LS_SYNC_PENDING) и теперь вошли — доводим
+      // включение до конца: либо синк на уже привязанной таблице, либо выбор новой.
+      const pending = localStorage.getItem(LS_SYNC_PENDING) === '1';
+      const resuming = pending && isSignedIn() && IS_CLIENT_ID_CONFIGURED;
+      if (pending) {
+        // Снимаем намерение в любом исходе: либо доводим сейчас, либо вход не
+        // удался (нет сессии) — чтобы флаг не залипал до следующего входа.
+        localStorage.removeItem(LS_SYNC_PENDING);
+      }
+      if (resuming && spreadsheetIdRef.current) {
+        enabled = true;
+        localStorage.setItem(LS_SYNC_ENABLED, '1');
+      }
+
       // UI показываем сразу — локальные данные уже загружены.
       setStatus('ready');
+      hasPreSyncBackup().then((v) => { if (!cancelled) setHasBackup(v); }).catch(() => {});
 
       if (enabled && spreadsheetIdRef.current && IS_CLIENT_ID_CONFIGURED) {
         syncEnabledRef.current = true;
@@ -199,6 +228,8 @@ export function AppProvider({ children }) {
         doSync();
       } else {
         setSyncStatus('disabled');
+        // Вошли, но таблицы ещё нет — предложить выбрать/создать её.
+        if (resuming && !spreadsheetIdRef.current && !cancelled) setSyncSetup(true);
       }
     })();
     return () => {
@@ -226,8 +257,10 @@ export function AppProvider({ children }) {
       spreadsheetIdRef.current = id;
       localStorage.setItem(LS_SPREADSHEET_ID, id);
       localStorage.setItem(LS_SYNC_ENABLED, '1');
+      localStorage.removeItem(LS_SYNC_PENDING);
       syncEnabledRef.current = true;
       setSyncEnabled(true);
+      setSyncSetup(false);
       await syncNowManual();
     },
     [syncNowManual],
@@ -237,14 +270,39 @@ export function AppProvider({ children }) {
   // возвращает false. Иначе возвращает true — нужно выбрать/создать таблицу.
   const beginSync = useCallback(async () => {
     setError(null);
-    await initAuth();
-    await signIn(); // в backend-режиме уходит в редирект и не возвращается
-    await ensureToken();
-    if (spreadsheetIdRef.current) {
-      await finalizeSync(spreadsheetIdRef.current);
-      return false;
+    setSyncError(null);
+
+    // Довести включение до конца при действующем токене: таблица привязана —
+    // включаем синк (false = выбор таблицы не нужен), иначе просим выбрать (true).
+    const finishWithToken = async () => {
+      await ensureToken();
+      if (spreadsheetIdRef.current) {
+        await finalizeSync(spreadsheetIdRef.current);
+        return false;
+      }
+      return true;
+    };
+
+    // Уже вошли в Google — пробуем без редиректа: после «Выключить» повторное
+    // включение становится одним кликом (сессия сохранена). Если сессия
+    // недействительна (refresh-токен протух/отозван) — падаем в полноценный вход.
+    if (isSignedIn()) {
+      try {
+        await initAuth();
+        return await finishWithToken();
+      } catch {
+        /* сессия недействительна — ниже полноценный вход */
+      }
     }
-    return true;
+
+    // Полноценный вход. Флаг LS_SYNC_PENDING выставляем ДО входа: в backend-режиме
+    // signIn уводит в редирект и не возвращается, поэтому продолжение подхватит
+    // маунт-эффект после возврата. В GIS-режиме signIn резолвится здесь же.
+    localStorage.setItem(LS_SYNC_PENDING, '1');
+    await initAuth();
+    await signIn();
+    localStorage.removeItem(LS_SYNC_PENDING);
+    return finishWithToken();
   }, [finalizeSync]);
 
   const createSyncSheet = useCallback(
@@ -261,12 +319,14 @@ export function AppProvider({ children }) {
   const disableSync = useCallback(() => {
     clearTimeout(syncTimer.current);
     localStorage.removeItem(LS_SYNC_ENABLED);
+    localStorage.removeItem(LS_SYNC_PENDING);
     localStorage.removeItem(LS_MODE); // снимаем legacy 'google', чтобы не включалось заново
     syncEnabledRef.current = false;
     setSyncEnabled(false);
     setSyncStatus('disabled');
     setSyncError(null);
     setNeedsSignIn(false);
+    setSyncSetup(false);
   }, []);
 
   // Полностью отключить и выйти из Google (забыть таблицу).
@@ -599,6 +659,24 @@ export function AppProvider({ children }) {
     [wallets, categories, tags, transactions, track, loadData, scheduleSync],
   );
 
+  const clearSyncSetup = useCallback(() => setSyncSetup(false), []);
+
+  // Откатить локальные данные к снимку, сделанному перед adopt-синком. После
+  // восстановления отправляем данные в таблицу (scheduleSync), чтобы реплика
+  // тоже пришла в согласованное состояние.
+  const restoreLocalBackup = useCallback(
+    () => track(async () => {
+      const ok = await restorePreSyncBackup();
+      if (ok && backendRef.current) {
+        await loadData(backendRef.current);
+        setHasBackup(false);
+        scheduleSync();
+      }
+      return ok;
+    }),
+    [track, loadData, scheduleSync],
+  );
+
   const value = {
     status,
     mode,
@@ -615,6 +693,10 @@ export function AppProvider({ children }) {
     lastSyncAt,
     syncError,
     needsSignIn,
+    syncSetup,
+    clearSyncSetup,
+    hasBackup,
+    restoreLocalBackup,
     isClientConfigured: IS_CLIENT_ID_CONFIGURED,
     beginSync,
     listSyncSheets,
