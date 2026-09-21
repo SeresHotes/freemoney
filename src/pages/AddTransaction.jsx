@@ -66,8 +66,9 @@ export default function AddTransaction() {
   const [formError, setFormError] = useState(null);
 
   const changeWallet = (id) => {
+    // Меняем только кошелёк: валюта ввода остаётся прежней, чтобы её не сбрасывать.
+    // Сумму списания пересчитаем заново под валюту нового кошелька.
     setWalletId(id);
-    setEntryCurrency(currencyOf(id));
     setWalletAmountTouched(false);
   };
 
