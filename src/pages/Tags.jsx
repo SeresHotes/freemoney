@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 export default function Tags() {
-  const { tags, addTag, setTagStatus, renameTag } = useApp();
+  const { tags, addTag, setTagArchived, renameTag } = useApp();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,8 +16,8 @@ export default function Tags() {
   const byName = (a, b) => a.name.localeCompare(b.name, 'ru');
   const { active, archived } = useMemo(
     () => ({
-      active: tags.filter((t) => t.status === 'active').sort(byName),
-      archived: tags.filter((t) => t.status === 'archived').sort(byName),
+      active: tags.filter((t) => !t.archived).sort(byName),
+      archived: tags.filter((t) => t.archived).sort(byName),
     }),
     [tags],
   );
@@ -44,7 +44,7 @@ export default function Tags() {
   const archive = async (tag) => {
     setBusy(true);
     try {
-      await setTagStatus(tag, 'archived');
+      await setTagArchived(tag, true);
     } finally {
       setBusy(false);
     }
@@ -53,7 +53,7 @@ export default function Tags() {
   const restore = async (tag) => {
     setBusy(true);
     try {
-      await setTagStatus(tag, 'active');
+      await setTagArchived(tag, false);
     } finally {
       setBusy(false);
     }

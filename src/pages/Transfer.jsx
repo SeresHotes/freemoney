@@ -7,18 +7,19 @@ import { getRate } from '../api/rates';
 export default function Transfer() {
   const { wallets, transactions, addTransfer, updateTransfer, deleteTransaction } = useApp();
   const navigate = useNavigate();
-  const { transferId } = useParams();
-  const editing = Boolean(transferId);
+  const { groupId } = useParams();
+  const editing = Boolean(groupId);
 
-  const active = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
+  const active = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
 
   // В режиме правки достаём обе ноги пары.
   const legs = useMemo(
-    () => (editing ? transactions.filter((t) => t.transferId === transferId) : []),
-    [editing, transferId, transactions],
+    () => (editing ? transactions.filter((t) => t.groupId === groupId) : []),
+    [editing, groupId, transactions],
   );
-  const outLeg = legs.find((t) => t.type === 'transfer_out');
-  const inLeg = legs.find((t) => t.type === 'transfer_in');
+  // Ноги пары различаем по знаку amount: источник < 0, получатель > 0.
+  const outLeg = legs.find((t) => t.amount < 0);
+  const inLeg = legs.find((t) => t.amount > 0);
 
   const [fromWallet, setFromWallet] = useState('');
   const [toWallet, setToWallet] = useState('');
@@ -39,8 +40,8 @@ export default function Transfer() {
       if (!outLeg || !inLeg) return; // ждём загрузки операций
       setFromWallet(outLeg.wallet);
       setToWallet(inLeg.wallet);
-      setAmountOut(String(outLeg.amount));
-      setAmountIn(String(inLeg.amount));
+      setAmountOut(String(Math.abs(outLeg.amount)));
+      setAmountIn(String(Math.abs(inLeg.amount)));
       setAmountInTouched(true);
       setDate(outLeg.date);
       setTime(outLeg.time || nowTime());
@@ -86,7 +87,7 @@ export default function Transfer() {
     setSaving(true);
     try {
       if (editing) {
-        await updateTransfer({ transferId, outWallet: fromWallet, inWallet: toWallet, amountOut: out, amountIn: inc, date, time, note: note.trim() });
+        await updateTransfer({ groupId, outWallet: fromWallet, inWallet: toWallet, amountOut: out, amountIn: inc, date, time, note: note.trim() });
       } else {
         await addTransfer({ fromWallet, toWallet, amountOut: out, amountIn: inc, date, time, note: note.trim() });
       }

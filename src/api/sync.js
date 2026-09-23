@@ -63,14 +63,14 @@ function contentSig(entity, r) {
         r.id, r.date, r.time, r.type, r.amount, r.category || '', r.note || '',
         [...(r.tags || [])].map((t) => t.trim()).filter(Boolean).sort(),
         r.wallet || '', r.currency || '', r.origAmount ?? null, r.origCurrency || '',
-        r.transferId || '', r.rate ?? null, !!r.deleted,
+        r.groupId || '', r.rate ?? null, !!r.deleted,
       ]);
     case 'categories':
-      return JSON.stringify([r.name, r.kind || 'both', r.status || 'active', r.icon || '', r.order ?? 0, !!r.deleted]);
+      return JSON.stringify([r.name, r.kind || 'both', !!r.archived, r.icon || '', r.order ?? 0, !!r.deleted]);
     case 'wallets':
-      return JSON.stringify([r.name || '', r.currency || '', r.status || 'active', r.order ?? 0, r.kind || 'cash', Number(r.rate) || 0, !!r.deleted]);
+      return JSON.stringify([r.name || '', r.currency || '', !!r.archived, r.order ?? 0, r.kind || 'cash', Number(r.rate) || 0, !!r.deleted]);
     case 'tags':
-      return JSON.stringify([r.name, r.status || 'active', !!r.deleted]);
+      return JSON.stringify([r.name, !!r.archived, !!r.deleted]);
     case 'settings':
       return JSON.stringify([r.key, r.value ?? '']);
     default:
@@ -244,10 +244,11 @@ export async function syncNow(spreadsheetId) {
   let pulled = 0;
   let pushedEntities = 0;
 
-  // Разовая миграция формата ячеек: один раз на таблицу переписываем все листы,
-  // чтобы «сырые»/ISO updatedAt и голые даты в datetime стали читаемым datetime
-  // «YYYY-MM-DD HH:MM:SS». Содержимое не меняется — только кодировка ячеек.
-  const fmtKey = `freemoney:fmtmig2:${spreadsheetId}`;
+  // Разовая нормализация листа: один раз на таблицу переписываем все листы в
+  // актуальном формате — читаемый datetime у updatedAt, слитый тип + знаковый
+  // amount у операций, булев archived вместо строки status. Значения приводит
+  // normalizeTx/mapper на чтении, здесь лишь персистим результат в лист.
+  const fmtKey = `freemoney:fmtmig3:${spreadsheetId}`;
   const migrateFmt = !localStorage.getItem(fmtKey);
 
   for (const entity of ENTITIES) {

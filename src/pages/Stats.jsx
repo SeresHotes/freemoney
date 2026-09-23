@@ -56,18 +56,23 @@ export default function Stats() {
     navigate(`/transactions?${p.toString()}`);
   };
 
-  const activeWallets = useMemo(() => wallets.filter((w) => w.status === 'active'), [wallets]);
-  const activeCategories = useMemo(() => categories.filter((c) => c.status === 'active'), [categories]);
+  const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
+  const activeCategories = useMemo(() => categories.filter((c) => !c.archived), [categories]);
   const catOptions = useMemo(() => activeCategories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [activeCategories]);
   const walletOptions = useMemo(() => activeWallets.map((w) => ({ value: w.name, label: w.name })), [activeWallets]);
   const tagOptions = useMemo(() => {
-    const set = new Set(tags.filter((t) => t.status === 'active').map((t) => t.name));
+    const set = new Set(tags.filter((t) => !t.archived).map((t) => t.name));
     return [...set].sort().map((t) => ({ value: t, label: t }));
   }, [tags]);
 
   const singleWallet = wals.length === 1 ? activeWallets.find((w) => w.name === wals[0]) : null;
   const displayCurrency = singleWallet ? singleWallet.currency : baseCurrency;
-  const toDisplay = (t) => (singleWallet ? t.amount : toBase(t.amount, t.currency));
+  // Для сумм и графиков нужна ВЕЛИЧИНА (amount теперь знаковый: расход < 0).
+  // Доход/расход разводятся по типу, поэтому по модулю — корректно для всех агрегатов.
+  const toDisplay = (t) => {
+    const v = singleWallet ? t.amount : toBase(t.amount, t.currency);
+    return v == null ? null : Math.abs(v);
+  };
 
   // Все операции, попадающие под фильтры и выбранный диапазон дат.
   const scoped = useMemo(

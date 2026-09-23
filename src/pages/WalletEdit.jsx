@@ -7,7 +7,7 @@ import { walletBalance } from '../utils/finance';
 export default function WalletEdit() {
   const { name: nameParam } = useParams();
   const navigate = useNavigate();
-  const { wallets, transactions, addWallet, updateWallet, setWalletStatus, setWalletBalance } = useApp();
+  const { wallets, transactions, addWallet, updateWallet, setWalletArchived, setWalletBalance } = useApp();
 
   const editing = nameParam != null;
   const walletName = editing ? decodeURIComponent(nameParam) : null;
@@ -64,7 +64,7 @@ export default function WalletEdit() {
   const toggleArchive = async () => {
     setBusy(true);
     try {
-      await setWalletStatus(current, current.status === 'active' ? 'archived' : 'active');
+      await setWalletArchived(current, !current.archived);
       navigate('/wallets');
     } finally {
       setBusy(false);
@@ -119,8 +119,8 @@ export default function WalletEdit() {
 
         <button className="btn btn--block btn--primary" type="submit" disabled={busy}>Сохранить</button>
         {editing && (
-          <button type="button" className={`btn btn--block${current.status === 'active' ? ' btn--danger' : ''}`} onClick={toggleArchive} disabled={busy}>
-            {current.status === 'active' ? 'Удалить' : 'Восстановить'}
+          <button type="button" className={`btn btn--block${!current.archived ? ' btn--danger' : ''}`} onClick={toggleArchive} disabled={busy}>
+            {!current.archived ? 'Удалить' : 'Восстановить'}
           </button>
         )}
       </form>

@@ -6,7 +6,7 @@ import { EMOJI_PALETTE } from '../utils/emoji';
 export default function CategoryEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { categories, addCategory, updateCategory, setCategoryStatus } = useApp();
+  const { categories, addCategory, updateCategory, setCategoryArchived } = useApp();
 
   const editing = id != null;
   const current = editing ? categories.find((c) => String(c.id) === String(id)) : null;
@@ -35,7 +35,7 @@ export default function CategoryEdit() {
     const trimmed = name.trim();
     if (!trimmed) { setFormError('Введите название'); return; }
     const exists = categories.some(
-      (c) => c.id !== current?.id && c.name.toLowerCase() === trimmed.toLowerCase() && c.status === 'active',
+      (c) => c.id !== current?.id && c.name.toLowerCase() === trimmed.toLowerCase() && !c.archived,
     );
     if (exists) { setFormError('Такая категория уже есть'); return; }
     setBusy(true);
@@ -52,7 +52,7 @@ export default function CategoryEdit() {
   const toggleArchive = async () => {
     setBusy(true);
     try {
-      await setCategoryStatus(current.id, current.status === 'active' ? 'archived' : 'active');
+      await setCategoryArchived(current.id, !current.archived);
       navigate('/categories');
     } finally {
       setBusy(false);
@@ -91,8 +91,8 @@ export default function CategoryEdit() {
 
         <button className="btn btn--block btn--primary" type="submit" disabled={busy}>Сохранить</button>
         {editing && (
-          <button type="button" className={`btn btn--block${current.status === 'active' ? ' btn--danger' : ''}`} onClick={toggleArchive} disabled={busy}>
-            {current.status === 'active' ? 'Удалить' : 'Восстановить'}
+          <button type="button" className={`btn btn--block${!current.archived ? ' btn--danger' : ''}`} onClick={toggleArchive} disabled={busy}>
+            {!current.archived ? 'Удалить' : 'Восстановить'}
           </button>
         )}
       </form>

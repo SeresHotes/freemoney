@@ -9,6 +9,7 @@
 import { DEFAULT_CATEGORIES, DEFAULT_ICON } from './defaults';
 import { DEFAULT_BASE_CURRENCY } from '../config';
 import { newId, nowStamp } from '../utils/format';
+import { normalizeTx, normalizeArchivable } from '../utils/model';
 
 const DB_NAME = 'freemoney';
 const DB_VERSION = 4;
@@ -175,12 +176,12 @@ export async function isLocalStoreReady() {
 export async function initLocalStore() {
   const db = await openDb();
   DEFAULT_CATEGORIES.forEach((c, index) =>
-    putStamped(db, STORE_CAT, { id: newId(), ...c, status: 'active', order: index }),
+    putStamped(db, STORE_CAT, { id: newId(), ...c, archived: false, order: index }),
   );
   await putStamped(db, STORE_WALLET, {
     name: 'Основной',
     currency: DEFAULT_BASE_CURRENCY,
-    status: 'active',
+    archived: false,
     order: 0,
     kind: 'cash',
     rate: 0,
@@ -212,7 +213,15 @@ export async function rawDump() {
     getAll(db, STORE_TAG), getAll(db, STORE_SETTINGS),
   ]);
   db.close();
-  return { transactions: txs, categories: cats, wallets: wls, tags: tgs, settings };
+  // Нормализуем на чтении: sync сравнивает содержимое по contentSig, поэтому
+  // старые записи (status/несигнальный amount) и новые должны совпадать по форме.
+  return {
+    transactions: txs.map(normalizeTx),
+    categories: cats.map(normalizeArchivable),
+    wallets: wls.map(normalizeArchivable),
+    tags: tgs.map(normalizeArchivable),
+    settings,
+  };
 }
 
 // Применить записи-победители мерджа в локальный стор (upsert, включая tombstones).
@@ -307,7 +316,7 @@ export function createLocalBackend() {
         await put(db, STORE_WALLET, {
           name: 'Основной',
           currency: DEFAULT_BASE_CURRENCY,
-          status: 'active',
+          archived: false,
           order: 0,
           kind: 'cash',
           rate: 0,
@@ -320,12 +329,16 @@ export function createLocalBackend() {
       }
       // Бэкфилл updatedAt: существовавшие до синхронизации данные считаем
       // актуальными, чтобы они не проиграли пустой/старой таблице при первом мердже.
+      // Заодно лечим метки из будущего (сбой формата/часов): такая метка вечно
+      // выигрывает LWW и откатывает свежие правки — срезаем её до «сейчас».
       const stamp = nowStamp();
       for (const name of DATA_STORES) {
         const rows = await getAll(db, name);
         const s = store(db, name, 'readwrite');
         for (const r of rows) {
-          if (r.updatedAt == null) await reqToPromise(s.put({ ...r, updatedAt: stamp }));
+          if (r.updatedAt == null || r.updatedAt > stamp) {
+            await reqToPromise(s.put({ ...r, updatedAt: stamp }));
+          }
         }
       }
       db.close();
@@ -341,15 +354,15 @@ export function createLocalBackend() {
       db.close();
       return {
         transactions: txs.filter(isLive)
-          .map((r) => ({ ...r, tags: Array.isArray(r.tags) ? r.tags : [] }))
+          .map((r) => normalizeTx({ ...r, tags: Array.isArray(r.tags) ? r.tags : [] }))
           .sort((a, b) => (a.date < b.date ? -1 : 1)),
         categories: cats.filter(isLive)
-          .map((c) => ({ ...c, icon: c.icon || DEFAULT_ICON }))
+          .map((c) => normalizeArchivable({ ...c, icon: c.icon || DEFAULT_ICON }))
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
         wallets: wls.filter(isLive)
-          .map((w) => ({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
+          .map((w) => normalizeArchivable({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-        tags: tgs.filter(isLive).map((r) => ({ name: r.name, status: r.status || 'active' })),
+        tags: tgs.filter(isLive).map((r) => ({ name: r.name, archived: r.archived ?? (r.status === 'archived') })),
         settings: Object.fromEntries(settings.filter(isLive).map((r) => [r.key, r.value])),
       };
     },
@@ -359,7 +372,7 @@ export function createLocalBackend() {
       const rows = await getAll(db, STORE_TX);
       db.close();
       return rows.filter(isLive)
-        .map((r) => ({ ...r, tags: Array.isArray(r.tags) ? r.tags : [] }))
+        .map((r) => normalizeTx({ ...r, tags: Array.isArray(r.tags) ? r.tags : [] }))
         .sort((a, b) => (a.date < b.date ? -1 : 1));
     },
 
@@ -368,7 +381,7 @@ export function createLocalBackend() {
       const rows = await getAll(db, STORE_CAT);
       db.close();
       return rows.filter(isLive)
-        .map((c) => ({ ...c, icon: c.icon || DEFAULT_ICON }))
+        .map((c) => normalizeArchivable({ ...c, icon: c.icon || DEFAULT_ICON }))
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     },
 
@@ -377,7 +390,7 @@ export function createLocalBackend() {
       const rows = await getAll(db, STORE_WALLET);
       db.close();
       return rows.filter(isLive)
-        .map((w) => ({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
+        .map((w) => normalizeArchivable({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     },
 
@@ -385,7 +398,7 @@ export function createLocalBackend() {
       const db = await openDb();
       const rows = await getAll(db, STORE_TAG);
       db.close();
-      return rows.filter(isLive).map((r) => ({ name: r.name, status: r.status || 'active' }));
+      return rows.filter(isLive).map((r) => ({ name: r.name, archived: r.archived ?? (r.status === 'archived') }));
     },
 
     fetchSettings: async () => {
@@ -426,17 +439,17 @@ export function createLocalBackend() {
       const db = await openDb();
       const existing = (await getAll(db, STORE_CAT)).filter(isLive);
       await putStamped(db, STORE_CAT, {
-        id: newId(), name, kind, icon: icon || DEFAULT_ICON, status: 'active',
+        id: newId(), name, kind, icon: icon || DEFAULT_ICON, archived: false,
         order: existing.length, deleted: false,
       });
       db.close();
     },
 
-    setCategoryStatus: async (id, status) => {
+    setCategoryArchived: async (id, archived) => {
       const db = await openDb();
       const s = store(db, STORE_CAT, 'readwrite');
       const cat = await reqToPromise(s.get(id));
-      if (cat) { cat.status = status; cat.updatedAt = nowStamp(); await reqToPromise(s.put(cat)); }
+      if (cat) { delete cat.status; cat.archived = archived; cat.updatedAt = nowStamp(); await reqToPromise(s.put(cat)); }
       db.close();
     },
 
@@ -468,7 +481,7 @@ export function createLocalBackend() {
       const db = await openDb();
       const existing = (await getAll(db, STORE_WALLET)).filter(isLive);
       await putStamped(db, STORE_WALLET, {
-        name, currency, status: 'active', order: existing.length,
+        name, currency, archived: false, order: existing.length,
         kind: kind || 'cash', rate: Number(rate) || 0, deleted: false,
       });
       db.close();
@@ -508,28 +521,28 @@ export function createLocalBackend() {
       db.close();
     },
 
-    setWalletStatus: async (name, status) => {
+    setWalletArchived: async (name, archived) => {
       const db = await openDb();
       const s = store(db, STORE_WALLET, 'readwrite');
       const w = await reqToPromise(s.get(name));
-      if (w) { w.status = status; w.updatedAt = nowStamp(); await reqToPromise(s.put(w)); }
+      if (w) { delete w.status; w.archived = archived; w.updatedAt = nowStamp(); await reqToPromise(s.put(w)); }
       db.close();
     },
 
     addTag: async (name) => {
       const db = await openDb();
-      await putStamped(db, STORE_TAG, { name, status: 'active', deleted: false });
+      await putStamped(db, STORE_TAG, { name, archived: false, deleted: false });
       db.close();
     },
 
-    // «Удаление» тега = архивирование (status), тег остаётся и восстановим.
+    // «Удаление» тега = архивирование (archived), тег остаётся и восстановим.
     // deleted (tombstone) для тегов ставит только rename — чтобы старое имя не
     // воскресало при синхронизации.
-    setTagStatus: async (name, status) => {
+    setTagArchived: async (name, archived) => {
       const db = await openDb();
       const s = store(db, STORE_TAG, 'readwrite');
       const tag = await reqToPromise(s.get(name));
-      if (tag) { tag.status = status; tag.updatedAt = nowStamp(); await reqToPromise(s.put(tag)); }
+      if (tag) { delete tag.status; tag.archived = archived; tag.updatedAt = nowStamp(); await reqToPromise(s.put(tag)); }
       db.close();
     },
 
@@ -537,9 +550,9 @@ export function createLocalBackend() {
       const db = await openDb();
       const tagStore = store(db, STORE_TAG, 'readwrite');
       const old = await reqToPromise(tagStore.get(oldName));
-      const status = old?.status || 'active';
-      await reqToPromise(tagStore.put({ name: oldName, status, deleted: true, updatedAt: nowStamp() }));
-      await reqToPromise(tagStore.put({ name: newName, status, deleted: false, updatedAt: nowStamp() }));
+      const archived = old?.archived ?? (old?.status === 'archived');
+      await reqToPromise(tagStore.put({ name: oldName, archived, deleted: true, updatedAt: nowStamp() }));
+      await reqToPromise(tagStore.put({ name: newName, archived, deleted: false, updatedAt: nowStamp() }));
       const s = store(db, STORE_TX, 'readwrite');
       const all = await reqToPromise(s.getAll());
       for (const t of all) {
