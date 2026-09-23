@@ -15,6 +15,7 @@ import {
 } from '../config';
 import { newId, todayIso, nowTime } from '../utils/format';
 import { walletBalance } from '../utils/finance';
+import { normalizeLegacyTransactions } from '../utils/migrate';
 
 const AppContext = createContext(null);
 
@@ -79,7 +80,9 @@ export function AppProvider({ children }) {
     const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
     const defaultWallet = wls.find((w) => w.status === 'active') || wls[0];
     const walletCurrency = Object.fromEntries(wls.map((w) => [w.name, w.currency]));
-    const normalized = txs.map((t) => {
+    // Апгрейд старого «монефи»-формата (суммы со знаком, укрупнённые типы
+    // transfer/adjust) в каноничную модель — иначе балансы и переводы врут.
+    const normalized = normalizeLegacyTransactions(txs).map((t) => {
       const wallet = t.wallet || defaultWallet?.name || '';
       const currency = t.currency || walletCurrency[wallet] || base;
       return { ...t, wallet, currency };

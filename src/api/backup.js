@@ -1,6 +1,7 @@
 // Единая резервная копия: весь набор данных в одном JSON-файле.
 
 import { downloadFile } from '../utils/csv';
+import { normalizeLegacyTransactions } from '../utils/migrate';
 
 const VERSION = 1;
 
@@ -70,9 +71,12 @@ export async function importBackup(text, backend, current) {
 
   // Операции — по id. Кошелёк: в новых бэкапах t.wallet уже имя, в старых —
   // переводим со старого id на имя (иначе оставляем как есть).
+  // Апгрейд старого «монефи»-формата (суммы со знаком, укрупнённые типы
+  // transfer/adjust) в каноничную модель, чтобы в хранилище легли чистые данные.
+  const incoming = normalizeLegacyTransactions(data.transactions || []);
   const existingIds = new Set(current.transactions.map((t) => t.id));
   const toAdd = [];
-  for (const t of data.transactions || []) {
+  for (const t of incoming) {
     if (existingIds.has(t.id)) continue;
     toAdd.push({ ...t, wallet: oldIdToName.get(t.wallet) || t.wallet });
     existingIds.add(t.id);
