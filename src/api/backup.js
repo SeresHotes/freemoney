@@ -68,21 +68,29 @@ export async function importBackup(text, backend, current) {
     result.tags += 1;
   }
 
-  // Операции — по id. Кошелёк: в новых бэкапах t.wallet уже имя, в старых —
-  // переводим со старого id на имя (иначе оставляем как есть).
+  // Операции — по id: новые добавляем, уже существующие ПЕРЕЗАПИСЫВАЕМ данными из
+  // бэкапа (upsert). Так повторный импорт правит уже загруженные операции — напр.,
+  // проставляет groupId связанным ногам перевода. Кошелёк: в новых бэкапах t.wallet
+  // уже имя, в старых — переводим со старого id на имя.
   const existingIds = new Set(current.transactions.map((t) => t.id));
   const toAdd = [];
+  const toUpdate = [];
   for (const t of data.transactions || []) {
-    if (existingIds.has(t.id)) continue;
     // Старые бэкапы хранят объединяющий id под именем transferId — переносим в groupId.
     const { transferId, ...rest } = t;
-    toAdd.push({ ...rest, groupId: t.groupId ?? transferId ?? '', wallet: oldIdToName.get(t.wallet) || t.wallet });
-    existingIds.add(t.id);
+    const tx = { ...rest, groupId: t.groupId ?? transferId ?? '', wallet: oldIdToName.get(t.wallet) || t.wallet };
+    if (existingIds.has(t.id)) {
+      toUpdate.push(tx);
+    } else {
+      toAdd.push(tx);
+      existingIds.add(t.id);
+    }
   }
-  if (toAdd.length) {
-    await backend.addTransactions(toAdd);
-    result.transactions = toAdd.length;
-  }
+  if (toAdd.length) await backend.addTransactions(toAdd);
+  // updateTransaction — корректный upsert во всех бэкендах (localBackend: put,
+  // deviceBackend: замена по id), в отличие от addTransactions (в device дописывает).
+  for (const tx of toUpdate) await backend.updateTransaction(tx);
+  result.transactions = toAdd.length + toUpdate.length;
 
   // Базовая валюта.
   if (data.baseCurrency) await backend.setSetting('baseCurrency', data.baseCurrency);
