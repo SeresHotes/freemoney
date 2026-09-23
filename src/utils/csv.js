@@ -63,13 +63,29 @@ export function parseCsv(text) {
   return rows;
 }
 
-// Скачать текст как файл.
+// Метка локальной даты и времени для имени файла: YYYY-MM-DD_HH-MM-SS.
+function fileTimestamp(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const time = `${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+  return `${date}_${time}`;
+}
+
+// Вставляет метку даты-времени перед расширением: name.ext → name-YYYY-MM-DD_HH-MM-SS.ext.
+function withTimestamp(filename) {
+  const dot = filename.lastIndexOf('.');
+  const ts = fileTimestamp();
+  if (dot <= 0) return `${filename}-${ts}`;
+  return `${filename.slice(0, dot)}-${ts}${filename.slice(dot)}`;
+}
+
+// Скачать текст как файл. В имя добавляется метка даты и времени экспорта.
 export function downloadFile(filename, text, mime = 'text/csv;charset=utf-8') {
   const blob = new Blob(['﻿', text], { type: mime }); // BOM для Excel
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = withTimestamp(filename);
   a.click();
   URL.revokeObjectURL(url);
 }
