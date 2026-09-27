@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { CURRENCIES } from '../utils/currencies';
 import { CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
 import { agoLabel } from '../utils/format';
+import { downloadTemplateXlsx, downloadTemplateCsv } from '../api/tableImport';
 
 // Версию подставляет сборка (vite define). Локально без vite — 'dev'.
 const APP_VERSION = typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__;
@@ -245,6 +246,117 @@ function SyncSection() {
   );
 }
 
+// Секция «Импорт из таблицы»: выбор .xlsx/.csv → предпросмотр → подтверждение.
+function TableImportSection() {
+  const { baseCurrency, previewTableImport, importTable } = useApp();
+  const fileRef = useRef(null);
+  const [plan, setPlan] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setMessage(null);
+    setError(null);
+    setPlan(null);
+    setBusy(true);
+    try {
+      const next = await previewTableImport(file);
+      if (!next.transactions.length && !next.problems.length) {
+        setError(next.duplicates ? 'Все операции из файла уже импортированы.' : 'В файле не нашлось ни одной операции.');
+        return;
+      }
+      setPlan(next);
+    } catch (err) {
+      setError(`Не удалось прочитать файл. ${err?.message || ''}`.trim());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleApply = async () => {
+    if (!plan) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await importTable(plan);
+      setPlan(null);
+      setMessage(`Импортировано: операций ${r.transactions}${r.transfers ? ` (из них переводов ${r.transfers})` : ''}, кошельков ${r.wallets}, категорий ${r.categories}, тегов ${r.tags}`);
+    } catch {
+      setError('Ошибка импорта. Попробуйте ещё раз.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const list = (items, fmt) => items.map(fmt).join(', ');
+  const shownProblems = plan?.problems.slice(0, 5) || [];
+
+  return (
+    <section>
+      <h2 className="section-title">Импорт из таблицы</h2>
+      <p className="muted" style={{ marginBottom: '0.5rem' }}>
+        Перенос данных из других приложений или ручной ввод истории. Скачайте шаблон,
+        заполните его в Excel / Google Sheets / Numbers и загрузите обратно. Кошельки,
+        категории и теги создадутся сами, переводы сохранятся. Формат описан в шаблоне
+        на листе «Инструкция».
+      </p>
+      <div className="settings-actions">
+        <button className="btn btn--block" onClick={() => fileRef.current?.click()} disabled={busy}>📥 Загрузить файл</button>
+        <button className="btn btn--block" onClick={() => downloadTemplateXlsx(baseCurrency)} disabled={busy}>📄 Шаблон .xlsx</button>
+      </div>
+      <p className="muted" style={{ marginTop: '0.4rem' }}>
+        Подходят .xlsx и .csv.{' '}
+        <button className="link-btn-inline" onClick={() => downloadTemplateCsv(baseCurrency)} disabled={busy}>Шаблон .csv</button>
+      </p>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"
+        hidden
+        onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ''; }}
+      />
+
+      {plan && (
+        <div className="import-preview">
+          <p className="muted">
+            Будет добавлено операций: <b>{plan.transactions.length}</b>
+            {plan.transfers ? `, из них переводов: ${plan.transfers}` : ''}
+            {plan.duplicates ? `. Уже есть (пропустим): ${plan.duplicates}` : ''}
+          </p>
+          {plan.newWallets.length > 0 && (
+            <p className="muted">Новые кошельки: {list(plan.newWallets, (w) => `${w.name} (${w.currency})`)}</p>
+          )}
+          {plan.newCategories.length > 0 && (
+            <p className="muted">Новые категории: {list(plan.newCategories, (c) => c.name)}</p>
+          )}
+          {plan.newTags.length > 0 && (
+            <p className="muted">Новые теги: {plan.newTags.join(', ')}</p>
+          )}
+          {plan.problems.length > 0 && (
+            <div className="muted">
+              Пропущено строк с ошибками: {plan.problems.length}
+              <ul className="import-preview__problems">
+                {shownProblems.map((p) => <li key={p.line}>строка {p.line}: {p.reason}</li>)}
+                {plan.problems.length > shownProblems.length && <li>…</li>}
+              </ul>
+            </div>
+          )}
+          <div className="settings-actions" style={{ marginTop: '0.5rem' }}>
+            <button className="btn btn--block btn--primary" onClick={handleApply} disabled={busy || !plan.transactions.length}>
+              {busy ? 'Импортируем…' : '✅ Импортировать'}
+            </button>
+            <button className="btn btn--block" onClick={() => setPlan(null)} disabled={busy}>Отмена</button>
+          </div>
+        </div>
+      )}
+      {message && <p className="muted" style={{ marginTop: '0.75rem' }}>{message}</p>}
+      {error && <p className="muted" style={{ marginTop: '0.75rem' }}>{error}</p>}
+    </section>
+  );
+}
+
 export default function Settings() {
   const {
     transactions, categories, wallets, baseCurrency,
@@ -319,6 +431,8 @@ export default function Settings() {
         />
         {message && <p className="muted" style={{ marginTop: '0.75rem' }}>{message}</p>}
       </section>
+
+      <TableImportSection />
 
       <section>
         <h2 className="section-title">Данные</h2>
