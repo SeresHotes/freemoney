@@ -1043,3 +1043,7 @@ code {
 .update-toast__btn:active {
   opacity: 0.7;
 }
+.update-toast__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
