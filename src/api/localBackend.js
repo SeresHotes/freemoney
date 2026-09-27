@@ -273,6 +273,17 @@ export async function hardDeleteSettings(keys) {
   db.close();
 }
 
+// Стереть ВСЁ локальное хранилище (данные, настройки, служебные снапшоты
+// синхронизации) и заново засеять дефолты — «начать с чистого листа».
+export async function resetLocalStore() {
+  const db = await openDb();
+  for (const name of [...DATA_STORES, STORE_META]) {
+    await reqToPromise(store(db, name, 'readwrite').clear());
+  }
+  db.close();
+  await initLocalStore();
+}
+
 // Есть ли страховочный снимок локальных данных, сделанный перед adopt-синком.
 export async function hasPreSyncBackup() {
   return Boolean(await getMeta('preSyncBackup'));
@@ -299,6 +310,8 @@ export async function countActiveTransactions() {
 export function createLocalBackend() {
   return {
     kind: 'local',
+
+    resetAll: resetLocalStore,
 
     // Дозаполнить дефолты и проставить метки старым записям (миграция v2 → v3).
     ensureSchema: async () => {

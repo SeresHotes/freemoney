@@ -248,12 +248,13 @@ function SyncSection() {
 export default function Settings() {
   const {
     transactions, categories, wallets, baseCurrency,
-    setBaseCurrencyPref, exportAll, importAll,
+    setBaseCurrencyPref, exportAll, importAll, resetAllData,
   } = useApp();
 
   const navigate = useNavigate();
   const fileRef = useRef(null);
   const [message, setMessage] = useState(null);
+  const [resetMessage, setResetMessage] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const handleImport = async (file) => {
@@ -266,6 +267,25 @@ export default function Settings() {
       setMessage(`Импортировано: кошельков ${r.wallets}, категорий ${r.categories}, тегов ${r.tags}, операций ${r.transactions}`);
     } catch {
       setMessage('Ошибка импорта. Проверьте, что это файл резервной копии FreeMoney (.json).');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReset = async () => {
+    const ok = window.confirm(
+      'Удалить ВСЕ данные на этом устройстве: операции, кошельки, категории, теги и настройки?\n\n'
+      + 'Синхронизация с Google будет отключена, сама таблица не изменится. '
+      + 'Отменить это нельзя — сначала сделайте экспорт резервной копии.',
+    );
+    if (!ok) return;
+    setBusy(true);
+    setResetMessage(null);
+    try {
+      await resetAllData();
+      setResetMessage('Данные сброшены.');
+    } catch {
+      setResetMessage('Не удалось сбросить данные. Попробуйте снова.');
     } finally {
       setBusy(false);
     }
@@ -329,6 +349,14 @@ export default function Settings() {
           Данные хранятся на этом устройстве (в браузере) и не пропадают при
           перезагрузке. Резервная копия и синхронизация — выше.
         </p>
+        <button className="btn btn--block btn--danger" style={{ marginTop: '0.75rem' }} onClick={handleReset} disabled={busy}>
+          🗑️ Сбросить данные
+        </button>
+        <p className="muted hint">
+          Удаляет всё на этом устройстве и возвращает начальные кошелёк и категории.
+          Синхронизация отключается, Google-таблица остаётся нетронутой.
+        </p>
+        {resetMessage && <p className="muted" style={{ marginTop: '0.5rem' }}>{resetMessage}</p>}
       </section>
 
       <section>
