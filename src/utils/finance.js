@@ -70,11 +70,12 @@ export function buildTimeSeries(transactions, granularity, toDisplay) {
 
 // Ряд расходов по категориям во времени (для стек-графика).
 // topCategories — категории, показываемые отдельно; остальные идут в «Другое».
-export function buildCategoryTimeSeries(transactions, granularity, toDisplay, topCategories) {
+// match — какие операции учитывать (по умолчанию расходы; для доходов — isIncome).
+export function buildCategoryTimeSeries(transactions, granularity, toDisplay, topCategories, match = isExpense) {
   const topSet = new Set(topCategories);
   const map = new Map();
   for (const t of transactions) {
-    if (!isExpense(t)) continue;
+    if (!match(t)) continue;
     const key = timeBucketKey(t.date, granularity);
     if (!key) continue;
     const value = toDisplay(t);
@@ -88,11 +89,12 @@ export function buildCategoryTimeSeries(transactions, granularity, toDisplay, to
   return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
 }
 
-// Суммы расходов по категориям (для выбора топа и цветов).
-export function expenseTotalsByCategory(transactions, toDisplay) {
+// Суммы по категориям (для donut, выбора топа и цветов).
+// match — какие операции учитывать (по умолчанию расходы; для доходов — isIncome).
+export function totalsByCategory(transactions, toDisplay, match = isExpense) {
   const map = new Map();
   for (const t of transactions) {
-    if (!isExpense(t)) continue;
+    if (!match(t)) continue;
     const value = toDisplay(t);
     if (value == null) continue;
     const name = t.category || 'Без категории';
