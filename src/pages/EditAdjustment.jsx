@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance } from '../utils/finance';
@@ -80,7 +81,7 @@ export default function EditAdjustment({ tx }) {
   return (
     <div className="page">
       <header className="page__header page__header--with-back">
-        <button className="link-btn" onClick={() => navigate(-1)} aria-label="Назад">←</button>
+        <BackButton />
         <h1>Корректировка баланса</h1>
       </header>
 

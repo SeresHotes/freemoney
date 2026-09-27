@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
 import { monthKey, monthLabel } from '../utils/format';
@@ -218,7 +219,12 @@ export default function Transactions() {
 
   return (
     <div className="page">
-      <header className="page__header"><h1>Операции</h1></header>
+      {/* Кнопка «Назад» — только когда пришли сюда по фильтру (тап по категории
+          или кошельку с главной/из списков), а не через нижнее меню. */}
+      <header className={`page__header${activeCount ? ' page__header--with-back' : ''}`}>
+        {activeCount > 0 && <BackButton />}
+        <h1>Операции</h1>
+      </header>
 
       <input
         className="field__input"

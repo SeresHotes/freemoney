@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES, formatAmount } from '../utils/currencies';
 import { walletBalance } from '../utils/finance';
@@ -24,7 +25,7 @@ export default function WalletEdit() {
     return (
       <div className="page">
         <header className="page__header page__header--with-back">
-          <button className="link-btn" onClick={() => navigate('/wallets')}>←</button>
+          <BackButton fallback="/wallets" />
           <h1>Кошелёк</h1>
         </header>
         <p className="muted">Кошелёк не найден.</p>
@@ -74,7 +75,7 @@ export default function WalletEdit() {
   return (
     <div className="page">
       <header className="page__header page__header--with-back">
-        <button className="link-btn" onClick={() => navigate('/wallets')} aria-label="Назад">←</button>
+        <BackButton fallback="/wallets" />
         <h1>{editing ? 'Кошелёк' : 'Новый кошелёк'}</h1>
       </header>
 
