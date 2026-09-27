@@ -72,12 +72,14 @@ function canonicalHeader(cell) {
 // выгрузках их категории именные (`To 'Счёт'` / `From 'Счёт'`), в новых —
 // служебные ключи `expensetransfer` / `incometransfer` без имени второго счёта;
 // тогда пару ищем по дате и одинаковой сумме в базовой валюте (converted amount).
-// Начальный остаток — `Initial balance` / `initalbalance` (опечатка Monefy).
+// Начальный остаток — `Initial balance 'Счёт'` / `initalbalance` (опечатка Monefy).
 // Здесь переписываем такие строки в наш формат; остальное разбирает общий код.
 
 const MONEFY_TO_RE = /^to\s+'(.+)'$/i;
 const MONEFY_FROM_RE = /^from\s+'(.+)'$/i;
-const MONEFY_INITIAL = new Set(['initial balance', 'initialbalance', 'initalbalance', 'начальный баланс']);
+// «Initial balance 'Счёт'» (с именем счёта в кавычках), «Initial balance»,
+// служебные ключи initialbalance / initalbalance (опечатка Monefy).
+const MONEFY_INITIAL_RE = /^(initial|inital)\s*balance\b|^начальный баланс\b/i;
 const MONEFY_OUT = 'expensetransfer';
 const MONEFY_IN = 'incometransfer';
 
@@ -95,7 +97,7 @@ function monefyRole(category) {
   if (from) return { role: 'in', counterparty: from[1] };
   if (key === MONEFY_OUT) return { role: 'out' };
   if (key === MONEFY_IN) return { role: 'in' };
-  if (MONEFY_INITIAL.has(key)) return { role: 'initial' };
+  if (MONEFY_INITIAL_RE.test(key)) return { role: 'initial' };
   return { role: 'normal' };
 }
 
