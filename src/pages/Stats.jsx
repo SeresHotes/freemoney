@@ -54,6 +54,14 @@ export default function Stats() {
   const [showFilters, setShowFilters] = useState(() => cats.length + tagSel.length > 0);
   const hiddenCount = cats.length + tagSel.length;
   const clearHidden = () => update((n) => { n.delete('category'); n.delete('tag'); });
+  // Смена вида: категории другого вида снимаем с выбора, чтобы не остался «невидимый» фильтр.
+  const setKind = (next) => update((n) => {
+    if (next === 'income') n.set('kind', 'income'); else n.delete('kind');
+    const allowed = new Set(activeCategories.filter((c) => c.kind === next || c.kind === 'both').map((c) => c.name));
+    const keep = cats.filter((c) => allowed.has(c));
+    n.delete('category');
+    keep.forEach((c) => n.append('category', c));
+  });
 
   // Переход к операциям: категория + активные фильтры и период статистики.
   const openCategory = (name) => {
@@ -69,7 +77,12 @@ export default function Stats() {
 
   const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
   const activeCategories = useMemo(() => categories.filter((c) => !c.archived), [categories]);
-  const catOptions = useMemo(() => activeCategories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [activeCategories]);
+  // В фильтре показываем только категории выбранного вида (расходные или доходные; «оба» — всегда).
+  const kindCategories = useMemo(
+    () => activeCategories.filter((c) => c.kind === kind || c.kind === 'both'),
+    [activeCategories, kind],
+  );
+  const catOptions = useMemo(() => kindCategories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [kindCategories]);
   const walletOptions = useMemo(() => activeWallets.map((w) => ({ value: w.name, label: w.name })), [activeWallets]);
   const tagOptions = useMemo(() => {
     const set = new Set(tags.filter((t) => !t.archived).map((t) => t.name));
@@ -127,6 +140,10 @@ export default function Stats() {
       <header className="page__header"><h1>Статистика</h1></header>
 
       <div className="filters">
+        <div className="seg">
+          <button className={`seg__btn${kind === 'expense' ? ' seg__btn--active' : ''}`} onClick={() => setKind('expense')}>Расходы</button>
+          <button className={`seg__btn${kind === 'income' ? ' seg__btn--active' : ''}`} onClick={() => setKind('income')}>Доходы</button>
+        </div>
         <ChipMultiSelect label="Кошельки" options={walletOptions} selected={wals} onChange={(a) => setArr('wallet', a)} />
         <PeriodPicker period={period} />
         <button className="link-btn-inline" onClick={() => setShowFilters((v) => !v)}>
@@ -134,7 +151,7 @@ export default function Stats() {
         </button>
         {showFilters && (
           <>
-            <ChipMultiSelect label="Категории" options={catOptions} selected={cats} onChange={(a) => setArr('category', a)} />
+            <ChipMultiSelect label={`Категории ${kindGen}`} options={catOptions} selected={cats} onChange={(a) => setArr('category', a)} />
             {tagOptions.length > 0 && (
               <ChipMultiSelect label="Теги" options={tagOptions} selected={tagSel} onChange={(a) => setArr('tag', a)} />
             )}
@@ -153,10 +170,6 @@ export default function Stats() {
       </section>
 
       <section>
-        <div className="seg">
-          <button className={`seg__btn${kind === 'expense' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('kind', '')}>Расходы</button>
-          <button className={`seg__btn${kind === 'income' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('kind', 'income')}>Доходы</button>
-        </div>
         <h2 className="section-title">{kindLabel} по категориям · {periodLabel}</h2>
         {byCategory.length === 0 ? (
           <p className="muted empty">Нет {kindGen} за период</p>
