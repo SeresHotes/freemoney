@@ -686,6 +686,22 @@ export function AppProvider({ children }) {
     [track, loadData, scheduleSync],
   );
 
+  // Сбросить все данные на устройстве и начать с чистого листа. Синхронизация
+  // отключается и таблица забывается: иначе первый же синк вернул бы всё обратно
+  // (adopt). Сама Google-таблица не трогается.
+  const resetAllData = useCallback(
+    () => track(async () => {
+      disconnectSync();
+      localStorage.removeItem(LS_LAST_SYNC);
+      setLastSyncAt(null);
+      setHasBackup(false);
+      await backendRef.current.resetAll();
+      await backendRef.current.ensureSchema();
+      await loadData(backendRef.current);
+    }),
+    [track, disconnectSync, loadData],
+  );
+
   const clearSyncSetup = useCallback(() => setSyncSetup(false), []);
 
   // Откатить локальные данные к снимку, сделанному перед adopt-синком. После
@@ -756,6 +772,7 @@ export function AppProvider({ children }) {
     importAll,
     previewTableImport,
     importTable,
+    resetAllData,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
