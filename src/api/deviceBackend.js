@@ -113,6 +113,8 @@ export function createDeviceBackend() {
   return {
     kind: 'device',
 
+    resetAll: initDeviceStore,
+
     ensureSchema: async () => {
       if (!(await isDeviceStoreReady())) { await initDeviceStore(); return; }
       // Миграция id→имя: старый wallets.csv начинался с колонки 'id'. Убираем id,
