@@ -1,11 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { monthLabel, dayLabel, compactNumber, rangeLabel } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import {
   isIncome, isExpense, matchesFilters,
-  buildCategoryTimeSeries, expenseTotalsByCategory,
+  buildCategoryTimeSeries, totalsByCategory,
 } from '../utils/finance';
 import { useBaseRates } from '../hooks/useBaseRates';
 import { usePeriod } from '../hooks/usePeriod';
@@ -25,6 +25,11 @@ export default function Stats() {
   const cats = searchParams.getAll('category');
   const tagSel = searchParams.getAll('tag');
   const wals = searchParams.getAll('wallet');
+  // Что показывать в разбивке по категориям и динамике: расходы (по умолчанию) или доходы.
+  const kind = searchParams.get('kind') === 'income' ? 'income' : 'expense';
+  const matchKind = kind === 'income' ? isIncome : isExpense;
+  const kindLabel = kind === 'income' ? 'Доходы' : 'Расходы';
+  const kindGen = kind === 'income' ? 'доходов' : 'расходов';
 
   // Период по умолчанию — текущий месяц.
   const period = usePeriod({ searchParams, setSearchParams, transactions, defaultMode: 'month' });
@@ -45,10 +50,16 @@ export default function Stats() {
   const setArr = (key, arr) => update((n) => { n.delete(key); arr.forEach((v) => n.append(key, v)); });
   const setSingle = (key, val) => update((n) => { if (val) n.set(key, val); else n.delete(key); });
 
+  // Категории и теги спрятаны под кнопкой «Фильтры»; раскрываем сразу, если что-то уже выбрано.
+  const [showFilters, setShowFilters] = useState(() => cats.length + tagSel.length > 0);
+  const hiddenCount = cats.length + tagSel.length;
+  const clearHidden = () => update((n) => { n.delete('category'); n.delete('tag'); });
+
   // Переход к операциям: категория + активные фильтры и период статистики.
   const openCategory = (name) => {
     const p = new URLSearchParams();
     p.append('category', name);
+    p.append('type', kind);
     wals.forEach((w) => p.append('wallet', w));
     tagSel.forEach((t) => p.append('tag', t));
     if (from) p.set('from', from);
@@ -88,23 +99,14 @@ export default function Stats() {
   const income = scoped.filter(isIncome).reduce((s, t) => s + (toDisplay(t) || 0), 0);
   const expense = scoped.filter(isExpense).reduce((s, t) => s + (toDisplay(t) || 0), 0);
 
-  const byCategory = useMemo(() => {
-    const map = new Map();
-    for (const t of scoped) {
-      if (!isExpense(t)) continue;
-      const v = toDisplay(t);
-      if (v == null) continue;
-      map.set(t.category || 'Без категории', (map.get(t.category) || 0) + v);
-    }
-    return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [scoped, singleWallet, toBase]);
+  // Суммы по категориям выбранного вида (расходы или доходы).
+  const byCategory = useMemo(() => totalsByCategory(scoped, toDisplay, matchKind), [scoped, matchKind, singleWallet, toBase]);
 
-  // Топ категорий расходов за период (для цветов и стек-графика).
+  // Топ категорий за период (для цветов и стек-графика).
   const { series, catTrend } = useMemo(() => {
-    const totals = expenseTotalsByCategory(scoped, toDisplay);
-    const { top, series: seriesList } = buildCategorySeries(totals);
+    const { top, series: seriesList } = buildCategorySeries(byCategory);
 
-    const raw = buildCategoryTimeSeries(scoped, granularity, toDisplay, top);
+    const raw = buildCategoryTimeSeries(scoped, granularity, toDisplay, top, matchKind);
     // Ограничение числа столбцов, чтобы график не разрастался на больших диапазонах.
     const maxBars = granularity === 'day' ? 62 : 24;
     const sliced = raw.length > maxBars ? raw.slice(-maxBars) : raw;
@@ -115,7 +117,7 @@ export default function Stats() {
         : monthLabel(b.key).replace(/ \d{4}$/, ''),
     }));
     return { series: seriesList, catTrend: data };
-  }, [scoped, granularity, singleWallet, toBase]);
+  }, [scoped, byCategory, granularity, matchKind, singleWallet, toBase]);
 
   const fmt = (v) => formatAmount(v, displayCurrency);
   const periodLabel = rangeLabel(from, to);
@@ -126,11 +128,19 @@ export default function Stats() {
 
       <div className="filters">
         <ChipMultiSelect label="Кошельки" options={walletOptions} selected={wals} onChange={(a) => setArr('wallet', a)} />
-        <ChipMultiSelect label="Категории" options={catOptions} selected={cats} onChange={(a) => setArr('category', a)} />
-        {tagOptions.length > 0 && (
-          <ChipMultiSelect label="Теги" options={tagOptions} selected={tagSel} onChange={(a) => setArr('tag', a)} />
-        )}
         <PeriodPicker period={period} />
+        <button className="link-btn-inline" onClick={() => setShowFilters((v) => !v)}>
+          {showFilters ? 'Скрыть фильтры' : `Фильтры${hiddenCount ? ` (${hiddenCount})` : ''}`}
+        </button>
+        {showFilters && (
+          <>
+            <ChipMultiSelect label="Категории" options={catOptions} selected={cats} onChange={(a) => setArr('category', a)} />
+            {tagOptions.length > 0 && (
+              <ChipMultiSelect label="Теги" options={tagOptions} selected={tagSel} onChange={(a) => setArr('tag', a)} />
+            )}
+            {hiddenCount > 0 && <button className="link-btn-inline" onClick={clearHidden}>Сбросить фильтры</button>}
+          </>
+        )}
       </div>
 
       <section>
@@ -143,9 +153,13 @@ export default function Stats() {
       </section>
 
       <section>
-        <h2 className="section-title">Расходы по категориям · {periodLabel}</h2>
+        <div className="seg">
+          <button className={`seg__btn${kind === 'expense' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('kind', '')}>Расходы</button>
+          <button className={`seg__btn${kind === 'income' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('kind', 'income')}>Доходы</button>
+        </div>
+        <h2 className="section-title">{kindLabel} по категориям · {periodLabel}</h2>
         {byCategory.length === 0 ? (
-          <p className="muted empty">Нет расходов за период</p>
+          <p className="muted empty">Нет {kindGen} за период</p>
         ) : (
           <>
             <CategoryDonut
@@ -174,7 +188,7 @@ export default function Stats() {
           <button className={`seg__btn${granularity === 'year' ? ' seg__btn--active' : ''}`} onClick={() => setSingle('granularity', 'year')}>По годам</button>
         </div>
         <h2 className="section-title">
-          Динамика расходов · {periodLabel} · {displayCurrency}
+          Динамика {kindGen} · {periodLabel} · {displayCurrency}
         </h2>
         {catTrend.length === 0 ? (
           <p className="muted empty">Нет данных за период</p>
