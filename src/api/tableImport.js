@@ -41,6 +41,7 @@ const ALIASES = {
   'transfer amount': 'transfer_amount',
   'paid amount': 'paid_amount',
   'paid currency': 'paid_currency',
+  'transfer currency': 'transfer_currency',
 };
 
 const TYPES = new Set(['expense', 'income', 'transfer', 'adjust', 'interest']);
@@ -64,8 +65,120 @@ function canonicalHeader(cell) {
   return ALIASES[key] || key.replace(/ /g, '_');
 }
 
+// --- Диалект Monefy -----------------------------------------------------------
+// Выгрузка Monefy («Экспорт в файл»): date, account, category, amount, currency,
+// converted amount, currency, description. account/description — синонимы наших
+// колонок, а вот перевод там — две строки: списание и зачисление. В старых
+// выгрузках их категории именные (`To 'Счёт'` / `From 'Счёт'`), в новых —
+// служебные ключи `expensetransfer` / `incometransfer` без имени второго счёта;
+// тогда пару ищем по дате и одинаковой сумме в базовой валюте (converted amount).
+// Начальный остаток — `Initial balance 'Счёт'` / `initalbalance` (опечатка Monefy).
+// Здесь переписываем такие строки в наш формат; остальное разбирает общий код.
+
+const MONEFY_TO_RE = /^to\s+'(.+)'$/i;
+const MONEFY_FROM_RE = /^from\s+'(.+)'$/i;
+// «Initial balance 'Счёт'» (с именем счёта в кавычках), «Initial balance»,
+// служебные ключи initialbalance / initalbalance (опечатка Monefy).
+const MONEFY_INITIAL_RE = /^(initial|inital)\s*balance\b|^начальный баланс\b/i;
+const MONEFY_OUT = 'expensetransfer';
+const MONEFY_IN = 'incometransfer';
+
+function isMonefyRows(rows) {
+  const header = (rows[0] || []).map((c) => String(c ?? '').trim().toLowerCase());
+  return header.includes('account') && header.includes('converted amount');
+}
+
+// Роль строки Monefy: { role: 'out'|'in'|'initial'|'normal', counterparty? }
+function monefyRole(category) {
+  const key = category.trim().toLowerCase();
+  const to = MONEFY_TO_RE.exec(category.trim());
+  if (to) return { role: 'out', counterparty: to[1] };
+  const from = MONEFY_FROM_RE.exec(category.trim());
+  if (from) return { role: 'in', counterparty: from[1] };
+  if (key === MONEFY_OUT) return { role: 'out' };
+  if (key === MONEFY_IN) return { role: 'in' };
+  if (MONEFY_INITIAL_RE.test(key)) return { role: 'initial' };
+  return { role: 'normal' };
+}
+
+export function convertMonefyRows(rows) {
+  const header = rows[0].map((c) => String(c ?? '').trim().toLowerCase());
+  const names = ['date', 'account', 'category', 'amount', 'currency', 'converted amount', 'description'];
+  const idx = Object.fromEntries(names.map((n) => [n, header.indexOf(n)]));
+  const cell = (row, key) => (idx[key] >= 0 ? String(row[idx[key]] ?? '').trim() : '');
+  // Исходные номера строк файла — для сообщений о проблемах после конвертации.
+  const data = rows.map((row, i) => ({ row, line: i + 1 })).slice(1)
+    .filter(({ row }) => row.some((c) => String(c ?? '').trim() !== ''));
+
+  // Ключ пары: именной (дата|источник|получатель) или по сумме в базовой валюте.
+  const decimal = detectDecimalSeparator(data.flatMap(({ row }) => [cell(row, 'amount'), cell(row, 'converted amount')]));
+  const baseAmount = (row) => {
+    const n = parseAmount(cell(row, 'converted amount'), decimal) ?? parseAmount(cell(row, 'amount'), decimal) ?? 0;
+    return Math.abs(n).toFixed(2);
+  };
+  const namedKey = (date, from, to) => `n|${date}|${from.toLowerCase()}|${to.toLowerCase()}`;
+  const sumKey = (row) => `s|${cell(row, 'date')}|${baseAmount(row)}`;
+
+  // Зачисления складываем в очереди; строка списания забирает свою пару.
+  const incoming = new Map();
+  for (const item of data) {
+    const { role, counterparty } = monefyRole(cell(item.row, 'category'));
+    if (role !== 'in') continue;
+    const key = counterparty ? namedKey(cell(item.row, 'date'), counterparty, cell(item.row, 'account')) : sumKey(item.row);
+    incoming.set(key, [...(incoming.get(key) || []), item]);
+  }
+  const takePair = (key) => {
+    const list = incoming.get(key);
+    const item = list?.shift();
+    if (list && !list.length) incoming.delete(key);
+    return item;
+  };
+
+  const columns = [...COLUMNS, 'transfer_currency', '_line'];
+  const out = [columns];
+  const push = (fields) => out.push(columns.map((c) => fields[c] ?? ''));
+  for (const { row, line } of data) {
+    const category = cell(row, 'category');
+    const { role, counterparty } = monefyRole(category);
+    if (role === 'in') continue; // зеркальные строки — ниже
+    const base = {
+      date: cell(row, 'date'), wallet: cell(row, 'account'), currency: cell(row, 'currency'),
+      amount: cell(row, 'amount'), note: cell(row, 'description'), _line: line,
+    };
+    if (role === 'out') {
+      const key = counterparty ? namedKey(base.date, base.wallet, counterparty) : sumKey(row);
+      const pair = takePair(key);
+      push({
+        ...base, type: 'transfer',
+        transfer_to: counterparty || (pair ? cell(pair.row, 'account') : ''),
+        transfer_amount: pair ? cell(pair.row, 'amount') : '',
+        transfer_currency: pair ? cell(pair.row, 'currency') : '',
+      });
+    } else if (role === 'initial') {
+      push({ ...base, type: 'adjust' });
+    } else {
+      push({ ...base, category });
+    }
+  }
+  // Зачисления без пары: именные — перевод с известным источником, безымянные —
+  // перевод без второго кошелька (общий разбор отметит строку как проблемную).
+  for (const list of incoming.values()) {
+    for (const { row, line } of list) {
+      const { counterparty } = monefyRole(cell(row, 'category'));
+      const amount = cell(row, 'amount');
+      push({
+        date: cell(row, 'date'), type: 'transfer', wallet: counterparty || '', transfer_to: cell(row, 'account'),
+        amount: `-${amount.replace(/^[-+]/, '')}`, transfer_amount: amount,
+        transfer_currency: cell(row, 'currency'), note: cell(row, 'description'), _line: line,
+      });
+    }
+  }
+  return out;
+}
+
 // Строки таблицы → записи + список проблемных строк (номер, причина).
-export function parseTableRows(rows) {
+export function parseTableRows(source) {
+  const rows = isMonefyRows(source) ? convertMonefyRows(source) : source;
   const filled = rows.filter((r) => r.some((c) => String(c ?? '').trim() !== ''));
   if (filled.length < 2) throw new Error('В таблице нет данных: нужна строка заголовков и хотя бы одна операция');
 
@@ -75,24 +188,30 @@ export function parseTableRows(rows) {
   if (missing.length) throw new Error(`Нет обязательных колонок: ${missing.join(', ')}`);
 
   const get = (row, col) => (col in idx ? String(row[idx[col]] ?? '').trim() : '');
-  const dateOrder = detectDateOrder(filled.slice(1).map((r) => get(r, 'date')));
+  const body = filled.slice(1);
+  const dateOrder = detectDateOrder(body.map((r) => get(r, 'date')));
+  const decimal = detectDecimalSeparator(
+    body.flatMap((r) => [get(r, 'amount'), get(r, 'transfer_amount'), get(r, 'paid_amount')]),
+  );
+  const num = (value) => parseAmount(value, decimal);
   const records = [];
   const problems = [];
 
-  filled.slice(1).forEach((row, i) => {
-    const line = i + 2; // 1 — заголовок
+  body.forEach((row, i) => {
+    // Служебная колонка _line (после конвертации диалекта) хранит номер строки
+    // исходного файла; иначе считаем сами (1 — заголовок).
+    const line = Number(get(row, '_line')) || i + 2;
     const fail = (reason) => problems.push({ line, reason });
     const date = parseDate(get(row, 'date'), dateOrder);
     if (!date) return fail(`не распознана дата «${get(row, 'date')}»`);
-    const amount = parseAmount(get(row, 'amount'));
+    const amount = num(get(row, 'amount'));
     if (amount === null || amount === 0) return fail(`не распознана сумма «${get(row, 'amount')}»`);
     const wallet = get(row, 'wallet');
-    if (!wallet) return fail('не указан кошелёк');
-
     const typeRaw = get(row, 'type').toLowerCase();
     if (typeRaw && !TYPES.has(typeRaw)) return fail(`неизвестный тип «${typeRaw}»`);
     const transferTo = get(row, 'transfer_to');
-    if (typeRaw === 'transfer' && !transferTo) return fail('для перевода нужен transfer_to');
+    if (typeRaw === 'transfer' && (!transferTo || !wallet)) return fail('перевод без пары: не найден второй кошелёк (transfer_to)');
+    if (!wallet) return fail('не указан кошелёк');
     if (transferTo && transferTo.toLowerCase() === wallet.toLowerCase()) return fail('перевод в тот же кошелёк');
     const type = transferTo ? 'transfer' : typeRaw || (amount < 0 ? 'expense' : 'income');
 
@@ -100,11 +219,11 @@ export function parseTableRows(rows) {
     if ((type === 'expense' || type === 'income') && !category) return fail('не указана категория');
 
     const transferAmountRaw = get(row, 'transfer_amount');
-    const transferAmount = transferAmountRaw ? parseAmount(transferAmountRaw) : null;
+    const transferAmount = transferAmountRaw ? num(transferAmountRaw) : null;
     if (transferAmountRaw && !transferAmount) return fail(`не распознана сумма зачисления «${transferAmountRaw}»`);
 
     const paidAmountRaw = get(row, 'paid_amount');
-    const paidAmount = paidAmountRaw ? parseAmount(paidAmountRaw) : null;
+    const paidAmount = paidAmountRaw ? num(paidAmountRaw) : null;
     const paidCurrency = normalizeCurrency(get(row, 'paid_currency'));
     if (paidAmountRaw && !paidAmount) return fail(`не распознана сумма оплаты «${paidAmountRaw}»`);
     if ((paidAmount && !paidCurrency) || (!paidAmount && paidCurrency)) return fail('paid_amount и paid_currency нужны вместе');
@@ -120,6 +239,8 @@ export function parseTableRows(rows) {
       category: type === 'expense' || type === 'income' ? category : '',
       transferTo,
       transferAmount: transferAmount ? Math.abs(transferAmount) : null,
+      // Необязательная колонка (в шаблоне нет): валюта получателя при его создании.
+      transferCurrency: normalizeCurrency(get(row, 'transfer_currency')),
       note: get(row, 'note'),
       tags: get(row, 'tags').split(',').map((s) => s.trim()).filter(Boolean),
       paidAmount: paidAmount ? Math.abs(paidAmount) : null,
@@ -179,12 +300,61 @@ export function parseDate(value, order = 'dmy') {
 
 // --- Суммы ------------------------------------------------------------------
 
-// «-1 234,56», «-1,234.56», «1234.5», «-500,00», «1 500 ₽» → число. Десятичный
-// знак — последний из `,`/`.`; одиночный разделитель ровно перед тремя цифрами
-// считаем разделителем тысяч («1,234»). null — если не число.
-export function parseAmount(value) {
+// Десятичный знак для всего файла по набору сумм. Одна и та же строка «1,250»
+// значит 1250 при десятичной точке и 1,25 при десятичной запятой — по одной
+// строке не понять, зато по всем строкам обычно видно: разделитель, за которым
+// не три цифры, или встречающийся в числе дважды, выдаёт себя.
+// Возвращает ',' | '.' | null (не удалось определить — разбираем построчно).
+export function detectDecimalSeparator(values) {
+  let comma = 0;
+  let dot = 0;
+  for (const raw of values) {
+    const s = String(raw ?? '').replace(/[^\d.,]/g, '');
+    const lastComma = s.lastIndexOf(',');
+    const lastDot = s.lastIndexOf('.');
+    if (lastComma >= 0 && lastDot >= 0) return lastComma > lastDot ? ',' : '.';
+    for (const [sep, other] of [[',', '.'], ['.', ',']]) {
+      const parts = s.split(sep);
+      if (parts.length === 2 && parts[1].length !== 3) { if (sep === ',') comma += 1; else dot += 1; }
+      if (parts.length > 2) { if (other === ',') comma += 1; else dot += 1; }
+    }
+  }
+  if (comma && !dot) return ',';
+  if (dot && !comma) return '.';
+  if (comma || dot) return null;
+
+  // Только «одиночный разделитель + три цифры» (или без разделителя). Тысячный
+  // разделитель требует группировки: «3000,000» им быть не может, а если
+  // разделитель есть у КАЖДОЙ суммы — это фиксированные три знака после запятой
+  // (при тысячных суммы меньше 1000 шли бы без разделителя).
+  const seps = new Set();
+  let all = true;
+  let any = false;
+  for (const raw of values) {
+    const s = String(raw ?? '').replace(/[^\d.,]/g, '');
+    if (!s) continue;
+    any = true;
+    const m = /^(\d+)([.,])(\d{3})$/.exec(s);
+    if (!m) { all = false; continue; }
+    seps.add(m[2]);
+    if (m[1].length > 3) return m[2];
+  }
+  return any && all && seps.size === 1 ? [...seps][0] : null;
+}
+
+// «-1 234,56», «-1,234.56», «1234.5», «-500,00», «1 500 ₽» → число. Если
+// десятичный знак известен (см. detectDecimalSeparator), другой разделитель —
+// тысячный. Иначе: десятичный — последний из `,`/`.`; одиночный разделитель
+// ровно перед тремя цифрами считаем тысячным («1,234»). null — если не число.
+export function parseAmount(value, decimal = null) {
   let s = String(value ?? '').replace(/[^\d.,+-]/g, '');
   if (!s) return null;
+  if (decimal) {
+    const thousands = decimal === ',' ? '.' : ',';
+    s = s.split(thousands).join('').replace(decimal, '.');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
   const lastComma = s.lastIndexOf(',');
   const lastDot = s.lastIndexOf('.');
   if (lastComma >= 0 && lastDot >= 0) {
@@ -215,9 +385,13 @@ export function planTableImport(records, current, baseCurrency) {
   // Валюта нового кошелька — из первой строки, где она указана. Заранее: кошелёк
   // может впервые встретиться как получатель перевода, где своей валюты нет.
   const fileCurrency = new Map();
+  const remember = (name, currency) => {
+    const key = name.toLowerCase();
+    if (currency && !fileCurrency.has(key)) fileCurrency.set(key, currency);
+  };
   for (const r of records) {
-    const key = r.wallet.toLowerCase();
-    if (r.currency && !fileCurrency.has(key)) fileCurrency.set(key, r.currency);
+    remember(r.wallet, r.currency);
+    if (r.transferTo) remember(r.transferTo, r.transferCurrency);
   }
   const newWallets = new Map();
   const walletName = (name) => walletByLower.get(name.toLowerCase())?.name || newWallets.get(name.toLowerCase())?.name || name;
@@ -320,7 +494,7 @@ function hash(str) {
 // --- Применение -------------------------------------------------------------
 
 export async function applyTableImport(plan, backend) {
-  for (const w of plan.newWallets) await backend.addWallet({ name: w.name, currency: w.currency, kind: 'cash', rate: 0 });
+  for (const w of plan.newWallets) await backend.addWallet({ name: w.name, currency: w.currency, kind: 'cash' });
   for (const c of plan.newCategories) await backend.addCategory({ name: c.name, kind: c.kind });
   for (const name of plan.newTags) await backend.addTag(name);
   if (plan.transactions.length) await backend.addTransactions(plan.transactions);
