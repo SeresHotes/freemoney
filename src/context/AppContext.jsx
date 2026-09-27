@@ -404,7 +404,6 @@ export function AppProvider({ children }) {
             name: newCounterpartyName,
             currency: work?.currency || DEFAULT_BASE_CURRENCY,
             kind: 'debt',
-            rate: 0,
           });
           const fresh = await backendRef.current.fetchWallets();
           setWallets(fresh);
@@ -567,7 +566,7 @@ export function AppProvider({ children }) {
         );
       }
       await backendRef.current.updateWallet(newName, {
-        currency: patch.currency, kind: patch.kind, rate: patch.rate,
+        currency: patch.currency, kind: patch.kind,
       });
       await reloadWallets();
     }),

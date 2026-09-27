@@ -151,6 +151,9 @@ const put = (db, name, value) => reqToPromise(store(db, name, 'readwrite').put(v
 const putStamped = (db, name, value) => put(db, name, { ...value, updatedAt: nowStamp() });
 
 const isLive = (r) => !r.deleted;
+// Кошелёк на чтении: kind по умолчанию + отбрасываем упразднённую ставку rate,
+// которая могла остаться в старых записях IndexedDB.
+const normalizeWallet = ({ rate: _rate, ...w }) => normalizeArchivable({ ...w, kind: w.kind || 'cash' });
 
 // Попросить браузер не вытеснять данные под давлением диска. Критично: локальный
 // стор — источник правды. Идемпотентно, тихо игнорирует отсутствие API.
@@ -184,7 +187,6 @@ export async function initLocalStore() {
     archived: false,
     order: 0,
     kind: 'cash',
-    rate: 0,
   });
   await putStamped(db, STORE_SETTINGS, { key: 'baseCurrency', value: DEFAULT_BASE_CURRENCY });
   db.close();
@@ -218,7 +220,7 @@ export async function rawDump() {
   return {
     transactions: txs.map(normalizeTx),
     categories: cats.map(normalizeArchivable),
-    wallets: wls.map(normalizeArchivable),
+    wallets: wls.map(normalizeWallet),
     tags: tgs.map(normalizeArchivable),
     settings,
   };
@@ -319,7 +321,6 @@ export function createLocalBackend() {
           archived: false,
           order: 0,
           kind: 'cash',
-          rate: 0,
           updatedAt: nowStamp(),
         });
       }
@@ -360,7 +361,7 @@ export function createLocalBackend() {
           .map((c) => normalizeArchivable({ ...c, icon: c.icon || DEFAULT_ICON }))
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
         wallets: wls.filter(isLive)
-          .map((w) => normalizeArchivable({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
+          .map(normalizeWallet)
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
         tags: tgs.filter(isLive).map((r) => ({ name: r.name, archived: r.archived ?? (r.status === 'archived') })),
         settings: Object.fromEntries(settings.filter(isLive).map((r) => [r.key, r.value])),
@@ -390,7 +391,7 @@ export function createLocalBackend() {
       const rows = await getAll(db, STORE_WALLET);
       db.close();
       return rows.filter(isLive)
-        .map((w) => normalizeArchivable({ ...w, kind: w.kind || 'cash', rate: Number(w.rate) || 0 }))
+        .map(normalizeWallet)
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     },
 
@@ -477,23 +478,23 @@ export function createLocalBackend() {
       db.close();
     },
 
-    addWallet: async ({ name, currency, kind, rate }) => {
+    addWallet: async ({ name, currency, kind }) => {
       const db = await openDb();
       const existing = (await getAll(db, STORE_WALLET)).filter(isLive);
       await putStamped(db, STORE_WALLET, {
         name, currency, archived: false, order: existing.length,
-        kind: kind || 'cash', rate: Number(rate) || 0, deleted: false,
+        kind: kind || 'cash', deleted: false,
       });
       db.close();
     },
 
     // Правка полей кошелька (кроме имени) — по имени-ключу.
-    updateWallet: async (name, { currency, kind, rate }) => {
+    updateWallet: async (name, { currency, kind }) => {
       const db = await openDb();
       const s = store(db, STORE_WALLET, 'readwrite');
       const w = await reqToPromise(s.get(name));
       if (w) {
-        Object.assign(w, { currency, kind: kind || 'cash', rate: Number(rate) || 0, updatedAt: nowStamp() });
+        Object.assign(w, { currency, kind: kind || 'cash', updatedAt: nowStamp() });
         await reqToPromise(s.put(w));
       }
       db.close();

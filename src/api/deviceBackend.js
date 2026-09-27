@@ -26,7 +26,7 @@ const FILES = {
 const TX_COLS = ['id', 'datetime', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'groupId', 'rate'];
 const CAT_COLS = ['id', 'name', 'kind', 'archived', 'icon'];
 // Кошелёк идентифицируется по имени (колонка A), поле id упразднено.
-const WALLET_COLS = ['name', 'currency', 'archived', 'order', 'kind', 'rate'];
+const WALLET_COLS = ['name', 'currency', 'archived', 'order', 'kind'];
 const TAG_COLS = ['name', 'archived'];
 
 const path = (file) => `${FOLDER}/${file}`;
@@ -69,8 +69,9 @@ const rowToTx = (r) => {
 };
 const catToRow = (c) => [c.id, c.name, c.kind, encArch(c.archived), c.icon || DEFAULT_ICON];
 const rowToCat = (r, i) => ({ id: r[0], name: r[1], kind: r[2] || 'both', archived: decArch(r[3]), icon: r[4] || DEFAULT_ICON, order: i });
-const walletToRow = (w) => [w.name, w.currency, encArch(w.archived), w.order ?? 0, w.kind || 'cash', w.rate ?? 0];
-const rowToWallet = (r, i) => ({ name: r[0], currency: r[1] || DEFAULT_BASE_CURRENCY, archived: decArch(r[2]), order: Number(r[3]) || i, kind: r[4] || 'cash', rate: Number(r[5]) || 0 });
+const walletToRow = (w) => [w.name, w.currency, encArch(w.archived), w.order ?? 0, w.kind || 'cash'];
+// Старый wallets.csv мог нести 6-ю колонку rate — она упразднена и просто игнорируется.
+const rowToWallet = (r, i) => ({ name: r[0], currency: r[1] || DEFAULT_BASE_CURRENCY, archived: decArch(r[2]), order: Number(r[3]) || i, kind: r[4] || 'cash' });
 
 async function readAll(file, mapRow) {
   const rows = await readRows(file);
@@ -123,7 +124,7 @@ export function createDeviceBackend() {
         const idToName = new Map(body.map((r) => [r[0], r[1]]));
         const migrated = body.map((r) => ({
           name: r[1], currency: r[2] || DEFAULT_BASE_CURRENCY, archived: decArch(r[3]),
-          order: Number(r[4]) || 0, kind: r[5] || 'cash', rate: Number(r[6]) || 0,
+          order: Number(r[4]) || 0, kind: r[5] || 'cash',
         }));
         await saveWallets(migrated);
         const txs = await loadTx();
@@ -164,7 +165,7 @@ export function createDeviceBackend() {
     updateCategory: async (id, patch) => { const l = await loadCats(); await saveCats(l.map((c) => (c.id === id ? { ...c, ...patch } : c))); },
     renameCategory: async (oldName, newName) => { const l = await loadTx(); await saveTx(l.map((t) => (t.category === oldName ? { ...t, category: newName } : t))); },
 
-    addWallet: async ({ name, currency, kind, rate }) => { const l = await loadWallets(); l.push({ name, currency, archived: false, order: l.length, kind: kind || 'cash', rate: Number(rate) || 0 }); await saveWallets(l); },
+    addWallet: async ({ name, currency, kind }) => { const l = await loadWallets(); l.push({ name, currency, archived: false, order: l.length, kind: kind || 'cash' }); await saveWallets(l); },
     updateWallet: async (name, patch) => { const l = await loadWallets(); await saveWallets(l.map((w) => (w.name === name ? { ...w, ...patch } : w))); },
     renameWallet: async (oldName, newName) => {
       const l = await loadWallets();
