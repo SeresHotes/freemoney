@@ -10,7 +10,7 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
     app: 'freemoney',
     version: VERSION,
     baseCurrency,
-    wallets: wallets.map((w) => ({ name: w.name, currency: w.currency, archived: !!w.archived, kind: w.kind || 'cash', rate: w.rate || 0 })),
+    wallets: wallets.map((w) => ({ name: w.name, currency: w.currency, archived: !!w.archived, kind: w.kind || 'cash' })),
     categories: categories.map((c) => ({ name: c.name, kind: c.kind, archived: !!c.archived, icon: c.icon })),
     tags: tags.map((t) => (typeof t === 'string' ? { name: t, archived: false } : { name: t.name, archived: !!t.archived })),
     transactions: transactions.map((t) => ({
@@ -40,9 +40,9 @@ export async function importBackup(text, backend, current) {
 
   for (const w of data.wallets || []) {
     if (walletNames.has(w.name)) {
-      await backend.updateWallet(w.name, { currency: w.currency, kind: w.kind, rate: w.rate });
+      await backend.updateWallet(w.name, { currency: w.currency, kind: w.kind });
     } else {
-      await backend.addWallet({ name: w.name, currency: w.currency, kind: w.kind, rate: w.rate });
+      await backend.addWallet({ name: w.name, currency: w.currency, kind: w.kind });
       walletNames.add(w.name);
     }
     await backend.setWalletArchived(w.name, isArchived(w));
