@@ -13,8 +13,9 @@ function escapeField(value) {
 }
 
 // Разбор CSV в массив строк (массив массивов). Поддерживает кавычки и
-// многострочные поля.
-export function parseCsv(text) {
+// многострочные поля. Разделитель полей — запятая по умолчанию; для чужих
+// выгрузок (Monefy, Excel с региональными настройками) можно передать `;` или `\t`.
+export function parseCsv(text, delimiter = ',') {
   const rows = [];
   let row = [];
   let field = '';
@@ -40,7 +41,7 @@ export function parseCsv(text) {
     } else if (ch === '"') {
       inQuotes = true;
       i += 1;
-    } else if (ch === ',') {
+    } else if (ch === delimiter) {
       row.push(field);
       field = '';
       i += 1;
@@ -77,6 +78,20 @@ function withTimestamp(filename) {
   const ts = fileTimestamp();
   if (dot <= 0) return `${filename}-${ts}`;
   return `${filename.slice(0, dot)}-${ts}${filename.slice(dot)}`;
+}
+
+// Угадать разделитель полей по первой строке: берём тот из `,` `;` `\t`,
+// который встречается чаще всего.
+export function detectDelimiter(text) {
+  const firstLine = text.split(/\r?\n/, 1)[0] || '';
+  const candidates = [',', ';', '\t'];
+  let best = ',';
+  let bestCount = -1;
+  for (const d of candidates) {
+    const count = firstLine.split(d).length - 1;
+    if (count > bestCount) { best = d; bestCount = count; }
+  }
+  return best;
 }
 
 // Скачать текст как файл. В имя добавляется метка даты и времени экспорта.

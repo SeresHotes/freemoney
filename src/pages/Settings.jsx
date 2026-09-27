@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { CURRENCIES } from '../utils/currencies';
 import { CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
 import { agoLabel } from '../utils/format';
+import { downloadImportTemplate } from '../api/monefyImport';
 
 // Версию подставляет сборка (vite define). Локально без vite — 'dev'.
 const APP_VERSION = typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__;
@@ -245,6 +246,104 @@ function SyncSection() {
   );
 }
 
+// Секция «Импорт из Monefy»: выбор CSV → предпросмотр (что создадим) → подтверждение.
+function MonefyImportSection() {
+  const { baseCurrency, previewMonefyImport, importMonefy } = useApp();
+  const fileRef = useRef(null);
+  const [plan, setPlan] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setMessage(null);
+    setError(null);
+    setPlan(null);
+    try {
+      const text = await file.text();
+      const next = previewMonefyImport(text);
+      if (!next.transactions.length) {
+        setError(next.duplicates
+          ? 'Все операции из файла уже импортированы.'
+          : 'В файле не нашлось ни одной операции. Проверьте, что это выгрузка Monefy (.csv).');
+        return;
+      }
+      setPlan(next);
+    } catch (err) {
+      setError(`Не удалось разобрать файл. ${err?.message || ''}`.trim());
+    }
+  };
+
+  const handleApply = async () => {
+    if (!plan) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await importMonefy(plan);
+      setPlan(null);
+      setMessage(`Импортировано: операций ${r.transactions} (из них переводов ${r.transfers}), кошельков ${r.wallets}, категорий ${r.categories}`);
+    } catch {
+      setError('Ошибка импорта. Попробуйте ещё раз.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const listNames = (items, fmt) => items.map(fmt).join(', ');
+
+  return (
+    <section>
+      <h2 className="section-title">Импорт из Monefy</h2>
+      <p className="muted" style={{ marginBottom: '0.5rem' }}>
+        В Monefy: меню → Настройки → «Экспорт в файл» (CSV). Затем выберите этот файл здесь.
+        Счета станут кошельками, категории и переводы сохранятся. Тот же формат подходит
+        для переноса из других приложений — скачайте шаблон и заполните его в таблице.
+      </p>
+      <div className="settings-actions">
+        <button className="btn btn--block" onClick={() => fileRef.current?.click()} disabled={busy}>📲 Выбрать CSV</button>
+        <button className="btn btn--block" onClick={() => downloadImportTemplate(baseCurrency)} disabled={busy}>📄 Шаблон CSV</button>
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv,text/plain"
+        hidden
+        onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ''; }}
+      />
+
+      {plan && (
+        <div className="import-preview">
+          <p className="muted">
+            Будет добавлено операций: <b>{plan.transactions.length}</b>
+            {plan.transfers ? `, из них переводов: ${plan.transfers}` : ''}
+            {plan.duplicates ? `. Уже есть (пропустим): ${plan.duplicates}` : ''}
+            {plan.unparsed ? `. Не распознано строк: ${plan.unparsed}` : ''}
+          </p>
+          {plan.newWallets.length > 0 && (
+            <p className="muted">
+              Новые кошельки: {listNames(plan.newWallets, (w) => `${w.name} (${w.currency})`)}
+            </p>
+          )}
+          {plan.newCategories.length > 0 && (
+            <p className="muted">
+              Новые категории: {listNames(plan.newCategories, (c) => c.name)}
+            </p>
+          )}
+          <div className="settings-actions" style={{ marginTop: '0.5rem' }}>
+            <button className="btn btn--block btn--primary" onClick={handleApply} disabled={busy}>
+              {busy ? 'Импортируем…' : '✅ Импортировать'}
+            </button>
+            <button className="btn btn--block" onClick={() => setPlan(null)} disabled={busy}>Отмена</button>
+          </div>
+        </div>
+      )}
+      {message && <p className="muted" style={{ marginTop: '0.75rem' }}>{message}</p>}
+      {error && <p className="muted" style={{ marginTop: '0.75rem' }}>{error}</p>}
+    </section>
+  );
+}
+
 export default function Settings() {
   const {
     transactions, categories, wallets, baseCurrency,
@@ -319,6 +418,8 @@ export default function Settings() {
         />
         {message && <p className="muted" style={{ marginTop: '0.75rem' }}>{message}</p>}
       </section>
+
+      <MonefyImportSection />
 
       <section>
         <h2 className="section-title">Данные</h2>

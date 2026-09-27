@@ -9,6 +9,7 @@ import {
 } from '../api/localBackend';
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
+import { parseMonefyCsv, planMonefyImport, applyMonefyImport } from '../api/monefyImport';
 import {
   LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_SYNC_PENDING, LS_LAST_SYNC,
   DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED,
@@ -663,6 +664,28 @@ export function AppProvider({ children }) {
     [wallets, categories, tags, transactions, track, loadData, scheduleSync],
   );
 
+  // --- Импорт из Monefy (CSV) ------------------------------------------------
+  // Два шага: предпросмотр (чистый разбор, ничего не пишет) и применение плана.
+  const previewMonefyImport = useCallback(
+    (text) => {
+      const { records, unparsed } = parseMonefyCsv(text);
+      const plan = planMonefyImport(records, { wallets, categories, transactions }, baseCurrency);
+      return { ...plan, unparsed };
+    },
+    [wallets, categories, transactions, baseCurrency],
+  );
+
+  const importMonefy = useCallback(
+    (plan) =>
+      track(async () => {
+        const result = await applyMonefyImport(plan, backendRef.current);
+        await loadData(backendRef.current);
+        scheduleSync();
+        return result;
+      }),
+    [track, loadData, scheduleSync],
+  );
+
   const clearSyncSetup = useCallback(() => setSyncSetup(false), []);
 
   // Откатить локальные данные к снимку, сделанному перед adopt-синком. После
@@ -731,6 +754,8 @@ export function AppProvider({ children }) {
     setBaseCurrencyPref,
     exportAll,
     importAll,
+    previewMonefyImport,
+    importMonefy,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
