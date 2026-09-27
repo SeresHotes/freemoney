@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 import { todayIso, nowTime } from '../utils/format';
 import { getRate } from '../api/rates';
@@ -113,7 +114,7 @@ export default function Transfer() {
   return (
     <div className="page">
       <header className="page__header page__header--with-back">
-        <button className="link-btn" onClick={() => navigate(-1)} aria-label="Назад">←</button>
+        <BackButton />
         <h1>{editing ? 'Правка перевода' : 'Перевод'}</h1>
       </header>
 

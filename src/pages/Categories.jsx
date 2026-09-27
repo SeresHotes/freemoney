@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 
 const KIND_LABELS = { expense: 'Расход', income: 'Доход', both: 'Оба' };
@@ -19,7 +20,10 @@ export default function Categories() {
 
   return (
     <div className="page">
-      <header className="page__header"><h1>Категории</h1></header>
+      <header className="page__header page__header--with-back">
+        <BackButton fallback="/settings" />
+        <h1>Категории</h1>
+      </header>
 
       <button className="btn btn--block btn--primary" onClick={() => navigate('/categories/new')}>
         ➕ Добавить категорию

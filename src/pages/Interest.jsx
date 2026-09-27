@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 import { todayIso, nowTime } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
@@ -67,7 +68,7 @@ export default function Interest() {
   return (
     <div className="page">
       <header className="page__header page__header--with-back">
-        <button className="link-btn" onClick={() => navigate(-1)} aria-label="Назад">←</button>
+        <BackButton />
         <h1>Проценты</h1>
       </header>
 

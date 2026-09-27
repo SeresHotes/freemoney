@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 import { EMOJI_PALETTE } from '../utils/emoji';
 
@@ -21,7 +22,7 @@ export default function CategoryEdit() {
     return (
       <div className="page">
         <header className="page__header page__header--with-back">
-          <button className="link-btn" onClick={() => navigate('/categories')}>←</button>
+          <BackButton fallback="/categories" />
           <h1>Категория</h1>
         </header>
         <p className="muted">Категория не найдена.</p>
@@ -62,7 +63,7 @@ export default function CategoryEdit() {
   return (
     <div className="page">
       <header className="page__header page__header--with-back">
-        <button className="link-btn" onClick={() => navigate('/categories')} aria-label="Назад">←</button>
+        <BackButton fallback="/categories" />
         <h1>{editing ? 'Категория' : 'Новая категория'}</h1>
       </header>
 

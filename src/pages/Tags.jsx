@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 
 export default function Tags() {
@@ -86,7 +87,7 @@ export default function Tags() {
   return (
     <div className="page">
       <header className="page__header page__header--with-back">
-        <button className="link-btn" onClick={() => navigate('/settings')} aria-label="Назад">←</button>
+        <BackButton fallback="/settings" />
         <h1>Теги</h1>
       </header>
 
