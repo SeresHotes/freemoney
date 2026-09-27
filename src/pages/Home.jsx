@@ -6,7 +6,7 @@ import { formatAmount } from '../utils/currencies';
 import { walletBalance, isIncome, isExpense } from '../utils/finance';
 import { CATEGORY_COLORS } from '../utils/chartColors';
 import { useBaseRates } from '../hooks/useBaseRates';
-import { IS_DEV_CHANNEL, OTHER_CHANNEL_URL } from '../config';
+import { IS_DEV_CHANNEL } from '../config';
 
 const CategoryDonut = lazy(() => import('../components/CategoryDonut'));
 
@@ -55,9 +55,6 @@ export default function Home() {
       <header className="page__header">
         <h1>FreeMoney{IS_DEV_CHANNEL && <span className="channel-badge">DEV</span>}</h1>
         <p className="muted">Общий капитал{ready ? '' : ' (загрузка курсов…)'}</p>
-        <a className="channel-switch muted" href={OTHER_CHANNEL_URL}>
-          {IS_DEV_CHANNEL ? '← вернуться на стабильную версию' : 'открыть dev-версию →'}
-        </a>
       </header>
 
       <section className="balance-card balance-card--positive">

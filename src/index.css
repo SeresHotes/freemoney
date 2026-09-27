@@ -985,16 +985,6 @@ code {
   background: #ea580c;
   border-radius: 0.4rem;
 }
-.channel-switch {
-  display: inline-block;
-  margin-top: 0.35rem;
-  font-size: 0.78rem;
-  text-decoration: none;
-}
-.channel-switch:hover {
-  text-decoration: underline;
-}
-
 /* --- Индикатор синхронизации --------------------------------------------- */
 /* Ненавязчивый: маленький кружок в верхнем углу, виден только когда идёт синк
    или требуется внимание. */

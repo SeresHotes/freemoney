@@ -30,9 +30,6 @@ export const DEFAULT_BASE_CURRENCY = 'RUB';
 //   dev  → dev.freemoney.sereshotes.dev (Cloudflare Pages)
 export const CHANNEL = import.meta.env.VITE_CHANNEL || 'prod';
 export const IS_DEV_CHANNEL = CHANNEL === 'dev';
-const PROD_URL = 'https://freemoney.sereshotes.dev/';
-const DEV_URL = 'https://dev.freemoney.sereshotes.dev/';
-export const OTHER_CHANNEL_URL = IS_DEV_CHANNEL ? PROD_URL : DEV_URL;
 
 // Ключи в localStorage.
 export const LS_SPREADSHEET_ID = 'freemoney:spreadsheetId';
