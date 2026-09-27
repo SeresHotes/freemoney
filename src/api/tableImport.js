@@ -41,6 +41,7 @@ const ALIASES = {
   'transfer amount': 'transfer_amount',
   'paid amount': 'paid_amount',
   'paid currency': 'paid_currency',
+  'transfer currency': 'transfer_currency',
 };
 
 const TYPES = new Set(['expense', 'income', 'transfer', 'adjust', 'interest']);
@@ -64,8 +65,81 @@ function canonicalHeader(cell) {
   return ALIASES[key] || key.replace(/ /g, '_');
 }
 
+// --- Диалект Monefy -----------------------------------------------------------
+// Выгрузка Monefy («Экспорт в файл»): date, account, category, amount, currency,
+// converted amount, currency, description. account/description — синонимы наших
+// колонок, а вот перевод там — две строки (`To 'Счёт'` у источника и
+// `From 'Счёт'` у получателя) и начальный остаток — категория «Initial balance».
+// Здесь переписываем такие строки в наш формат; остальное разбирает общий код.
+
+const MONEFY_TO_RE = /^to\s+'(.+)'$/i;
+const MONEFY_FROM_RE = /^from\s+'(.+)'$/i;
+const MONEFY_INITIAL = new Set(['initial balance', 'начальный баланс']);
+
+function isMonefyRows(rows) {
+  const header = (rows[0] || []).map((c) => String(c ?? '').trim().toLowerCase());
+  return header.includes('account') && header.includes('converted amount');
+}
+
+export function convertMonefyRows(rows) {
+  const header = rows[0].map((c) => String(c ?? '').trim().toLowerCase());
+  const idx = Object.fromEntries(['date', 'account', 'category', 'amount', 'currency', 'description'].map((n) => [n, header.indexOf(n)]));
+  const cell = (row, key) => (idx[key] >= 0 ? String(row[idx[key]] ?? '').trim() : '');
+  const data = rows.slice(1).filter((r) => r.some((c) => String(c ?? '').trim() !== ''));
+  const keyOf = (date, from, to) => `${date}|${from.toLowerCase()}|${to.toLowerCase()}`;
+
+  // Зачисления (`From`) складываем в очереди по ключу дата|источник|получатель:
+  // строка `To` забирает из своей очереди сумму зачисления (в валюте получателя).
+  const incoming = new Map();
+  for (const row of data) {
+    const m = MONEFY_FROM_RE.exec(cell(row, 'category'));
+    if (!m) continue;
+    const key = keyOf(cell(row, 'date'), m[1], cell(row, 'account'));
+    incoming.set(key, [...(incoming.get(key) || []), row]);
+  }
+
+  const columns = [...COLUMNS, 'transfer_currency'];
+  const out = [columns];
+  const push = (fields) => out.push(columns.map((c) => fields[c] ?? ''));
+  for (const row of data) {
+    const category = cell(row, 'category');
+    if (MONEFY_FROM_RE.test(category)) continue; // зеркальные строки — ниже
+    const base = {
+      date: cell(row, 'date'), wallet: cell(row, 'account'), currency: cell(row, 'currency'),
+      amount: cell(row, 'amount'), note: cell(row, 'description'),
+    };
+    const to = MONEFY_TO_RE.exec(category);
+    if (to) {
+      const pair = incoming.get(keyOf(base.date, base.wallet, to[1]))?.shift();
+      push({
+        ...base, transfer_to: to[1],
+        transfer_amount: pair ? cell(pair, 'amount') : '',
+        transfer_currency: pair ? cell(pair, 'currency') : '',
+      });
+    } else if (MONEFY_INITIAL.has(category.toLowerCase())) {
+      push({ ...base, type: 'adjust' });
+    } else {
+      push({ ...base, category });
+    }
+  }
+  // `From` без пары `To` — тоже перевод, известна только сумма зачисления.
+  for (const [key, rest] of incoming) {
+    const from = key.split('|')[1];
+    for (const row of rest) {
+      const amount = cell(row, 'amount');
+      push({
+        date: cell(row, 'date'), wallet: from, transfer_to: cell(row, 'account'),
+        amount: `-${amount.replace(/^[-+]/, '')}`, transfer_amount: amount,
+        transfer_currency: cell(row, 'currency'), note: cell(row, 'description'),
+      });
+    }
+  }
+  return out;
+}
+
 // Строки таблицы → записи + список проблемных строк (номер, причина).
-export function parseTableRows(rows) {
+export function parseTableRows(source) {
+  const rows = isMonefyRows(source) ? convertMonefyRows(source) : source;
   const filled = rows.filter((r) => r.some((c) => String(c ?? '').trim() !== ''));
   if (filled.length < 2) throw new Error('В таблице нет данных: нужна строка заголовков и хотя бы одна операция');
 
@@ -120,6 +194,8 @@ export function parseTableRows(rows) {
       category: type === 'expense' || type === 'income' ? category : '',
       transferTo,
       transferAmount: transferAmount ? Math.abs(transferAmount) : null,
+      // Необязательная колонка (в шаблоне нет): валюта получателя при его создании.
+      transferCurrency: normalizeCurrency(get(row, 'transfer_currency')),
       note: get(row, 'note'),
       tags: get(row, 'tags').split(',').map((s) => s.trim()).filter(Boolean),
       paidAmount: paidAmount ? Math.abs(paidAmount) : null,
@@ -215,9 +291,13 @@ export function planTableImport(records, current, baseCurrency) {
   // Валюта нового кошелька — из первой строки, где она указана. Заранее: кошелёк
   // может впервые встретиться как получатель перевода, где своей валюты нет.
   const fileCurrency = new Map();
+  const remember = (name, currency) => {
+    const key = name.toLowerCase();
+    if (currency && !fileCurrency.has(key)) fileCurrency.set(key, currency);
+  };
   for (const r of records) {
-    const key = r.wallet.toLowerCase();
-    if (r.currency && !fileCurrency.has(key)) fileCurrency.set(key, r.currency);
+    remember(r.wallet, r.currency);
+    if (r.transferTo) remember(r.transferTo, r.transferCurrency);
   }
   const newWallets = new Map();
   const walletName = (name) => walletByLower.get(name.toLowerCase())?.name || newWallets.get(name.toLowerCase())?.name || name;
@@ -320,7 +400,7 @@ function hash(str) {
 // --- Применение -------------------------------------------------------------
 
 export async function applyTableImport(plan, backend) {
-  for (const w of plan.newWallets) await backend.addWallet({ name: w.name, currency: w.currency, kind: 'cash', rate: 0 });
+  for (const w of plan.newWallets) await backend.addWallet({ name: w.name, currency: w.currency, kind: 'cash' });
   for (const c of plan.newCategories) await backend.addCategory({ name: c.name, kind: c.kind });
   for (const name of plan.newTags) await backend.addTag(name);
   if (plan.transactions.length) await backend.addTransactions(plan.transactions);

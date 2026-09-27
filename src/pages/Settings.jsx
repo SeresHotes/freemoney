@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { CURRENCIES } from '../utils/currencies';
+import { CURRENCIES, formatAmount } from '../utils/currencies';
 import { CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
 import { agoLabel } from '../utils/format';
 import { downloadTemplateXlsx, downloadTemplateCsv } from '../api/tableImport';
@@ -292,6 +292,12 @@ function TableImportSection() {
 
   const list = (items, fmt) => items.map(fmt).join(', ');
   const shownProblems = plan?.problems.slice(0, 5) || [];
+  // Первые операции — чтобы глазами проверить масштаб сумм и разбор дат до записи.
+  const sample = plan?.transactions.filter((t) => t.type !== 'transfer' || t.amount < 0).slice(0, 3) || [];
+  const describe = (t) => {
+    const what = t.type === 'transfer' ? `перевод → ${plan.transactions.find((x) => x.groupId === t.groupId && x.amount > 0)?.wallet || ''}` : t.category || t.type;
+    return `${t.date} · ${t.wallet} · ${formatAmount(t.amount, t.currency)} · ${what}`;
+  };
 
   return (
     <section>
@@ -307,7 +313,7 @@ function TableImportSection() {
         <button className="btn btn--block" onClick={() => downloadTemplateXlsx(baseCurrency)} disabled={busy}>📄 Шаблон .xlsx</button>
       </div>
       <p className="muted" style={{ marginTop: '0.4rem' }}>
-        Подходят .xlsx и .csv.{' '}
+        Подходят .xlsx и .csv, в том числе выгрузка Monefy («Экспорт в файл») как есть.{' '}
         <button className="link-btn-inline" onClick={() => downloadTemplateCsv(baseCurrency)} disabled={busy}>Шаблон .csv</button>
       </p>
       <input
@@ -325,6 +331,12 @@ function TableImportSection() {
             {plan.transfers ? `, из них переводов: ${plan.transfers}` : ''}
             {plan.duplicates ? `. Уже есть (пропустим): ${plan.duplicates}` : ''}
           </p>
+          {sample.length > 0 && (
+            <ul className="muted import-preview__problems">
+              {sample.map((t) => <li key={t.id}>{describe(t)}</li>)}
+              {plan.transactions.length > sample.length && <li>…</li>}
+            </ul>
+          )}
           {plan.newWallets.length > 0 && (
             <p className="muted">Новые кошельки: {list(plan.newWallets, (w) => `${w.name} (${w.currency})`)}</p>
           )}
