@@ -9,6 +9,7 @@ import {
 } from '../api/localBackend';
 import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api/deviceBackend';
 import { exportBackup, importBackup } from '../api/backup';
+import { readTableFile, parseTableRows, planTableImport, applyTableImport } from '../api/tableImport';
 import {
   LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_SYNC_PENDING, LS_LAST_SYNC,
   DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED,
@@ -404,7 +405,6 @@ export function AppProvider({ children }) {
             name: newCounterpartyName,
             currency: work?.currency || DEFAULT_BASE_CURRENCY,
             kind: 'debt',
-            rate: 0,
           });
           const fresh = await backendRef.current.fetchWallets();
           setWallets(fresh);
@@ -567,7 +567,7 @@ export function AppProvider({ children }) {
         );
       }
       await backendRef.current.updateWallet(newName, {
-        currency: patch.currency, kind: patch.kind, rate: patch.rate,
+        currency: patch.currency, kind: patch.kind,
       });
       await reloadWallets();
     }),
@@ -663,6 +663,29 @@ export function AppProvider({ children }) {
     [wallets, categories, tags, transactions, track, loadData, scheduleSync],
   );
 
+  // --- Импорт из таблицы (.xlsx / .csv) --------------------------------------
+  // Два шага: предпросмотр (чтение и разбор, ничего не пишет) и применение плана.
+  const previewTableImport = useCallback(
+    async (file) => {
+      const rows = await readTableFile(file);
+      const { records, problems } = parseTableRows(rows);
+      const plan = planTableImport(records, { wallets, categories, tags, transactions }, baseCurrency);
+      return { ...plan, problems: [...problems, ...plan.problems].sort((a, b) => a.line - b.line) };
+    },
+    [wallets, categories, tags, transactions, baseCurrency],
+  );
+
+  const importTable = useCallback(
+    (plan) =>
+      track(async () => {
+        const result = await applyTableImport(plan, backendRef.current);
+        await loadData(backendRef.current);
+        scheduleSync();
+        return result;
+      }),
+    [track, loadData, scheduleSync],
+  );
+
   // Сбросить все данные на устройстве и начать с чистого листа. Синхронизация
   // отключается и таблица забывается: иначе первый же синк вернул бы всё обратно
   // (adopt). Сама Google-таблица не трогается.
@@ -747,6 +770,8 @@ export function AppProvider({ children }) {
     setBaseCurrencyPref,
     exportAll,
     importAll,
+    previewTableImport,
+    importTable,
     resetAllData,
   };
 

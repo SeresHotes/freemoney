@@ -13,8 +13,9 @@ function escapeField(value) {
 }
 
 // Разбор CSV в массив строк (массив массивов). Поддерживает кавычки и
-// многострочные поля.
-export function parseCsv(text) {
+// многострочные поля. Разделитель полей — запятая по умолчанию; для файлов из
+// Excel с региональными настройками можно передать `;` или `\t`.
+export function parseCsv(text, delimiter = ',') {
   const rows = [];
   let row = [];
   let field = '';
@@ -40,7 +41,7 @@ export function parseCsv(text) {
     } else if (ch === '"') {
       inQuotes = true;
       i += 1;
-    } else if (ch === ',') {
+    } else if (ch === delimiter) {
       row.push(field);
       field = '';
       i += 1;
@@ -79,9 +80,26 @@ function withTimestamp(filename) {
   return `${filename.slice(0, dot)}-${ts}${filename.slice(dot)}`;
 }
 
+// Угадать разделитель полей по первой строке: берём тот из `,` `;` `\t`,
+// который встречается чаще всего.
+export function detectDelimiter(text) {
+  const firstLine = text.split(/\r?\n/, 1)[0] || '';
+  let best = ',';
+  let bestCount = -1;
+  for (const d of [',', ';', '\t']) {
+    const count = firstLine.split(d).length - 1;
+    if (count > bestCount) { best = d; bestCount = count; }
+  }
+  return best;
+}
+
 // Скачать текст как файл. В имя добавляется метка даты и времени экспорта.
 export function downloadFile(filename, text, mime = 'text/csv;charset=utf-8') {
-  const blob = new Blob(['﻿', text], { type: mime }); // BOM для Excel
+  downloadBlob(filename, new Blob(['﻿', text], { type: mime })); // BOM для Excel
+}
+
+// Скачать готовый Blob (бинарные файлы, напр. .xlsx). Имя — с меткой времени.
+export function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

@@ -9,11 +9,13 @@
 //     amount  — ЗНАКОВЫЙ: расход/перевод-из/списание < 0, доход/перевод-в > 0
 //               (старые записи transfer_in/out и т.п. приводятся normalizeTx на чтении)
 //   Categories: id|name|kind|archived|icon|order|updatedAt|deleted            (A:H)
-//   Wallets:    name|currency|archived|order|kind|rate|updatedAt|deleted       (A:H)
+//   Wallets:    name|currency|archived|order|kind|updatedAt|deleted            (A:G)
 //     кошелёк идентифицируется по имени (колонка A); поле id упразднено. Старые
 //     таблицы со схемой id|name|... разово мигрируются в ensureSyncSchema.
 //     archived — булев ('1'/''), занимает слот бывшего строкового status
 //     (active/archived); чтение понимает оба варианта.
+//     ставки процентов у кошелька нет: проценты — отдельная операция (rate в
+//     Transactions). Старая колонка rate вырезана миграцией v3 → v4.
 //   Tags:       name|archived|updatedAt|deleted                              (A:D)
 //   Settings:   key|value|updatedAt                                           (A:C)
 //
@@ -60,7 +62,11 @@ const TX_HEADER = [
 // name|kind|status|icon остаются на местах A–D. Иначе у существующих таблиц
 // (старая схема name|kind|status|icon) данные читались бы со сдвигом.
 const CAT_HEADER = ['name', 'kind', 'archived', 'icon', 'id', 'order', 'updatedAt', 'deleted'];
-const WALLET_HEADER = ['name', 'currency', 'archived', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
+const WALLET_HEADER = ['name', 'currency', 'archived', 'order', 'kind', 'updatedAt', 'deleted'];
+// ЗАМОРОЖЕННЫЙ снапшот шапки кошельков версий v2–v3 (с колонкой rate). Нужен
+// миграциям v1 → v2 и v2 → v3: на тех версиях данные ещё в раскладке с rate, а
+// вырезает её только v3 → v4. Нельзя ссылаться на актуальный WALLET_HEADER.
+const WALLET_HEADER_V3 = ['name', 'currency', 'archived', 'order', 'kind', 'rate', 'updatedAt', 'deleted'];
 const TAG_HEADER = ['name', 'archived', 'updatedAt', 'deleted'];
 const SETTINGS_HEADER = ['key', 'value', 'updatedAt'];
 const META_HEADER = ['key', 'value'];
@@ -118,7 +124,7 @@ const MIGRATIONS = [
     // Кошельки: новый ряд — та же строка без первого столбца (id).
     const migratedW = walletSheet.slice(1).filter((r) => r[1]).map((r) => r.slice(1, 9));
     await clearValues(id, `${SHEET_WALLET}!A1:I`);
-    await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER]);
+    await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER_V3]);
     if (migratedW.length) await updateValues(id, `${SHEET_WALLET}!A2`, migratedW);
   },
   // v2 → v3: рефреш заголовков под актуальную схему (status → archived,
@@ -129,10 +135,23 @@ const MIGRATIONS = [
     await batchUpdateValues(id, [
       { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
       { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
-      { range: `${SHEET_WALLET}!A1:H1`, values: [WALLET_HEADER] },
+      { range: `${SHEET_WALLET}!A1:H1`, values: [WALLET_HEADER_V3] },
       { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
       { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
     ]);
+  },
+  // v3 → v4: у кошельков упразднена ставка процентов — проценты живут в самой
+  // операции (Transactions.rate). Вырезаем колонку F (rate) листа Wallets, данные
+  // правее сдвигаем влево. Идемпотентно: если в шапке F уже не 'rate' — пропуск.
+  async (id) => {
+    const rows = await getValues(id, `${SHEET_WALLET}!A1:H`);
+    if (rows[0]?.[5] !== 'rate') return; // уже мигрирован
+    const migrated = rows.slice(1).filter((r) => r[0]).map((r) => {
+      const full = WALLET_HEADER_V3.map((_, c) => r[c] ?? '');
+      return full.filter((_, c) => c !== 5);
+    });
+    await clearValues(id, `${SHEET_WALLET}!A1:H`);
+    await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER, ...migrated]);
   },
 ];
 // Текущая версия схемы = число миграций. Пре-версионные таблицы (без листа _Meta)
@@ -243,7 +262,7 @@ function rowToCat(r, index) {
 function walletToRow(w) {
   return [
     w.name || '', w.currency || DEFAULT_BASE_CURRENCY, encBool(w.archived), w.order ?? 0,
-    w.kind || 'cash', w.rate ?? 0, encStamp(w.updatedAt), encBool(w.deleted),
+    w.kind || 'cash', encStamp(w.updatedAt), encBool(w.deleted),
   ];
 }
 function rowToWallet(r, index) {
@@ -254,9 +273,8 @@ function rowToWallet(r, index) {
     archived: r[2] === 'archived' || decBool(r[2]),
     order: r[3] === '' || r[3] == null ? index : decNum(r[3]),
     kind: r[4] || 'cash',
-    rate: decNum(r[5]),
-    updatedAt: decStamp(r[6]),
-    deleted: decBool(r[7]),
+    updatedAt: decStamp(r[5]),
+    deleted: decBool(r[6]),
   };
 }
 
@@ -278,7 +296,7 @@ function rowToSetting(r) {
 const ENTITY = {
   transactions: { sheet: SHEET_TX, lastCol: 'O', toRow: txToRow, fromRow: rowToTx },
   categories: { sheet: SHEET_CAT, lastCol: 'H', toRow: catToRow, fromRow: rowToCat },
-  wallets: { sheet: SHEET_WALLET, lastCol: 'H', toRow: walletToRow, fromRow: rowToWallet },
+  wallets: { sheet: SHEET_WALLET, lastCol: 'G', toRow: walletToRow, fromRow: rowToWallet },
   tags: { sheet: SHEET_TAG, lastCol: 'D', toRow: tagToRow, fromRow: rowToTag },
   settings: { sheet: SHEET_SETTINGS, lastCol: 'C', toRow: settingToRow, fromRow: rowToSetting },
 };
