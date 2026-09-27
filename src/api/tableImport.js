@@ -371,19 +371,12 @@ const INSTRUCTIONS = [
   ['type', 'Обычно пусто (определяется по знаку). Особые случаи: adjust — корректировка остатка, interest — начисленные проценты. Оба без категории.'],
 ];
 
-// Шаблон .xlsx: лист с примерами + лист-инструкция. В инструкцию добавляем
-// существующие кошельки и категории — чтобы имена в файле совпали.
-export function downloadTemplateXlsx({ baseCurrency, wallets, categories }) {
+// Шаблон .xlsx: лист с примерами + лист-инструкция.
+export function downloadTemplateXlsx(baseCurrency) {
   const cur = baseCurrency || 'RUB';
-  const yours = [
-    ['', ''],
-    ['Ваши кошельки', wallets.map((w) => `${w.name} (${w.currency})`).join(', ') || '—'],
-    ['Ваши категории', categories.map((c) => c.name).join(', ') || '—'],
-    ['Базовая валюта', cur],
-  ];
   const blob = writeXlsx([
     { name: SHEET_NAME, rows: [COLUMNS, ...exampleRows(cur)], widths: [12, 8, 14, 10, 12, 20, 14, 16, 28, 16, 12, 13, 10], headerBold: true },
-    { name: 'Инструкция', rows: [...INSTRUCTIONS, ...yours], widths: [18, 110], wrap: true },
+    { name: 'Инструкция', rows: INSTRUCTIONS, widths: [18, 110], wrap: true },
   ]);
   downloadBlob('freemoney-import-template.xlsx', blob);
 }

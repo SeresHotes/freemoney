@@ -248,7 +248,7 @@ function SyncSection() {
 
 // Секция «Импорт из таблицы»: выбор .xlsx/.csv → предпросмотр → подтверждение.
 function TableImportSection() {
-  const { baseCurrency, wallets, categories, previewTableImport, importTable } = useApp();
+  const { baseCurrency, previewTableImport, importTable } = useApp();
   const fileRef = useRef(null);
   const [plan, setPlan] = useState(null);
   const [message, setMessage] = useState(null);
@@ -304,7 +304,7 @@ function TableImportSection() {
       </p>
       <div className="settings-actions">
         <button className="btn btn--block" onClick={() => fileRef.current?.click()} disabled={busy}>📥 Загрузить файл</button>
-        <button className="btn btn--block" onClick={() => downloadTemplateXlsx({ baseCurrency, wallets, categories })} disabled={busy}>📄 Шаблон .xlsx</button>
+        <button className="btn btn--block" onClick={() => downloadTemplateXlsx(baseCurrency)} disabled={busy}>📄 Шаблон .xlsx</button>
       </div>
       <p className="muted" style={{ marginTop: '0.4rem' }}>
         Подходят .xlsx и .csv.{' '}
