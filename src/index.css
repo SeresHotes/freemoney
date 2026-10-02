@@ -11,7 +11,7 @@
   --radius: 14px;
   --nav-h: 64px;
   /* Насколько круглая кнопка «Главная» выступает над навбаром. */
-  --nav-bump: 16px;
+  --nav-bump: 24px;
   color-scheme: dark;
 }
 
@@ -967,8 +967,8 @@ h2 {
 .navbar__item--home {
   align-self: flex-start;
   flex: 0 0 auto;
-  width: 60px;
-  height: 60px;
+  width: 72px;
+  height: 72px;
   margin: calc(-1 * var(--nav-bump)) 0.25rem 0;
   border-radius: 50%;
   background: var(--surface-2);
@@ -977,7 +977,7 @@ h2 {
   -webkit-tap-highlight-color: transparent;
 }
 .navbar__item--home .navbar__icon {
-  font-size: 1.6rem;
+  font-size: 2.1rem;
 }
 .navbar__item--home.navbar__item--active {
   background: var(--accent);
