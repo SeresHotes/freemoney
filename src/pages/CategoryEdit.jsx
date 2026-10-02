@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
+import EmojiPicker from '../components/EmojiPicker';
 import { useApp } from '../context/AppContext';
 import { EMOJI_PALETTE } from '../utils/emoji';
 
@@ -73,11 +74,7 @@ export default function CategoryEdit() {
           <input className="field__input" type="text" placeholder="Название" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </div>
 
-        <div className="emoji-picker">
-          {EMOJI_PALETTE.map((e) => (
-            <button type="button" key={e} className={`emoji-picker__item${icon === e ? ' emoji-picker__item--active' : ''}`} onClick={() => setIcon(e)}>{e}</button>
-          ))}
-        </div>
+        <EmojiPicker value={icon} onChange={setIcon} />
 
         <label className="field">
           <span className="field__label">Тип</span>
