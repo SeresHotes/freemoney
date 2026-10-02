@@ -1184,10 +1184,13 @@ code {
 .home__pm {
   width: 52px;
   height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: none;
   border-radius: 50%;
-  font-size: 2rem;
-  font-weight: 600;
+  font-size: 1.6rem;
   line-height: 1;
   color: #fff;
   cursor: pointer;
@@ -1278,11 +1281,15 @@ code {
   width: 44px;
   height: 44px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   background: var(--surface-2);
   border: none;
   border-radius: 50%;
   color: var(--text);
-  font-size: 1.6rem;
+  font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -1356,7 +1363,7 @@ code {
   .home__pm {
     width: 46px;
     height: 46px;
-    font-size: 1.75rem;
+    font-size: 1.4rem;
   }
   .home__tile {
     padding: 0.35rem 0.2rem;

@@ -10,6 +10,16 @@ import { IS_DEV_CHANNEL } from '../config';
 import CategoryRing from '../components/CategoryRing';
 import { ringNamedCount } from '../utils/ringLayout';
 
+// Иконка-контур 24×24 (стрелки, плюс/минус): в отличие от символов шрифта
+// («‹», «−»), всегда ровно по центру кнопки.
+function Icon({ d }) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
 export default function Home() {
   const { transactions, wallets, categories, baseCurrency } = useApp();
   const navigate = useNavigate();
@@ -126,7 +136,7 @@ export default function Home() {
       <section className="home__stats" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <div className="home__month">
           <button className="home__month-btn" aria-label="Предыдущий месяц" onClick={() => setMonth(shiftMonth(month, -1))}>
-            ‹
+            <Icon d="M15 5l-7 7 7 7" />
           </button>
           <button
             className="home__month-title"
@@ -141,7 +151,7 @@ export default function Home() {
             disabled={month >= curMonth}
             onClick={() => setMonth(shiftMonth(month, 1))}
           >
-            ›
+            <Icon d="M9 5l7 7-7 7" />
           </button>
         </div>
         {byCategory.length === 0 ? (
@@ -173,7 +183,7 @@ export default function Home() {
       {/* Одна строка: «−» расход · баланс · «+» доход — экономит высоту для кольца. */}
       <section className="home__money">
         <button className="home__pm home__pm--expense" aria-label="Расход" title="Расход" onClick={() => navigate('/add/expense')}>
-          −
+          <Icon d="M5 12h14" />
         </button>
         <button
           className={`home__balance${netWorth.sum < 0 ? ' home__balance--negative' : ''}`}
@@ -184,7 +194,7 @@ export default function Home() {
           {ratesNote && <span className="home__balance-note">{ratesNote}</span>}
         </button>
         <button className="home__pm home__pm--income" aria-label="Доход" title="Доход" onClick={() => navigate('/add/income')}>
-          +
+          <Icon d="M5 12h14M12 5v14" />
         </button>
       </section>
       <section className="home__tiles">
