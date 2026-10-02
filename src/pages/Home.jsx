@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { monthKey, todayIso } from '../utils/format';
@@ -8,31 +8,10 @@ import { CATEGORY_COLORS } from '../utils/chartColors';
 import { useBaseRates } from '../hooks/useBaseRates';
 import { IS_DEV_CHANNEL } from '../config';
 
-const CategoryDonut = lazy(() => import('../components/CategoryDonut'));
-
-// Высота строки легенды (px) и доля карточки, которую легенде можно занять в
-// одну колонку; если не влезает — две колонки, чтобы все категории были видны
-// без прокрутки, а донату осталось место.
-const LEGEND_ROW_PX = 24;
-const LEGEND_SHARE = 0.42;
-
-function useLegendColumns(count) {
-  const ref = useRef(null);
-  const [cols, setCols] = useState(1);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const update = () => setCols(count * LEGEND_ROW_PX > el.clientHeight * LEGEND_SHARE ? 2 : 1);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [count]);
-  return [ref, cols];
-}
+import CategoryRing from '../components/CategoryRing';
 
 export default function Home() {
-  const { transactions, wallets, baseCurrency } = useApp();
+  const { transactions, wallets, categories, baseCurrency } = useApp();
   const navigate = useNavigate();
   const { toBase, ready } = useBaseRates(baseCurrency);
 
@@ -67,14 +46,16 @@ export default function Home() {
         catMap.set(t.category || 'Без категории', (catMap.get(t.category) || 0) + mag);
       }
     }
-    const cats = [...catMap.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    const iconOf = new Map(categories.map((c) => [c.name, c.icon]));
+    const cats = [...catMap.entries()]
+      .map(([name, value]) => ({ name, value, icon: iconOf.get(name) || '🏷️' }))
+      .sort((a, b) => b.value - a.value);
     return { income: inc, expense: exp, byCategory: cats };
-  }, [transactions, toBase]);
+  }, [transactions, categories, toBase]);
 
-  const [statsRef, legendCols] = useLegendColumns(byCategory.length);
-
-  // Главный экран всегда помещается в окно без прокрутки: сверху — статистика
-  // по категориям (тянется на свободное место), ниже — кошельки и кнопки.
+  // Главный экран всегда помещается в окно без прокрутки: сверху — кольцо
+  // расходов с подписями категорий (тянется на свободное место), ниже —
+  // кошельки и кнопки.
   return (
     <div className="page home">
       <header className="home__head">
@@ -88,7 +69,7 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="home__stats" ref={statsRef}>
+      <section className="home__stats">
         <h2 className="home__stats-title">Расходы за месяц ({baseCurrency})</h2>
         {byCategory.length === 0 ? (
           <div className="home__empty">
@@ -96,30 +77,13 @@ export default function Home() {
             {income > 0 && <span className="chip chip--income">↑ {formatAmount(income, baseCurrency)}</span>}
           </div>
         ) : (
-          <Suspense fallback={<div className="home__chart"><div className="spinner" /></div>}>
-            <div className="home__chart">
-              <CategoryDonut
-                fill
-                data={byCategory}
-                colors={CATEGORY_COLORS}
-                center={{ expense, income }}
-                formatValue={(v) => formatAmount(v, baseCurrency)}
-              />
-            </div>
-            <ul className={`legend home__legend${legendCols === 2 ? ' home__legend--two' : ''}`}>
-              {byCategory.map((c, i) => (
-                <li
-                  key={c.name}
-                  className="legend__item legend__item--clickable"
-                  onClick={() => navigate(`/transactions?category=${encodeURIComponent(c.name)}`)}
-                >
-                  <span className="legend__dot" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
-                  <span className="legend__name">{c.name}</span>
-                  <span className="legend__value">{formatAmount(c.value, baseCurrency)}</span>
-                </li>
-              ))}
-            </ul>
-          </Suspense>
+          <CategoryRing
+            data={byCategory}
+            colors={CATEGORY_COLORS}
+            center={{ expense, income }}
+            formatValue={(v) => formatAmount(v, baseCurrency)}
+            onSelect={(name) => navigate(`/transactions?category=${encodeURIComponent(name)}`)}
+          />
         )}
       </section>
 

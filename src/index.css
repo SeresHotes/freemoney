@@ -1214,49 +1214,6 @@ code {
   margin: 0 0 0.5rem;
   flex-shrink: 0;
 }
-.home__chart {
-  flex: 1 1 0;
-  /* донат ужимается первым: категории в легенде важнее его размера */
-  min-height: 96px;
-  max-height: 420px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.home__legend {
-  flex: 0 1 auto;
-  min-height: 2.5rem;
-  /* прокрутка — только крайний случай (очень много категорий на крошечном экране) */
-  overflow-y: auto;
-  gap: 0.35rem;
-  margin-top: 0.6rem;
-  font-size: 0.9rem;
-}
-.home__legend .legend__name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.home__legend .legend__value {
-  white-space: nowrap;
-}
-/* Две колонки, когда в одну легенда не помещается (см. useLegendColumns). */
-.home__legend--two {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 0.75rem;
-  row-gap: 0.3rem;
-  font-size: 0.8rem;
-}
-.home__legend--two .legend__item {
-  gap: 0.35rem;
-  min-width: 0;
-}
-.home__legend--two .legend__dot {
-  width: 10px;
-  height: 10px;
-}
 .home__empty {
   flex: 1;
   display: flex;
@@ -1342,40 +1299,52 @@ code {
   .home__tile-icon {
     font-size: 1.15rem;
   }
-  .home__legend--two {
-    font-size: 0.75rem;
-    row-gap: 0.2rem;
-  }
 }
 
-/* Донат на всю высоту родителя (главный экран): без своей подложки, подписи в
-   центре масштабируются под размер кольца. */
-.donut--fill {
-  width: 100%;
-  height: 100%;
-  background: none;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  container-type: size;
+/* Кольцо категорий главного экрана (CategoryRing): SVG по размеру контейнера,
+   суммы в центре — HTML поверх. */
+.ring {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 380px;
 }
-.donut--fill .donut__label {
-  font-size: clamp(0.62rem, 5cqmin, 0.8rem);
+.ring__svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
 }
-.donut--fill .donut__expense,
-.donut--fill .donut__income {
-  font-size: clamp(0.8rem, 8cqmin, 1.3rem);
+.ring__slice,
+.ring__label {
+  cursor: pointer;
 }
-/* Маленькое кольцо: в центре только расходы (доходы есть в «Статистике»). */
-@container (max-height: 170px) {
-  .donut--fill .donut__label--income,
-  .donut--fill .donut__income {
-    display: none;
-  }
-  .donut--fill .donut__label {
-    font-size: 0.6rem;
-  }
-  .donut--fill .donut__expense {
-    font-size: 0.75rem;
-  }
+.ring__slice:active,
+.ring__label:active {
+  opacity: 0.7;
+}
+.ring__name {
+  fill: var(--text);
+}
+.ring__pct {
+  font-weight: 700;
+}
+.ring__center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+  line-height: 1.15;
+}
+.ring__center .donut__label {
+  font-size: calc(var(--ring-fs) * 0.6);
+}
+.ring__center .donut__expense,
+.ring__center .donut__income {
+  font-size: var(--ring-fs);
 }
