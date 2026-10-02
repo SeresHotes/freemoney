@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { monthKey, todayIso } from '../utils/format';
@@ -9,6 +9,27 @@ import { useBaseRates } from '../hooks/useBaseRates';
 import { IS_DEV_CHANNEL } from '../config';
 
 const CategoryDonut = lazy(() => import('../components/CategoryDonut'));
+
+// Высота строки легенды (px) и доля карточки, которую легенде можно занять в
+// одну колонку; если не влезает — две колонки, чтобы все категории были видны
+// без прокрутки, а донату осталось место.
+const LEGEND_ROW_PX = 24;
+const LEGEND_SHARE = 0.42;
+
+function useLegendColumns(count) {
+  const ref = useRef(null);
+  const [cols, setCols] = useState(1);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const update = () => setCols(count * LEGEND_ROW_PX > el.clientHeight * LEGEND_SHARE ? 2 : 1);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [count]);
+  return [ref, cols];
+}
 
 export default function Home() {
   const { transactions, wallets, baseCurrency } = useApp();
@@ -50,6 +71,8 @@ export default function Home() {
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, toBase]);
 
+  const [statsRef, legendCols] = useLegendColumns(byCategory.length);
+
   // Главный экран всегда помещается в окно без прокрутки: сверху — статистика
   // по категориям (тянется на свободное место), ниже — кошельки и кнопки.
   return (
@@ -65,7 +88,7 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="home__stats">
+      <section className="home__stats" ref={statsRef}>
         <h2 className="home__stats-title">Расходы за месяц ({baseCurrency})</h2>
         {byCategory.length === 0 ? (
           <div className="home__empty">
@@ -83,7 +106,7 @@ export default function Home() {
                 formatValue={(v) => formatAmount(v, baseCurrency)}
               />
             </div>
-            <ul className="legend home__legend">
+            <ul className={`legend home__legend${legendCols === 2 ? ' home__legend--two' : ''}`}>
               {byCategory.map((c, i) => (
                 <li
                   key={c.name}

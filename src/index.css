@@ -1216,7 +1216,8 @@ code {
 }
 .home__chart {
   flex: 1 1 0;
-  min-height: clamp(140px, 30vh, 260px);
+  /* донат ужимается первым: категории в легенде важнее его размера */
+  min-height: 96px;
   max-height: 420px;
   display: flex;
   align-items: center;
@@ -1225,10 +1226,36 @@ code {
 .home__legend {
   flex: 0 1 auto;
   min-height: 2.5rem;
+  /* прокрутка — только крайний случай (очень много категорий на крошечном экране) */
   overflow-y: auto;
   gap: 0.35rem;
   margin-top: 0.6rem;
   font-size: 0.9rem;
+}
+.home__legend .legend__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home__legend .legend__value {
+  white-space: nowrap;
+}
+/* Две колонки, когда в одну легенда не помещается (см. useLegendColumns). */
+.home__legend--two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 0.75rem;
+  row-gap: 0.3rem;
+  font-size: 0.8rem;
+}
+.home__legend--two .legend__item {
+  gap: 0.35rem;
+  min-width: 0;
+}
+.home__legend--two .legend__dot {
+  width: 10px;
+  height: 10px;
 }
 .home__empty {
   flex: 1;
@@ -1300,8 +1327,24 @@ code {
   .home__tile {
     padding: 0.35rem 0.2rem;
   }
+  /* кошелёк в одну строку: имя и баланс рядом */
   .home__wallets .wallet-chip {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4rem;
+    min-width: 0;
     padding: 0.35rem 0.7rem;
+  }
+  /* плитки — только иконки (полное название во всплывающей подсказке) */
+  .home__tile-label {
+    display: none;
+  }
+  .home__tile-icon {
+    font-size: 1.15rem;
+  }
+  .home__legend--two {
+    font-size: 0.75rem;
+    row-gap: 0.2rem;
   }
 }
 
@@ -1322,4 +1365,17 @@ code {
 .donut--fill .donut__expense,
 .donut--fill .donut__income {
   font-size: clamp(0.8rem, 8cqmin, 1.3rem);
+}
+/* Маленькое кольцо: в центре только расходы (доходы есть в «Статистике»). */
+@container (max-height: 170px) {
+  .donut--fill .donut__label--income,
+  .donut--fill .donut__income {
+    display: none;
+  }
+  .donut--fill .donut__label {
+    font-size: 0.6rem;
+  }
+  .donut--fill .donut__expense {
+    font-size: 0.75rem;
+  }
 }
