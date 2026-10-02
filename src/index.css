@@ -1172,74 +1172,40 @@ code {
   font-size: 1.15rem;
   white-space: nowrap;
 }
-/* Строка «−» · баланс · «+» (как в Monefy): круглые кнопки по краям, общий
-   баланс посередине. */
-.home__money {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.6rem;
+/* Общий баланс — первая карточка ленты кошельков. */
+.wallet-chip--total {
+  border-color: var(--income);
 }
-.home__pm {
-  width: 64px;
-  height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  font-size: 2.1rem;
-  line-height: 1;
-  color: #fff;
-  cursor: pointer;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-  -webkit-tap-highlight-color: transparent;
-}
-.home__pm:active {
-  filter: brightness(0.9);
-}
-.home__pm--expense {
-  background: var(--expense);
-}
-.home__pm--income {
-  background: var(--income);
-  color: #06281c;
-}
-.home__balance {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0.3rem 0.6rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  cursor: pointer;
-}
-.home__balance:active {
-  filter: brightness(0.9);
-}
-.home__balance-value {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 1.15rem;
-  font-weight: 700;
+.wallet-chip--total .wallet-chip__bal {
   color: var(--income);
-  white-space: nowrap;
 }
-.home__balance--negative .home__balance-value {
+.wallet-chip--negative {
+  border-color: var(--expense);
+}
+.wallet-chip--negative .wallet-chip__bal {
   color: var(--expense);
 }
-.home__balance-note {
+.home__rates-note {
+  flex: 0 0 auto;
+  margin: -0.35rem 0 0;
   color: var(--muted);
-  font-size: 0.68rem;
-  white-space: nowrap;
+  font-size: 0.72rem;
+}
+.home__actions {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.home__actions .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.85rem 0.5rem;
+}
+.home__actions .btn svg {
+  font-size: 1.15rem;
 }
 .home__stats {
   flex: 1 1 auto;
@@ -1360,10 +1326,8 @@ code {
     gap: 0.45rem;
     padding-top: 0.5rem;
   }
-  .home__pm {
-    width: 54px;
-    height: 54px;
-    font-size: 1.75rem;
+  .home__actions .btn {
+    padding: 0.7rem 0.5rem;
   }
   .home__tile {
     padding: 0.35rem 0.2rem;

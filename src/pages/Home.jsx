@@ -11,7 +11,7 @@ import CategoryRing from '../components/CategoryRing';
 import { ringNamedCount } from '../utils/ringLayout';
 
 // Иконка-контур 24×24 (стрелки, плюс/минус): в отличие от символов шрифта
-// («‹», «−»), всегда ровно по центру кнопки.
+// («‹», «−»), всегда ровно по центру по вертикали.
 function Icon({ d }) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -169,32 +169,31 @@ export default function Home() {
         )}
       </section>
 
-      {activeWallets.length > 0 && (
-        <section className="wallet-chips home__wallets">
-          {recentWallets.map((w) => (
-            <button key={w.name} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
-              <span className="wallet-chip__name">{w.name}</span>
-              <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.name), w.currency)}</span>
-            </button>
-          ))}
-        </section>
-      )}
-
-      {/* Одна строка: «−» расход · баланс · «+» доход — экономит высоту для кольца. */}
-      <section className="home__money">
-        <button className="home__pm home__pm--expense" aria-label="Расход" title="Расход" onClick={() => navigate('/add/expense')}>
-          <Icon d="M5 12h14" />
-        </button>
+      {/* Лента кошельков; первая карточка — общий баланс по всем кошелькам. */}
+      <section className="wallet-chips home__wallets">
         <button
-          className={`home__balance${netWorth.sum < 0 ? ' home__balance--negative' : ''}`}
-          title="Общий баланс"
+          className={`wallet-chip wallet-chip--total${netWorth.sum < 0 ? ' wallet-chip--negative' : ''}`}
+          title={ratesNote ? `Общий баланс (${ratesNote})` : 'Общий баланс'}
           onClick={() => navigate('/wallets')}
         >
-          <span className="home__balance-value">{formatAmount(netWorth.sum, baseCurrency)}</span>
-          {ratesNote && <span className="home__balance-note">{ratesNote}</span>}
+          <span className="wallet-chip__name">Всего{ratesNote && ' *'}</span>
+          <span className="wallet-chip__bal">{formatAmount(netWorth.sum, baseCurrency)}</span>
         </button>
-        <button className="home__pm home__pm--income" aria-label="Доход" title="Доход" onClick={() => navigate('/add/income')}>
-          <Icon d="M5 12h14M12 5v14" />
+        {recentWallets.map((w) => (
+          <button key={w.name} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
+            <span className="wallet-chip__name">{w.name}</span>
+            <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.name), w.currency)}</span>
+          </button>
+        ))}
+      </section>
+      {ratesNote && <p className="home__rates-note">* {ratesNote}</p>}
+
+      <section className="home__actions">
+        <button className="btn btn--expense" onClick={() => navigate('/add/expense')}>
+          <Icon d="M5 12h14" /> Расход
+        </button>
+        <button className="btn btn--income" onClick={() => navigate('/add/income')}>
+          <Icon d="M5 12h14M12 5v14" /> Доход
         </button>
       </section>
       <section className="home__tiles">
