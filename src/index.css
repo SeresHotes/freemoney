@@ -10,6 +10,8 @@
   --income: #34d399;
   --radius: 14px;
   --nav-h: 64px;
+  /* Насколько круглая кнопка «Главная» выступает над навбаром. */
+  --nav-bump: 16px;
   color-scheme: dark;
 }
 
@@ -59,7 +61,7 @@ h2 {
   min-height: 100%;
 }
 .app__main {
-  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--nav-h) + var(--nav-bump) + env(safe-area-inset-bottom, 0px));
 }
 .page {
   padding: 1.25rem 1rem;
@@ -961,6 +963,28 @@ h2 {
 .navbar__icon {
   font-size: 1.3rem;
 }
+/* «Главная» — большая круглая кнопка посередине, выступает над панелью. */
+.navbar__item--home {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: 60px;
+  height: 60px;
+  margin: calc(-1 * var(--nav-bump)) 0.25rem 0;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 3px solid var(--bg);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  -webkit-tap-highlight-color: transparent;
+}
+.navbar__item--home .navbar__icon {
+  font-size: 1.6rem;
+}
+.navbar__item--home.navbar__item--active {
+  background: var(--accent);
+}
+.navbar__item--home:active {
+  filter: brightness(0.9);
+}
 
 /* --- Gate (login / setup) ------------------------------------------------- */
 .gate {
@@ -1122,4 +1146,180 @@ code {
 .update-toast__btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* --- Главный экран: всё в одном окне, без прокрутки ------------------------ */
+/* Высота страницы = окно минус навбар (с выступом круглой кнопки). Статистика
+   по категориям занимает всё свободное место: донат растягивается/сжимается
+   под экран, а длинная легенда прокручивается внутри карточки. Кнопки внизу —
+   компактные, под большой палец. На совсем низких экранах (горизонтальный
+   телефон) остаётся минимальная высота и обычная прокрутка. */
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  height: calc(100vh - var(--nav-h) - var(--nav-bump) - env(safe-area-inset-bottom, 0px));
+  height: calc(100dvh - var(--nav-h) - var(--nav-bump) - env(safe-area-inset-bottom, 0px));
+  min-height: 480px;
+  padding-top: 0.75rem;
+  padding-bottom: 0.5rem;
+}
+.home__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  /* место под индикатор синхронизации в правом верхнем углу */
+  padding-right: 28px;
+}
+.home__title {
+  font-size: 1.15rem;
+  white-space: nowrap;
+}
+.home__networth {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  text-align: right;
+}
+.home__networth-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--income);
+  white-space: nowrap;
+}
+.home__networth-label {
+  font-size: 0.75rem;
+}
+.home__stats {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* на высоких экранах (планшет) лишнее место делится сверху и снизу */
+  justify-content: safe center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+.home__stats-title {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  margin: 0 0 0.5rem;
+  flex-shrink: 0;
+}
+.home__chart {
+  flex: 1 1 0;
+  min-height: clamp(140px, 30vh, 260px);
+  max-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home__legend {
+  flex: 0 1 auto;
+  min-height: 2.5rem;
+  overflow-y: auto;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+}
+.home__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-align: center;
+}
+.home__wallets {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.home__wallets .wallet-chip {
+  padding: 0.45rem 0.8rem;
+}
+.home__actions {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.home__actions .btn {
+  padding: 0.85rem 0.5rem;
+}
+.home__tiles {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+.home__tile {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+}
+.home__tile:active {
+  filter: brightness(0.9);
+}
+.home__tile-icon {
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+.home__tile-label {
+  max-width: 100%;
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Низкие экраны (маленькие телефоны): ужимаем отступы, чтобы донату осталось место. */
+@media (max-height: 620px) {
+  .home {
+    gap: 0.45rem;
+    padding-top: 0.5rem;
+  }
+  .home__actions .btn {
+    padding: 0.7rem 0.5rem;
+  }
+  .home__tile {
+    padding: 0.35rem 0.2rem;
+  }
+  .home__wallets .wallet-chip {
+    padding: 0.35rem 0.7rem;
+  }
+}
+
+/* Донат на всю высоту родителя (главный экран): без своей подложки, подписи в
+   центре масштабируются под размер кольца. */
+.donut--fill {
+  width: 100%;
+  height: 100%;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  container-type: size;
+}
+.donut--fill .donut__label {
+  font-size: clamp(0.62rem, 5cqmin, 0.8rem);
+}
+.donut--fill .donut__expense,
+.donut--fill .donut__income {
+  font-size: clamp(0.8rem, 8cqmin, 1.3rem);
 }

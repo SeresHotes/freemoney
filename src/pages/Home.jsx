@@ -50,65 +50,40 @@ export default function Home() {
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, toBase]);
 
+  // Главный экран всегда помещается в окно без прокрутки: сверху — статистика
+  // по категориям (тянется на свободное место), ниже — кошельки и кнопки.
   return (
-    <div className="page">
-      <header className="page__header">
-        <h1>FreeMoney{IS_DEV_CHANNEL && <span className="channel-badge">DEV</span>}</h1>
-        <p className="muted">Общий капитал{ready ? '' : ' (загрузка курсов…)'}</p>
+    <div className="page home">
+      <header className="home__head">
+        <h1 className="home__title">FreeMoney{IS_DEV_CHANNEL && <span className="channel-badge">DEV</span>}</h1>
+        <div className="home__networth">
+          <span className="home__networth-value">{formatAmount(netWorth.sum, baseCurrency)}</span>
+          <span className="muted home__networth-label">
+            {ready ? 'общий капитал' : 'загрузка курсов…'}
+            {netWorth.hasUnknown && ' · без части валют'}
+          </span>
+        </div>
       </header>
 
-      <section className="balance-card balance-card--positive">
-        <div className="balance-card__value">{formatAmount(netWorth.sum, baseCurrency)}</div>
-        {netWorth.hasUnknown && <div className="muted">часть валют без курса не учтена</div>}
-        <div className="balance-card__row">
-          <span className="chip chip--income">↑ {formatAmount(income, baseCurrency)}</span>
-          <span className="chip chip--expense">↓ {formatAmount(expense, baseCurrency)}</span>
-        </div>
-      </section>
-
-      {activeWallets.length > 0 && (
-        <section className="wallet-chips">
-          {activeWallets.map((w) => (
-            <button key={w.name} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
-              <span className="wallet-chip__name">{w.name}</span>
-              <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.name), w.currency)}</span>
-            </button>
-          ))}
-        </section>
-      )}
-
-      <section className="actions">
-        <button className="btn btn--expense" onClick={() => navigate('/add/expense')}>− Расход</button>
-        <button className="btn btn--income" onClick={() => navigate('/add/income')}>+ Доход</button>
-      </section>
-      <div className="actions" style={{ marginTop: '0.75rem' }}>
-        <button className="btn btn--block" onClick={() => navigate('/transfer')}>
-          ⇄ Перевод
-        </button>
-        <button className="btn btn--block" onClick={() => navigate('/debt')}>
-          🤝 Долг
-        </button>
-        <button className="btn btn--block" onClick={() => navigate('/interest')}>
-          📈 Проценты
-        </button>
-        <button className="btn btn--block" onClick={() => navigate('/adjust')}>
-          ⚖️ Корректировка
-        </button>
-      </div>
-
-      <section>
-        <h2 className="section-title">Расходы за месяц ({baseCurrency})</h2>
+      <section className="home__stats">
+        <h2 className="home__stats-title">Расходы за месяц ({baseCurrency})</h2>
         {byCategory.length === 0 ? (
-          <p className="muted empty">Пока нет расходов в этом месяце</p>
+          <div className="home__empty">
+            <p className="muted">Пока нет расходов в этом месяце</p>
+            {income > 0 && <span className="chip chip--income">↑ {formatAmount(income, baseCurrency)}</span>}
+          </div>
         ) : (
-          <Suspense fallback={<div className="chart"><div className="spinner" /></div>}>
-            <CategoryDonut
-              data={byCategory}
-              colors={CATEGORY_COLORS}
-              center={{ expense, income }}
-              formatValue={(v) => formatAmount(v, baseCurrency)}
-            />
-            <ul className="legend">
+          <Suspense fallback={<div className="home__chart"><div className="spinner" /></div>}>
+            <div className="home__chart">
+              <CategoryDonut
+                fill
+                data={byCategory}
+                colors={CATEGORY_COLORS}
+                center={{ expense, income }}
+                formatValue={(v) => formatAmount(v, baseCurrency)}
+              />
+            </div>
+            <ul className="legend home__legend">
               {byCategory.map((c, i) => (
                 <li
                   key={c.name}
@@ -123,6 +98,35 @@ export default function Home() {
             </ul>
           </Suspense>
         )}
+      </section>
+
+      {activeWallets.length > 0 && (
+        <section className="wallet-chips home__wallets">
+          {activeWallets.map((w) => (
+            <button key={w.name} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
+              <span className="wallet-chip__name">{w.name}</span>
+              <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.name), w.currency)}</span>
+            </button>
+          ))}
+        </section>
+      )}
+
+      <section className="home__actions">
+        <button className="btn btn--expense" onClick={() => navigate('/add/expense')}>− Расход</button>
+        <button className="btn btn--income" onClick={() => navigate('/add/income')}>+ Доход</button>
+      </section>
+      <section className="home__tiles">
+        {[
+          ['/transfer', '⇄', 'Перевод'],
+          ['/debt', '🤝', 'Долг'],
+          ['/interest', '📈', 'Проценты'],
+          ['/adjust', '⚖️', 'Коррекция', 'Корректировка'],
+        ].map(([to, icon, label, title]) => (
+          <button key={to} className="home__tile" title={title || label} onClick={() => navigate(to)}>
+            <span className="home__tile-icon">{icon}</span>
+            <span className="home__tile-label">{label}</span>
+          </button>
+        ))}
       </section>
     </div>
   );

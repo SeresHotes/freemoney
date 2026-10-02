@@ -2,12 +2,21 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
 // Кольцевая диаграмма расходов по категориям с суммами в центре.
 // data: [{ name, value }]; center: { expense, income }.
-export default function CategoryDonut({ data, colors, formatValue, center, height = 240 }) {
+// fill — диаграмма тянется на всю высоту родителя (главный экран): радиусы
+// в процентах, без собственной карточки-подложки.
+export default function CategoryDonut({ data, colors, formatValue, center, height = 240, fill = false }) {
   return (
-    <div className="donut">
-      <ResponsiveContainer width="100%" height={height}>
+    <div className={`donut${fill ? ' donut--fill' : ''}`}>
+      <ResponsiveContainer width="100%" height={fill ? '100%' : height}>
         <PieChart>
-          <Pie data={data} dataKey="value" nameKey="name" innerRadius={72} outerRadius={100} paddingAngle={2}>
+          <Pie
+            data={data}
+            dataKey="value"
+            nameKey="name"
+            innerRadius={fill ? '72%' : 72}
+            outerRadius={fill ? '100%' : 100}
+            paddingAngle={2}
+          >
             {data.map((entry, i) => <Cell key={entry.name} fill={colors[i % colors.length]} />)}
           </Pie>
           <Tooltip formatter={formatValue} />
