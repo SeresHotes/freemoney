@@ -42,9 +42,8 @@ export default function Transactions() {
   const setArr = (key, arr) => update((n) => { n.delete(key); arr.forEach((v) => n.append(key, v)); });
   const setSingle = (key, val) => update((n) => { if (val) n.set(key, val); else n.delete(key); });
 
-  const [showFilters, setShowFilters] = useState(
-    () => types.length + cats.length + wals.length + tagSel.length > 0 || periodActive,
-  );
+  // Панель фильтров по умолчанию свёрнута; активные фильтры видны счётчиком на кнопке.
+  const [showFilters, setShowFilters] = useState(false);
 
   const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
   const walletById = useMemo(() => new Map(wallets.map((w) => [w.name, w])), [wallets]);
