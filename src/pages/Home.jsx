@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { monthKey, todayIso } from '../utils/format';
+import { dateLabel, monthKey, todayIso } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isIncome, isExpense } from '../utils/finance';
 import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
@@ -13,7 +13,7 @@ import { ringNamedCount } from '../utils/ringLayout';
 export default function Home() {
   const { transactions, wallets, categories, baseCurrency } = useApp();
   const navigate = useNavigate();
-  const { toBase, ready } = useBaseRates(baseCurrency);
+  const { toBase, ready, failed, ratesDate } = useBaseRates(baseCurrency);
 
   const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
 
@@ -77,20 +77,21 @@ export default function Home() {
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, categories, toBase]);
 
+  // Пометка о курсах — только если есть кошельки не в базовой валюте.
+  const needsRates = activeWallets.some((w) => w.currency && w.currency !== baseCurrency);
+  let ratesNote = null;
+  if (needsRates) {
+    if (netWorth.hasUnknown) ratesNote = ready || failed ? 'без части валют: нет курса' : 'загружаю курсы…';
+    else if (ratesDate && ratesDate < todayIso()) ratesNote = `курсы от ${dateLabel(ratesDate)}`;
+  }
+
   // Главный экран всегда помещается в окно без прокрутки: сверху — кольцо
   // расходов с подписями категорий (тянется на свободное место), ниже —
-  // кошельки и кнопки.
+  // кошельки, общий баланс и кнопки.
   return (
     <div className="page home">
       <header className="home__head">
         <h1 className="home__title">FreeMoney{IS_DEV_CHANNEL && <span className="channel-badge">DEV</span>}</h1>
-        <div className="home__networth">
-          <span className="home__networth-value">{formatAmount(netWorth.sum, baseCurrency)}</span>
-          <span className="muted home__networth-label">
-            {ready ? 'общий капитал' : 'загрузка курсов…'}
-            {netWorth.hasUnknown && ' · без части валют'}
-          </span>
-        </div>
       </header>
 
       <section className="home__stats">
@@ -120,6 +121,15 @@ export default function Home() {
           ))}
         </section>
       )}
+
+      <button
+        className={`home__balance${netWorth.sum < 0 ? ' home__balance--negative' : ''}`}
+        onClick={() => navigate('/wallets')}
+      >
+        <span className="home__balance-label">Баланс</span>
+        <span className="home__balance-value">{formatAmount(netWorth.sum, baseCurrency)}</span>
+        {ratesNote && <span className="home__balance-note">{ratesNote}</span>}
+      </button>
 
       <section className="home__actions">
         <button className="btn btn--expense" onClick={() => navigate('/add/expense')}>− Расход</button>

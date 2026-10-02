@@ -1165,10 +1165,6 @@ code {
   padding-bottom: 0.5rem;
 }
 .home__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
   /* место под индикатор синхронизации в правом верхнем углу */
   padding-right: 28px;
 }
@@ -1176,21 +1172,41 @@ code {
   font-size: 1.15rem;
   white-space: nowrap;
 }
-.home__networth {
+/* Общий баланс — по центру, над кнопками «Расход»/«Доход» (как в Monefy). */
+.home__balance {
+  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  min-width: 0;
-  text-align: right;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
 }
-.home__networth-value {
+.home__balance:active {
+  filter: brightness(0.9);
+}
+.home__balance-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.home__balance-value {
   font-size: 1.35rem;
   font-weight: 700;
   color: var(--income);
   white-space: nowrap;
 }
-.home__networth-label {
-  font-size: 0.75rem;
+.home__balance--negative .home__balance-value {
+  color: var(--expense);
+}
+.home__balance-note {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 .home__stats {
   flex: 1 1 auto;
@@ -1280,6 +1296,12 @@ code {
   }
   .home__actions .btn {
     padding: 0.7rem 0.5rem;
+  }
+  .home__balance {
+    padding: 0.35rem 1rem;
+  }
+  .home__balance-value {
+    font-size: 1.15rem;
   }
   .home__tile {
     padding: 0.35rem 0.2rem;
