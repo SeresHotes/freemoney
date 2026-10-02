@@ -1,11 +1,11 @@
 import { useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { dateLabel, monthKey, monthLabel, shiftMonth, todayIso } from '../utils/format';
+import { monthKey, monthLabel, shiftMonth, todayIso } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isIncome, isExpense } from '../utils/finance';
 import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
-import { useBaseRates } from '../hooks/useBaseRates';
+import { useNetWorth } from '../hooks/useNetWorth';
 import { IS_DEV_CHANNEL } from '../config';
 import CategoryRing from '../components/CategoryRing';
 import { ringNamedCount } from '../utils/ringLayout';
@@ -23,7 +23,7 @@ function Icon({ d }) {
 export default function Home() {
   const { transactions, wallets, categories, baseCurrency } = useApp();
   const navigate = useNavigate();
-  const { toBase, ready, failed, ratesDate } = useBaseRates(baseCurrency);
+  const { sum: netWorth, ratesNote, toBase } = useNetWorth();
 
   const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
 
@@ -40,17 +40,6 @@ export default function Home() {
       .sort((a, b) => (a.at === b.at ? a.i - b.i : a.at < b.at ? 1 : -1))
       .map((x) => x.w);
   }, [activeWallets, transactions]);
-
-  const netWorth = useMemo(() => {
-    let sum = 0;
-    let hasUnknown = false;
-    for (const w of activeWallets) {
-      const inBase = toBase(walletBalance(transactions, w.name), w.currency);
-      if (inBase == null) hasUnknown = true;
-      else sum += inBase;
-    }
-    return { sum, hasUnknown };
-  }, [activeWallets, transactions, toBase]);
 
   // Выбранный месяц — в адресе (?month=YYYY-MM), чтобы не сбрасывался после
   // возврата с формы операции; без параметра — текущий месяц.
@@ -116,14 +105,6 @@ export default function Home() {
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, categories, toBase, month]);
 
-  // Пометка о курсах — только если есть кошельки не в базовой валюте.
-  const needsRates = activeWallets.some((w) => w.currency && w.currency !== baseCurrency);
-  let ratesNote = null;
-  if (needsRates) {
-    if (netWorth.hasUnknown) ratesNote = ready || failed ? 'без части валют: нет курса' : 'загружаю курсы…';
-    else if (ratesDate && ratesDate < todayIso()) ratesNote = `курсы от ${dateLabel(ratesDate)}`;
-  }
-
   // Главный экран всегда помещается в окно без прокрутки: сверху — кольцо
   // расходов с подписями категорий (тянется на свободное место), ниже —
   // кошельки, общий баланс и кнопки.
@@ -172,12 +153,12 @@ export default function Home() {
       {/* Лента кошельков; первая карточка — общий баланс по всем кошелькам. */}
       <section className="wallet-chips home__wallets">
         <button
-          className={`wallet-chip wallet-chip--total${netWorth.sum < 0 ? ' wallet-chip--negative' : ''}`}
+          className={`wallet-chip wallet-chip--total${netWorth < 0 ? ' wallet-chip--negative' : ''}`}
           title={ratesNote ? `Общий баланс (${ratesNote})` : 'Общий баланс'}
           onClick={() => navigate('/wallets')}
         >
           <span className="wallet-chip__name">Всего{ratesNote && ' *'}</span>
-          <span className="wallet-chip__bal">{formatAmount(netWorth.sum, baseCurrency)}</span>
+          <span className="wallet-chip__bal">{formatAmount(netWorth, baseCurrency)}</span>
         </button>
         {recentWallets.map((w) => (
           <button key={w.name} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
