@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { monthKey, todayIso } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isIncome, isExpense } from '../utils/finance';
-import { CATEGORY_COLORS } from '../utils/chartColors';
+import { CATEGORY_COLORS, OTHER_COLOR, TOP_CATEGORIES } from '../utils/chartColors';
 import { useBaseRates } from '../hooks/useBaseRates';
 import { IS_DEV_CHANNEL } from '../config';
 
@@ -43,13 +43,25 @@ export default function Home() {
       if (isIncome(t)) inc += mag;
       else if (isExpense(t)) {
         exp += mag;
-        catMap.set(t.category || 'Без категории', (catMap.get(t.category) || 0) + mag);
+        const cat = t.category || 'Без категории';
+        catMap.set(cat, (catMap.get(cat) || 0) + mag);
       }
     }
     const iconOf = new Map(categories.map((c) => [c.name, c.icon]));
-    const cats = [...catMap.entries()]
-      .map(([name, value]) => ({ name, value, icon: iconOf.get(name) || '🏷️' }))
-      .sort((a, b) => b.value - a.value);
+    const sorted = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+    // На кольце — топ категорий, остальное одним сегментом «Другое» (если
+    // «остальное» — это одна категория, показываем её саму).
+    const top = sorted.length > TOP_CATEGORIES + 1 ? sorted.slice(0, TOP_CATEGORIES) : sorted;
+    const cats = top.map(([name, value], i) => ({
+      name,
+      value,
+      icon: iconOf.get(name) || '🏷️',
+      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    }));
+    if (top.length < sorted.length) {
+      const rest = sorted.slice(top.length).reduce((sum, [, v]) => sum + v, 0);
+      cats.push({ name: 'Другое', value: rest, icon: '📦', color: OTHER_COLOR, other: true });
+    }
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, categories, toBase]);
 
@@ -79,10 +91,9 @@ export default function Home() {
         ) : (
           <CategoryRing
             data={byCategory}
-            colors={CATEGORY_COLORS}
             center={{ expense, income }}
             formatValue={(v) => formatAmount(v, baseCurrency)}
-            onSelect={(name) => navigate(`/transactions?category=${encodeURIComponent(name)}`)}
+            onSelect={(c) => navigate(c.other ? '/stats' : `/transactions?category=${encodeURIComponent(c.name)}`)}
           />
         )}
       </section>
