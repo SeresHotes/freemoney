@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 import { newId, todayIso, nowTime } from '../utils/format';
@@ -10,6 +10,7 @@ import EditInterest from './EditInterest';
 
 export default function AddTransaction() {
   const params = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const {
     categories, transactions, wallets, tags: knownTags,
@@ -59,7 +60,13 @@ export default function AddTransaction() {
   const [walletAmountTouched, setWalletAmountTouched] = useState(Boolean(editingTx?.origCurrency));
   const [rateInfo, setRateInfo] = useState(null);
 
-  const [category, setCategory] = useState(() => editingTx?.category || '');
+  // Новая операция может прийти с предвыбранной категорией (?category=… —
+  // тап по категории на кольце главного экрана), если она доступна для типа.
+  const [category, setCategory] = useState(() => {
+    if (editingTx) return editingTx.category || '';
+    const preset = searchParams.get('category');
+    return preset && available.some((c) => c.name === preset) ? preset : '';
+  });
   const [date, setDate] = useState(() => editingTx?.date || todayIso());
   const [time, setTime] = useState(() => editingTx?.time || nowTime());
   const [note, setNote] = useState(() => editingTx?.note || '');

@@ -106,7 +106,7 @@ export default function Home() {
             data={byCategory}
             center={{ expense, income }}
             formatValue={(v) => formatAmount(v, baseCurrency)}
-            onSelect={(c) => navigate(c.other ? '/stats' : `/transactions?category=${encodeURIComponent(c.name)}`)}
+            onSelect={(c) => navigate(c.other ? '/add/expense' : `/add/expense?category=${encodeURIComponent(c.name)}`)}
           />
         )}
       </section>
