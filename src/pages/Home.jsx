@@ -4,11 +4,17 @@ import { useApp } from '../context/AppContext';
 import { monthKey, todayIso } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isIncome, isExpense } from '../utils/finance';
-import { CATEGORY_COLORS, OTHER_COLOR, TOP_CATEGORIES } from '../utils/chartColors';
+import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 import { useBaseRates } from '../hooks/useBaseRates';
 import { IS_DEV_CHANNEL } from '../config';
 
 import CategoryRing from '../components/CategoryRing';
+
+// Кольцо на главной: не больше 9 подписанных категорий (+ «Другое» = 10 —
+// по 5 подписей сверху и снизу); категории меньше 3% — тонкие полоски, их
+// подписи только мешают, они уходят в «Другое».
+const RING_NAMED = 9;
+const RING_MIN_SHARE = 0.03;
 
 export default function Home() {
   const { transactions, wallets, categories, baseCurrency } = useApp();
@@ -16,6 +22,20 @@ export default function Home() {
   const { toBase, ready } = useBaseRates(baseCurrency);
 
   const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
+
+  // Кошельки на главной — лента с прокруткой вбок, недавно использованные
+  // первыми (остальные — в их обычном порядке): нужные почти всегда под рукой.
+  const recentWallets = useMemo(() => {
+    const last = new Map();
+    for (const t of transactions) {
+      const at = `${t.date} ${t.time || ''}`;
+      if (!last.has(t.wallet) || at > last.get(t.wallet)) last.set(t.wallet, at);
+    }
+    return activeWallets
+      .map((w, i) => ({ w, i, at: last.get(w.name) || '' }))
+      .sort((a, b) => (a.at === b.at ? a.i - b.i : a.at < b.at ? 1 : -1))
+      .map((x) => x.w);
+  }, [activeWallets, transactions]);
 
   const netWorth = useMemo(() => {
     let sum = 0;
@@ -49,17 +69,18 @@ export default function Home() {
     }
     const iconOf = new Map(categories.map((c) => [c.name, c.icon]));
     const sorted = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-    // На кольце — топ категорий, остальное одним сегментом «Другое» (если
-    // «остальное» — это одна категория, показываем её саму).
-    const top = sorted.length > TOP_CATEGORIES + 1 ? sorted.slice(0, TOP_CATEGORIES) : sorted;
-    const cats = top.map(([name, value], i) => ({
+    // На кольце — до RING_NAMED категорий с долей от RING_MIN_SHARE; остальное
+    // одним сегментом «Другое» (если «остальное» — одна категория, она сама).
+    let named = sorted.filter(([, v], i) => i < RING_NAMED && v >= exp * RING_MIN_SHARE);
+    if (sorted.length - named.length === 1) named = sorted;
+    const cats = named.map(([name, value], i) => ({
       name,
       value,
       icon: iconOf.get(name) || '🏷️',
       color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
     }));
-    if (top.length < sorted.length) {
-      const rest = sorted.slice(top.length).reduce((sum, [, v]) => sum + v, 0);
+    if (named.length < sorted.length) {
+      const rest = sorted.slice(named.length).reduce((sum, [, v]) => sum + v, 0);
       cats.push({ name: 'Другое', value: rest, icon: '📦', color: OTHER_COLOR, other: true });
     }
     return { income: inc, expense: exp, byCategory: cats };
@@ -100,7 +121,7 @@ export default function Home() {
 
       {activeWallets.length > 0 && (
         <section className="wallet-chips home__wallets">
-          {activeWallets.map((w) => (
+          {recentWallets.map((w) => (
             <button key={w.name} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
               <span className="wallet-chip__name">{w.name}</span>
               <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.name), w.currency)}</span>
