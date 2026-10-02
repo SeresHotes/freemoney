@@ -1250,15 +1250,48 @@ code {
   border-radius: var(--radius);
   padding: 0.6rem 0.4rem 0.4rem;
 }
-.home__stats-title {
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  text-align: center;
-  margin: 0 0 0.25rem;
+.home__month {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  margin: -0.3rem 0 0.1rem;
+}
+.home__month-title {
+  min-width: 9.5rem;
+  padding: 0.3rem 0.5rem;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.home__month-title::first-letter {
+  text-transform: uppercase;
+}
+.home__month-btn {
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.home__month-btn:active,
+.home__month-title:active {
+  background: var(--surface-2);
+}
+.home__month-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+  background: none;
 }
 .home__empty {
   flex: 1;

@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { dateLabel, monthKey, todayIso } from '../utils/format';
+import { dateLabel, monthKey, monthLabel, shiftMonth, todayIso } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isIncome, isExpense } from '../utils/finance';
 import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
@@ -42,9 +42,38 @@ export default function Home() {
     return { sum, hasUnknown };
   }, [activeWallets, transactions, toBase]);
 
-  // Данные за текущий месяц: суммы и расходы по категориям (в базовой валюте).
+  // Выбранный месяц — в адресе (?month=YYYY-MM), чтобы не сбрасывался после
+  // возврата с формы операции; без параметра — текущий месяц.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const curMonth = monthKey(todayIso());
+  const rawMonth = searchParams.get('month');
+  const month = /^\d{4}-\d{2}$/.test(rawMonth || '') && rawMonth < curMonth ? rawMonth : curMonth;
+  const setMonth = (key) => {
+    const next = key >= curMonth ? null : key;
+    setSearchParams(next ? { month: next } : {}, { replace: true });
+  };
+  const monthTitle = monthLabel(month).replace(/\s*г\.?$/, '');
+
+  // Свайп по карточке влево/вправо — следующий/предыдущий месяц.
+  const touchRef = useRef(null);
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    touchRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e) => {
+    const start = touchRef.current;
+    touchRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < 1.5 * Math.abs(t.clientY - start.y)) return;
+    if (dx < 0 && month < curMonth) setMonth(shiftMonth(month, 1));
+    if (dx > 0) setMonth(shiftMonth(month, -1));
+  };
+
+  // Данные за выбранный месяц: суммы и расходы по категориям (в базовой валюте).
   const { income, expense, byCategory } = useMemo(() => {
-    const key = monthKey(todayIso());
+    const key = month;
     let inc = 0;
     let exp = 0;
     const catMap = new Map();
@@ -75,7 +104,7 @@ export default function Home() {
       cats.push({ name: 'Другое', value: rest, icon: '📦', color: OTHER_COLOR, other: true });
     }
     return { income: inc, expense: exp, byCategory: cats };
-  }, [transactions, categories, toBase]);
+  }, [transactions, categories, toBase, month]);
 
   // Пометка о курсах — только если есть кошельки не в базовой валюте.
   const needsRates = activeWallets.some((w) => w.currency && w.currency !== baseCurrency);
@@ -94,11 +123,30 @@ export default function Home() {
         <h1 className="home__title">FreeMoney{IS_DEV_CHANNEL && <span className="channel-badge">DEV</span>}</h1>
       </header>
 
-      <section className="home__stats">
-        <h2 className="home__stats-title">Расходы за месяц ({baseCurrency})</h2>
+      <section className="home__stats" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <div className="home__month">
+          <button className="home__month-btn" aria-label="Предыдущий месяц" onClick={() => setMonth(shiftMonth(month, -1))}>
+            ‹
+          </button>
+          <button
+            className="home__month-title"
+            title={month === curMonth ? 'Расходы за месяц' : 'Вернуться к текущему месяцу'}
+            onClick={() => setMonth(curMonth)}
+          >
+            {monthTitle}
+          </button>
+          <button
+            className="home__month-btn"
+            aria-label="Следующий месяц"
+            disabled={month >= curMonth}
+            onClick={() => setMonth(shiftMonth(month, 1))}
+          >
+            ›
+          </button>
+        </div>
         {byCategory.length === 0 ? (
           <div className="home__empty">
-            <p className="muted">Пока нет расходов в этом месяце</p>
+            <p className="muted">{month === curMonth ? 'Пока нет расходов в этом месяце' : 'В этом месяце расходов нет'}</p>
             {income > 0 && <span className="chip chip--income">↑ {formatAmount(income, baseCurrency)}</span>}
           </div>
         ) : (
