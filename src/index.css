@@ -1248,50 +1248,55 @@ code {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.6rem 0.4rem 0.4rem;
+  padding: 0.4rem 0.4rem 0.4rem;
 }
 .home__month {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
-  margin: -0.3rem 0 0.1rem;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
 }
 .home__month-title {
   min-width: 9.5rem;
-  padding: 0.3rem 0.5rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
   background: none;
   border: none;
   border-radius: 999px;
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
 }
 .home__month-title::first-letter {
   text-transform: uppercase;
 }
+/* Стрелки — 44×44 (минимум для пальца), с подложкой, чтобы было видно кнопку. */
 .home__month-btn {
-  width: 36px;
-  height: 36px;
-  background: none;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: var(--surface-2);
   border: none;
   border-radius: 50%;
   color: var(--text);
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   line-height: 1;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .home__month-btn:active,
 .home__month-title:active {
+  filter: brightness(1.25);
+}
+.home__month-title:active {
   background: var(--surface-2);
 }
 .home__month-btn:disabled {
   opacity: 0.25;
   cursor: default;
-  background: none;
 }
 .home__empty {
   flex: 1;

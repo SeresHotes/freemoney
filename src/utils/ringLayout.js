@@ -35,10 +35,11 @@ export function ringNamedCount(sorted, total) {
 const PAD_ANGLE = 0.02; // зазор между сегментами, рад
 const ROTATIONS = 72; // перебор поворотов с шагом 5°
 const MIN_ANGLE = 20; // минимальный угол линии к касательной кольца, град
-const PER_ROW = 5;
+export const PER_ROW = 5;
+export const NAME_LINE_H = 13; // высота строки названия в подписи
 const CROSS_COST = 120; // штраф за пересечение двух выносных линий
 const LEADER = 18; // зазор между рядом подписей и кольцом (под линию)
-const MIN_R = 80; // меньше — пробуем более компактные подписи
+const MIN_R = 68; // меньше — пробуем более компактные подписи
 // Варианты подписи: высота, размер иконки; name — есть ли строка с названием,
 // inline — «иконка процент» в одну строку.
 const MODES = [
@@ -193,13 +194,22 @@ function sides(list) {
   return [a, ...up, b, ...down];
 }
 
-export function layoutRing(data, w, h) {
+// nameLines — сколько строк отвести под название (2 — если какое-то название не
+// влезает в одну строку слота; см. CategoryRing).
+export function layoutRing(data, w, h, { nameLines = 1 } = {}) {
   const total = data.reduce((s, d) => s + d.value, 0);
   if (!total || w < 100 || h < 80) return null;
 
   const n = data.length;
+  // С двумя строками названия подпись выше; если так кольцу мало места —
+  // сперва пробуем одну строку (названия обрежутся), и лишь потом без названий.
+  const modes = MODES.flatMap((m) => {
+    if (!m.name) return [m];
+    const one = { ...m, nameLines: 1 };
+    return nameLines > 1 ? [{ ...m, h: m.h + NAME_LINE_H * (nameLines - 1), nameLines }, one] : [one];
+  });
   const radiusFor = (m) => Math.min(w / 2 - 4, (h - 2 * (m.h + LEADER)) / 2);
-  const mode = MODES.find((m) => radiusFor(m) >= MIN_R) || MODES[MODES.length - 1];
+  const mode = modes.find((m) => radiusFor(m) >= MIN_R) || modes[modes.length - 1];
   const maxR = Math.max(30, radiusFor(mode));
   const cx = w / 2;
   const cy = h / 2;

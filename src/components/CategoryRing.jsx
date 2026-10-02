@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
+import { NAME_LINE_H, PER_ROW, arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
 
 // Кольцо расходов по категориям для главного экрана (в духе Monefy): крупная
 // иконка, название и процент у каждого сегмента, рядами сверху и снизу.
@@ -29,6 +29,62 @@ function fitText(text, maxW, fontSize) {
   return `${text.slice(0, n).trimEnd()}…`;
 }
 
+const NAME_FS_MIN = 9.5;
+const SLACK = 1.12; // на сколько строка может выйти за свою ширину (зазор между подписями)
+
+// Разбить название на строки (до maxLines) по словам в ширину maxW. Слово,
+// которое не влезает целиком, — сперва чуть меньшим шрифтом, затем переносом
+// с дефисом; «…» — только если не помогло и это. → { lines, fontSize }.
+function wrapName(name, maxW, maxLines) {
+  const words = name.split(/\s+/).filter(Boolean);
+  let fontSize = NAME_FS;
+  const longest = () => Math.max(...words.map((wd) => textWidth(wd, fontSize)));
+  while (fontSize > NAME_FS_MIN && longest() > maxW) fontSize -= 0.5;
+
+  const lines = [];
+  let cur = '';
+  for (const word of words) {
+    const next = cur ? `${cur} ${word}` : word;
+    if (!cur || textWidth(next, fontSize) <= maxW) cur = next;
+    else {
+      lines.push(cur);
+      cur = word;
+    }
+  }
+  if (cur) lines.push(cur);
+
+  // Длинное слово: чуть-чуть не влезает — оставляем целым (у соседей есть запас);
+  // сильно — переносим с дефисом, если есть свободная строка и на каждой
+  // части остаётся хотя бы 3 буквы.
+  for (let i = 0; i < lines.length && lines.length < maxLines; i++) {
+    const line = lines[i];
+    if (textWidth(line, fontSize) <= maxW * SLACK) continue;
+    let n = line.length - 3;
+    while (n >= 3 && textWidth(`${line.slice(0, n)}-`, fontSize) > maxW) n--;
+    if (n >= 3) lines.splice(i, 1, `${line.slice(0, n)}-`, line.slice(n));
+  }
+
+  if (lines.length > maxLines) {
+    const head = lines.slice(0, maxLines - 1);
+    lines.splice(0, lines.length, ...head, lines.slice(maxLines - 1).join(' '));
+  }
+  return { lines: lines.map((l) => fitText(l, maxW * SLACK, fontSize)), fontSize };
+}
+
+// Ширина, доступная подписи: до середины расстояния к соседям в ряду и до края.
+function labelWidths(labels, w) {
+  const widths = new Map();
+  for (const top of [true, false]) {
+    const row = labels.filter((l) => l.top === top).sort((a, b) => a.x - b.x);
+    row.forEach((l, i) => {
+      const left = i > 0 ? l.x - row[i - 1].x : 2 * l.x;
+      const right = i < row.length - 1 ? row[i + 1].x - l.x : 2 * (w - l.x);
+      widths.set(l, Math.min(left, right) - 6);
+    });
+  }
+  return widths;
+}
+
 export default function CategoryRing({ data, center, formatValue, onSelect }) {
   const ref = useRef(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -44,7 +100,14 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
     return () => ro.disconnect();
   }, []);
 
-  const g = useMemo(() => layoutRing(data, size.w, size.h), [data, size.w, size.h]);
+  // Вторая строка под название — только если какое-то не влезает в одну строку
+  // обычного слота (иначе зря отнимали бы высоту у кольца).
+  const nameLines = useMemo(() => {
+    const slotW = size.w / PER_ROW - 6;
+    return data.some((d) => textWidth(d.name, NAME_FS) > slotW) ? 2 : 1;
+  }, [data, size.w]);
+  const g = useMemo(() => layoutRing(data, size.w, size.h, { nameLines }), [data, size.w, size.h, nameLines]);
+  const widths = useMemo(() => (g ? labelWidths(g.labels, size.w) : new Map()), [g, size.w]);
 
   return (
     <div className="ring" ref={ref}>
@@ -64,9 +127,11 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
           {g.labels.map(({ s, a, x, ay }) => (
             <line key={`l-${s.name}`} x1={a.px} y1={a.py} x2={x} y2={ay} stroke={s.color} strokeWidth="1.2" />
           ))}
-          {g.labels.map(({ s, x, y }) => {
+          {g.labels.map((l) => {
+            const { s, x, y } = l;
             const top = y - g.labelH / 2;
             const { mode } = g;
+            const name = mode.name ? wrapName(s.name, widths.get(l) ?? g.slot - 6, mode.nameLines) : null;
             return (
               <g key={s.name} className="ring__label" onClick={() => onSelect?.(s)}>
                 <title>{`${s.name}: ${formatValue(s.value)}`}</title>
@@ -84,11 +149,21 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
                     <text x={x} y={top + mode.icon / 2 + 1} textAnchor="middle" dominantBaseline="central" fontSize={mode.icon}>
                       {s.icon}
                     </text>
-                    {mode.name && (
-                      <text x={x} y={top + mode.icon + 9} textAnchor="middle" dominantBaseline="central" fontSize={NAME_FS} className="ring__name">
-                        {fitText(s.name, g.slot - 4, NAME_FS)}
-                      </text>
-                    )}
+                    {name &&
+                      name.lines.map((line, i, all) => (
+                        <text
+                          key={i}
+                          x={x}
+                          // одна строка из двух отведённых — по центру между иконкой и процентом
+                          y={top + mode.icon + 9 + NAME_LINE_H * (i + (mode.nameLines - all.length) / 2)}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize={name.fontSize}
+                          className="ring__name"
+                        >
+                          {line}
+                        </text>
+                      ))}
                     <text x={x} y={top + g.labelH - 7} textAnchor="middle" dominantBaseline="central" fontSize={PCT_FS} className="ring__pct" fill={s.color}>
                       {fmtPercent(s.percent)}
                     </text>
