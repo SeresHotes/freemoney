@@ -122,18 +122,22 @@ export default function Home() {
         </section>
       )}
 
-      <button
-        className={`home__balance${netWorth.sum < 0 ? ' home__balance--negative' : ''}`}
-        onClick={() => navigate('/wallets')}
-      >
-        <span className="home__balance-label">Баланс</span>
-        <span className="home__balance-value">{formatAmount(netWorth.sum, baseCurrency)}</span>
-        {ratesNote && <span className="home__balance-note">{ratesNote}</span>}
-      </button>
-
-      <section className="home__actions">
-        <button className="btn btn--expense" onClick={() => navigate('/add/expense')}>− Расход</button>
-        <button className="btn btn--income" onClick={() => navigate('/add/income')}>+ Доход</button>
+      {/* Одна строка: «−» расход · баланс · «+» доход — экономит высоту для кольца. */}
+      <section className="home__money">
+        <button className="home__pm home__pm--expense" aria-label="Расход" title="Расход" onClick={() => navigate('/add/expense')}>
+          −
+        </button>
+        <button
+          className={`home__balance${netWorth.sum < 0 ? ' home__balance--negative' : ''}`}
+          title="Общий баланс"
+          onClick={() => navigate('/wallets')}
+        >
+          <span className="home__balance-value">{formatAmount(netWorth.sum, baseCurrency)}</span>
+          {ratesNote && <span className="home__balance-note">{ratesNote}</span>}
+        </button>
+        <button className="home__pm home__pm--income" aria-label="Доход" title="Доход" onClick={() => navigate('/add/income')}>
+          +
+        </button>
       </section>
       <section className="home__tiles">
         {[

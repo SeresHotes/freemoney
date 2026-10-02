@@ -1172,15 +1172,46 @@ code {
   font-size: 1.15rem;
   white-space: nowrap;
 }
-/* Общий баланс — по центру, над кнопками «Расход»/«Доход» (как в Monefy). */
-.home__balance {
+/* Строка «−» · баланс · «+» (как в Monefy): круглые кнопки по краям, общий
+   баланс посередине. */
+.home__money {
   flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+}
+.home__pm {
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  -webkit-tap-highlight-color: transparent;
+}
+.home__pm:active {
+  filter: brightness(0.9);
+}
+.home__pm--expense {
+  background: var(--expense);
+}
+.home__pm--income {
+  background: var(--income);
+  color: #06281c;
+}
+.home__balance {
+  min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  column-gap: 0.5rem;
-  padding: 0.55rem 1rem;
+  min-height: 44px;
+  padding: 0.3rem 0.6rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1190,12 +1221,11 @@ code {
 .home__balance:active {
   filter: brightness(0.9);
 }
-.home__balance-label {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
 .home__balance-value {
-  font-size: 1.35rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--income);
   white-space: nowrap;
@@ -1204,9 +1234,9 @@ code {
   color: var(--expense);
 }
 .home__balance-note {
-  flex-basis: 100%;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+  white-space: nowrap;
 }
 .home__stats {
   flex: 1 1 auto;
@@ -1218,7 +1248,7 @@ code {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.75rem;
+  padding: 0.6rem 0.4rem 0.4rem;
 }
 .home__stats-title {
   color: var(--muted);
@@ -1227,7 +1257,7 @@ code {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center;
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.25rem;
   flex-shrink: 0;
 }
 .home__empty {
@@ -1245,15 +1275,6 @@ code {
 }
 .home__wallets .wallet-chip {
   padding: 0.45rem 0.8rem;
-}
-.home__actions {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
-}
-.home__actions .btn {
-  padding: 0.85rem 0.5rem;
 }
 .home__tiles {
   flex: 0 0 auto;
@@ -1294,14 +1315,10 @@ code {
     gap: 0.45rem;
     padding-top: 0.5rem;
   }
-  .home__actions .btn {
-    padding: 0.7rem 0.5rem;
-  }
-  .home__balance {
-    padding: 0.35rem 1rem;
-  }
-  .home__balance-value {
-    font-size: 1.15rem;
+  .home__pm {
+    width: 46px;
+    height: 46px;
+    font-size: 1.75rem;
   }
   .home__tile {
     padding: 0.35rem 0.2rem;
