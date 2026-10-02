@@ -10,14 +10,33 @@
 // Поворот кольца и то, какие подряд идущие категории уходят в верхний ряд, подбираются
 // перебором так, чтобы каждая выносная линия отходила от кольца наружу под
 // углом не меньше MIN_ANGLE к касательной (никаких линий «по касательной» и
-// за кольцом); подписи делятся поровну (допускается перекос на одну), при
-// необходимости кольцо чуть уменьшается; при равенстве — самая крупная
+// за кольцом) и линии по возможности не пересекались; подписи делятся поровну (больший перекос, чем на одну, — только
+// если иначе линию не провести), при необходимости кольцо чуть уменьшается; при равенстве — самая крупная
 // категория внизу по центру.
+
+// Кольцо на главной: не больше RING_SLOTS подписей (по 5 сверху и снизу).
+// Категории раскладываются по убыванию, пока есть место и пока остаток больше
+// RING_REST_SHARE; хвост из 1% и меньше дальше не делим — это «Другое».
+const RING_SLOTS = 10;
+const RING_REST_SHARE = 0.01;
+
+// [[name, value]] по убыванию → сколько категорий показать отдельно.
+export function ringNamedCount(sorted, total) {
+  let rest = total;
+  for (let i = 0; i < sorted.length; i++) {
+    const left = sorted.length - i; // ещё не разложено (вместе с текущей)
+    if (left === 1) return sorted.length; // последняя — сама, не «Другое»
+    if (i === RING_SLOTS - 1 || rest <= total * RING_REST_SHARE) return i;
+    rest -= sorted[i][1];
+  }
+  return sorted.length;
+}
 
 const PAD_ANGLE = 0.02; // зазор между сегментами, рад
 const ROTATIONS = 72; // перебор поворотов с шагом 5°
 const MIN_ANGLE = 20; // минимальный угол линии к касательной кольца, град
 const PER_ROW = 5;
+const CROSS_COST = 120; // штраф за пересечение двух выносных линий
 const LEADER = 20; // зазор между рядом подписей и кольцом (под линию)
 const MIN_R = 80; // меньше — пробуем более компактные подписи
 // Варианты подписи: высота, размер иконки; name — есть ли строка с названием,
@@ -84,6 +103,15 @@ function anchor(s, lx, ly, g) {
   return { px, py, dev: Math.acos(Math.max(-1, Math.min(1, cos))) / DEG, len };
 }
 
+// Пересекаются ли отрезки p1–p2 и p3–p4 (строго, без общих концов).
+function crosses(x1, y1, x2, y2, x3, y3, x4, y4) {
+  const d1 = (x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3);
+  const d2 = (x4 - x3) * (y2 - y3) - (y4 - y3) * (x2 - x3);
+  const d3 = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+  const d4 = (x2 - x1) * (y4 - y1) - (y2 - y1) * (x4 - x1);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
 // Сегменты при повороте rot: по часовой от угла rot.
 function slicesAt(data, total, rot) {
   const pad = data.length > 1 ? PAD_ANGLE : 0;
@@ -118,6 +146,14 @@ function placeLabels(slices, cut, nTop, g) {
       if (p.a.dev > 90 - MIN_ANGLE) cost += 1000 + 20 * (p.a.dev - (90 - MIN_ANGLE));
     }
     labels.push(...placed);
+  }
+  // перекрещённые линии читаются плохо
+  for (let i = 0; i < labels.length; i++) {
+    const p = labels[i];
+    for (let j = i + 1; j < labels.length; j++) {
+      const q = labels[j];
+      if (crosses(p.a.px, p.a.py, p.x, p.ay, q.a.px, q.a.py, q.x, q.ay)) cost += CROSS_COST;
+    }
   }
   return { labels, cost };
 }
@@ -167,12 +203,16 @@ export function layoutRing(data, w, h) {
   const maxR = Math.max(30, radiusFor(mode));
   const cx = w / 2;
   const cy = h / 2;
-  // Сколько подписей сверху: поровну, допускается перекос на одну.
+  // Сколько подписей сверху: поровну (перекос на одну — почти бесплатно).
+  // Больший перекос дорог и выбирается, только если иначе линию не провести
+  // (например, все мелкие сегменты в узком секторе рядом с огромным).
   const half = n / 2;
   const splits = [];
-  for (let k = Math.max(0, n - PER_ROW); k <= Math.min(PER_ROW, n); k++) {
-    if (Math.abs(k - half) <= 1) splits.push(k);
-  }
+  for (let k = Math.max(0, n - PER_ROW); k <= Math.min(PER_ROW, n); k++) splits.push(k);
+  const splitCost = (k) => {
+    const d = Math.abs(k - half);
+    return 15 * Math.min(d, 1) + 300 * Math.max(0, d - 1);
+  };
 
   // По убыванию по часовой — привычнее; остальные — если с ними линии лучше.
   const orders = [[data, 0], [sides(data), 30], [mountain(data), 40]];
@@ -197,7 +237,7 @@ export function layoutRing(data, w, h) {
         for (const nTop of splits) {
           for (let cut = 0; cut < n; cut++) {
             const v = placeLabels(slices, cut, nTop, g);
-            const cost = v.cost + orderCost + 0.3 * biggestOff + 15 * Math.abs(nTop - half);
+            const cost = v.cost + orderCost + 0.3 * biggestOff + splitCost(nTop);
             if (!best || cost < best.cost - 1e-6) best = { ...v, cost, slices, g };
           }
         }

@@ -7,14 +7,8 @@ import { walletBalance, isIncome, isExpense } from '../utils/finance';
 import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 import { useBaseRates } from '../hooks/useBaseRates';
 import { IS_DEV_CHANNEL } from '../config';
-
 import CategoryRing from '../components/CategoryRing';
-
-// Кольцо на главной: не больше 9 подписанных категорий (+ «Другое» = 10 —
-// по 5 подписей сверху и снизу); категории меньше 3% — тонкие полоски, их
-// подписи только мешают, они уходят в «Другое».
-const RING_NAMED = 9;
-const RING_MIN_SHARE = 0.03;
+import { ringNamedCount } from '../utils/ringLayout';
 
 export default function Home() {
   const { transactions, wallets, categories, baseCurrency } = useApp();
@@ -69,10 +63,7 @@ export default function Home() {
     }
     const iconOf = new Map(categories.map((c) => [c.name, c.icon]));
     const sorted = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-    // На кольце — до RING_NAMED категорий с долей от RING_MIN_SHARE; остальное
-    // одним сегментом «Другое» (если «остальное» — одна категория, она сама).
-    let named = sorted.filter(([, v], i) => i < RING_NAMED && v >= exp * RING_MIN_SHARE);
-    if (sorted.length - named.length === 1) named = sorted;
+    const named = sorted.slice(0, ringNamedCount(sorted, exp));
     const cats = named.map(([name, value], i) => ({
       name,
       value,

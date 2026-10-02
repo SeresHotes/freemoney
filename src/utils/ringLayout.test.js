@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutRing } from './ringLayout';
+import { layoutRing, ringNamedCount } from './ringLayout';
 
 const mk = (pairs) => pairs.map(([name, value]) => ({ name, value }));
 const maxDev = (g) => Math.max(...g.labels.map((l) => l.a.dev));
@@ -34,5 +34,30 @@ describe('layoutRing', () => {
     const g = layoutRing(mk([['Жильё', 100]]), 306, 430);
     expect(g.slices).toHaveLength(1);
     expect(g.labels).toHaveLength(1);
+  });
+});
+
+describe('ringNamedCount', () => {
+  const sum = (s) => s.reduce((a, [, v]) => a + v, 0);
+  const count = (vals) => {
+    const sorted = vals.map((v, i) => [`c${i}`, v]);
+    return ringNamedCount(sorted, sum(sorted));
+  };
+
+  it('мало категорий — все отдельно, без «Другого»', () => {
+    expect(count([90000, 4000, 2500, 1500, 1200, 800])).toBe(6);
+  });
+
+  it('10 категорий — все 10 помещаются', () => {
+    expect(count([10, 10, 10, 10, 10, 10, 10, 10, 10, 10])).toBe(10);
+  });
+
+  it('больше 10 — 9 отдельно + «Другое»', () => {
+    expect(count([30, 12, 5.4, 4.2, 3.1, 2.5, 2, 1.8, 1.5, 0.9, 0.7, 0.6])).toBe(9);
+  });
+
+  it('хвост ≤1% не раскладывается', () => {
+    // остаток после двух первых: 0.5 + 0.4 = 0.9% — «Другое»
+    expect(count([90, 9.1, 0.5, 0.4])).toBe(2);
   });
 });
