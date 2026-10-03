@@ -191,7 +191,7 @@ export default function Debt() {
 
         <label className="field">
           <span className="field__label">Сумма{work ? `, ${work.currency}` : ''}</span>
-          <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amountWork} onChange={(e) => setAmountWork(e.target.value)} autoFocus />
+          <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amountWork} onChange={(e) => setAmountWork(e.target.value)} autoFocus={!editing} />
         </label>
 
         {different && (

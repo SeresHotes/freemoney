@@ -128,7 +128,7 @@ export default function Transfer() {
 
         <label className="field">
           <span className="field__label">Списать{from ? `, ${from.currency}` : ''}</span>
-          <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amountOut} onChange={(e) => setAmountOut(e.target.value)} autoFocus />
+          <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amountOut} onChange={(e) => setAmountOut(e.target.value)} autoFocus={!editing} />
         </label>
 
         <label className="field">
