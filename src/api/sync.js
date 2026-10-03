@@ -16,15 +16,17 @@
 //   categories — сначала по id, затем по имени. Сопоставление по id ловит
 //     переименование (строка листа с тем же id — та же категория, а не новая),
 //     сопоставление по имени — совпадение базовых категорий на разных
-//     устройствах (id категории у них разный). tx ссылается на категорию по
-//     имени, поэтому имя каскадится в операции при rename.
+//     устройствах (id категории у них разный). После сопоставления локальный
+//     id приводится к id из таблицы (rekey), чтобы следующее переименование
+//     нашло пару по id, а не превратилось во вторую категорию. tx ссылается на
+//     категорию по имени, поэтому имя каскадится в операции при rename.
 //
 // Первый синк с пустым локальным стором и непустой таблицей = «adopt»: берём
 // таблицу как источник (бывший google-пользователь / второе устройство), не
 // смешивая её со свежесозданными дефолтами. Иначе — обычный merge без потерь.
 
 import { ensureSyncSchema, fetchAllForSync, overwriteEntity } from './store';
-import { rawDump, applyRecords, replaceAllData, getMeta, setMeta, hardDeleteSettings } from './localBackend';
+import { rawDump, applyRecords, rekeyRecords, replaceAllData, getMeta, setMeta, hardDeleteSettings } from './localBackend';
 import { nowStamp, newId } from '../utils/format';
 import { DEFAULT_CATEGORIES } from './defaults';
 
@@ -102,9 +104,26 @@ function effectiveRemoteTs(entity, r, l, snapEntry, now) {
 
 // --- Сопоставление локальных и удалённых записей в пары {l, r} ---------------
 
+// Несколько записей с одним ключом (переименование только регистром у
+// кошелька: «карта» → «Карта» — в IndexedDB это разные ключи, а здесь одно
+// имя) — оставляем живую, при равенстве — самую свежую. Иначе tombstone
+// старого имени мог затенить новую запись, и та никогда не доехала бы до листа.
+function pickByKey(recs, keyFn) {
+  const m = new Map();
+  for (const x of recs) {
+    const k = keyFn(x);
+    const cur = m.get(k);
+    const better = !cur
+      || (cur.deleted && !x.deleted)
+      || (!!cur.deleted === !!x.deleted && (x.updatedAt || 0) >= (cur.updatedAt || 0));
+    if (better) m.set(k, x);
+  }
+  return m;
+}
+
 function pairByKey(localRecs, remoteRecs, keyFn) {
-  const lMap = new Map(localRecs.map((x) => [keyFn(x), x]));
-  const rMap = new Map(remoteRecs.map((x) => [keyFn(x), x]));
+  const lMap = pickByKey(localRecs, keyFn);
+  const rMap = pickByKey(remoteRecs, keyFn);
   const keys = new Set([...lMap.keys(), ...rMap.keys()]);
   return [...keys].map((k) => ({ l: lMap.get(k) || null, r: rMap.get(k) || null }));
 }
@@ -132,6 +151,7 @@ function pairCategories(localRecs, remoteRecs) {
 // Общее ядро слияния по готовым парам.
 function mergeCore(entity, pairs, snap, now) {
   const localUpserts = [];
+  const localRekeys = [];
   const remoteRecords = [];
   const newSnap = {};
   let remoteDirty = false;
@@ -145,29 +165,35 @@ function mergeCore(entity, pairs, snap, now) {
       winner = rEff > (l.updatedAt || 0) ? r : l;
     }
 
-    // Локальная запись: у категорий сохраняем стабильный локальный id, чтобы
-    // rename не плодил дубли в IndexedDB (стор с keyPath 'id').
-    const localRec = entity === 'categories'
-      ? { ...winner, id: (l && l.id) || (r && r.id) || newId() }
-      : winner;
-    // Запись для листа: у категорий сохраняем id, уже стоящий в таблице.
-    const remoteRec = entity === 'categories'
-      ? { ...winner, id: (r && r.id) || (l && l.id) || '' }
-      : winner;
+    // У категорий id сводим к ОДНОМУ на обеих сторонах — к тому, что уже стоит
+    // в таблице. Пары по имени (базовые категории, заведённые на разных
+    // устройствах) иначе так и жили бы с разными id, и после переименования
+    // сопоставить их было бы не по чему: ни id, ни имя не совпадают — синк
+    // создавал вторую категорию. Смена локального id — это rekey в IndexedDB
+    // (keyPath 'id'): старый ключ удаляется, запись кладётся под новым.
+    const catId = entity === 'categories'
+      ? (r && r.id) || (l && l.id) || newId()
+      : null;
+    const localRec = entity === 'categories' ? { ...winner, id: catId } : winner;
+    const remoteRec = entity === 'categories' ? { ...winner, id: catId } : winner;
 
     remoteRecords.push(remoteRec);
     const winnerSig = contentSig(entity, winner);
     newSnap[snapKeyOf(entity, remoteRec)] = { ts: winner.updatedAt || 0, sig: winnerSig };
 
-    if (!l || contentSig(entity, l) !== winnerSig || (l.updatedAt || 0) !== (winner.updatedAt || 0)) {
+    if (l && entity === 'categories' && l.id && l.id !== catId) {
+      // fromTs — метка локальной записи на момент дампа: rekey не применится,
+      // если её успели поправить во время синхронизации (compare-and-set).
+      localRekeys.push({ from: l.id, fromTs: l.updatedAt || 0, rec: localRec });
+    } else if (!l || contentSig(entity, l) !== winnerSig || (l.updatedAt || 0) !== (winner.updatedAt || 0)) {
       localUpserts.push(localRec);
     }
-    if (!r || contentSig(entity, r) !== winnerSig) {
+    if (!r || contentSig(entity, r) !== winnerSig || (entity === 'categories' && r.id !== catId)) {
       remoteDirty = true;
     }
   }
 
-  return { localUpserts, remoteRecords, remoteDirty, snap: newSnap };
+  return { localUpserts, localRekeys, remoteRecords, remoteDirty, snap: newSnap };
 }
 
 export function mergeEntity(entity, localRecs, remoteRecs, snap, now) {
@@ -257,6 +283,10 @@ export async function syncNow(spreadsheetId) {
     if (res.localUpserts.length) {
       await applyRecords(entity, res.localUpserts);
       pulled += res.localUpserts.length;
+    }
+    if (res.localRekeys.length) {
+      await rekeyRecords(entity, res.localRekeys);
+      pulled += res.localRekeys.length;
     }
     if (res.remoteDirty || (migrateFmt && res.remoteRecords.length)) {
       await overwriteEntity(spreadsheetId, entity, res.remoteRecords);

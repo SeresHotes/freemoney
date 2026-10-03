@@ -253,6 +253,34 @@ export async function applyRecords(entity, records) {
   db.close();
 }
 
+// Сменить ключ записей (у категорий — привести локальный id к id из таблицы,
+// см. sync.js). Каждый элемент: { from: старый id, fromTs: метка на момент
+// дампа, rec: запись под новым id }. Compare-and-set, как в applyRecords: если
+// запись под старым id поправили во время синхронизации — не трогаем, rekey
+// случится на следующем проходе.
+export async function rekeyRecords(entity, items) {
+  if (!items?.length) return;
+  const name = STORE_BY_ENTITY[entity];
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(name, 'readwrite');
+    const s = tx.objectStore(name);
+    for (const { from, fromTs, rec } of items) {
+      const getReq = s.get(from);
+      getReq.onsuccess = () => {
+        const cur = getReq.result;
+        if (cur && (cur.updatedAt || 0) > fromTs) return;
+        s.delete(from);
+        s.put(rec);
+      };
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+  db.close();
+}
+
 // Полностью заменить локальные данные (принять таблицу как есть — «pristine adopt»).
 export async function replaceAllData({ transactions, categories, wallets, tags, settings }) {
   const db = await openDb();
