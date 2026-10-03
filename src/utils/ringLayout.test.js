@@ -13,14 +13,13 @@ describe('layoutRing', () => {
     expect(b.R).toBeCloseTo(306 * R_FRAC);
   });
 
-  it('крупнейшая — справа (по центру у «3 часов»), вторая — слева', () => {
-    const g = layoutRing(big, 306, 520);
-    const mid = (name) => {
-      const s = g.slices.find((x) => x.name === name);
-      return Math.atan2(Math.sin(s.mid), Math.cos(s.mid));
-    };
-    expect(Math.abs(mid('Жильё'))).toBeLessThan(0.01);
-    expect(Math.abs(Math.abs(mid('Продукты')) - Math.PI)).toBeLessThan(0.35);
+  it('поиск укорачивает самую длинную линию (не хуже, чем просто по убыванию)', () => {
+    for (const data of [big, mk([['Study', 18800], ['House', 13100], ['Sub', 13100], ['Food', 2850], ['Cafe', 2280], ['Sports', 1710], ['Transport', 1140], ['Sths', 1140], ['Другое', 1700]])]) {
+      const found = layoutRing(data, 306, 520);
+      const plain = layoutRing(data, 306, 520, { search: false });
+      expect(found.maxLen).toBeLessThanOrEqual(plain.maxLen + 0.5);
+      expect(found.maxLen).toBeCloseTo(Math.max(...found.labels.map((l) => l.len)));
+    }
   });
 
   it('все категории ровно по разу, сегменты идут подряд', () => {
