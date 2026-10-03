@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getRatesMap } from '../api/rates';
+import { getCachedLatest, getLatestRates } from '../api/rates';
 
-// Загружает текущие курсы для базовой валюты (кэш — раз в день) и даёт
-// конвертер суммы из любой валюты в базовую.
+// Текущие курсы для базовой валюты и конвертер суммы из любой валюты в базовую.
+// Сохранённые курсы отдаются сразу (работает офлайн), свежие подтягиваются в
+// фоне (раз в день). ratesDate — дата курсов (старее сегодняшней, если сети
+// давно не было); failed — курсов нет совсем (ни сети, ни кэша).
 export function useBaseRates(baseCurrency) {
-  const [ratesMap, setRatesMap] = useState(null); // { код(нижн.): сколько за 1 базовую }
+  const [rates, setRates] = useState(() => getCachedLatest(baseCurrency)); // { date, map }
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setRatesMap(null);
+    setRates(getCachedLatest(baseCurrency));
     setFailed(false);
-    getRatesMap(baseCurrency, 'latest').then((map) => {
+    getLatestRates(baseCurrency).then((r) => {
       if (cancelled) return;
-      if (map) setRatesMap(map);
+      if (r) setRates(r);
       else setFailed(true);
     });
     return () => {
@@ -21,6 +23,7 @@ export function useBaseRates(baseCurrency) {
     };
   }, [baseCurrency]);
 
+  const ratesMap = rates?.map;
   // Перевод суммы из валюты `cur` в базовую. null, если курс неизвестен.
   const toBase = useCallback(
     (amount, cur) => {
@@ -32,5 +35,5 @@ export function useBaseRates(baseCurrency) {
     [ratesMap, baseCurrency],
   );
 
-  return { ready: !!ratesMap, failed, toBase };
+  return { ready: !!ratesMap, failed, ratesDate: rates?.date ?? null, toBase };
 }
