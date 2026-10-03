@@ -4,7 +4,7 @@ import { EMOJI_PALETTE, extractEmoji, loadEmojiData, searchEmoji } from '../util
 const POPULAR = { name: 'Популярные', icon: '⭐', items: EMOJI_PALETTE.map((e) => [e, '']) };
 
 // Выбор иконки: поиск по названию (рус/англ), вкладки групп и полный набор эмодзи.
-export default function EmojiPicker({ value, onChange }) {
+export default function EmojiPicker({ value, onChange, className = '' }) {
   const [groups, setGroups] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [query, setQuery] = useState('');
@@ -66,7 +66,7 @@ export default function EmojiPicker({ value, onChange }) {
   );
 
   return (
-    <div className="emoji-picker">
+    <div className={`emoji-picker ${className}`.trim()}>
       <input
         className="field__input emoji-picker__search"
         type="search"
