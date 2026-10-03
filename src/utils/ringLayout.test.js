@@ -13,12 +13,12 @@ describe('layoutRing', () => {
     expect(b.R).toBeCloseTo(306 * R_FRAC);
   });
 
-  it('поиск укорачивает самую длинную линию (не хуже, чем просто по убыванию)', () => {
+  it('поиск уменьшает самый большой отрыв подписи от сектора (не хуже, чем по убыванию)', () => {
     for (const data of [big, mk([['Study', 18800], ['House', 13100], ['Sub', 13100], ['Food', 2850], ['Cafe', 2280], ['Sports', 1710], ['Transport', 1140], ['Sths', 1140], ['Другое', 1700]])]) {
       const found = layoutRing(data, 306, 520);
       const plain = layoutRing(data, 306, 520, { search: false });
-      expect(found.maxLen).toBeLessThanOrEqual(plain.maxLen + 0.5);
-      expect(found.maxLen).toBeCloseTo(Math.max(...found.labels.map((l) => l.len)));
+      expect(found.maxGap).toBeLessThanOrEqual(plain.maxGap + 0.5);
+      expect(found.maxGap).toBeCloseTo(Math.max(...found.labels.map((l) => l.gap)));
     }
   });
 

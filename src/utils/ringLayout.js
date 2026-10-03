@@ -6,12 +6,13 @@
 // влезают); подписи (иконка + название) — рядами у верхнего и нижнего края
 // карточки, до 5 в ряду.
 //
-// Расстановка — поиск, минимизирующий САМУЮ ДЛИННУЮ выносную линию (чтобы
-// каждая подпись была как можно ближе к своему сегменту): порядок сегментов по
-// кругу (любой), поворот кольца и ряд каждой подписи. Старт — несколько
-// порядков (по убыванию, вперемешку, по бокам, горкой) × все повороты, затем
-// обмены пар сегментов, пока самая длинная линия укорачивается. Вторично —
-// средняя длина, пересечения линий и обходы кольца. Детерминированно.
+// Расстановка — поиск, минимизирующий САМЫЙ БОЛЬШОЙ отрыв подписи от её
+// сектора по кругу (насколько направление на подпись из центра уходит за дугу
+// сектора: подпись справа у сектора слева — плохо): порядок сегментов по кругу
+// (любой), поворот кольца и ряд каждой подписи. Старт — несколько порядков (по
+// убыванию, вперемешку, по бокам, горкой) × все повороты, затем обмены пар
+// сегментов, пока худший отрыв уменьшается. Вторично — средний отрыв, длина
+// линий, пересечения и обходы кольца. Детерминированно.
 // Выносные линии ломаные (до двух изломов, см. leader).
 
 // Кольцо на главной: не больше RING_NAMED отдельных категорий (по числу цветов
@@ -42,13 +43,14 @@ const STUB = 16; // радиальный отрезок линии от коль
 const TAIL = 10; // прямой (вертикальный) вход линии в подпись (2-й излом)
 const STRAIGHT = 12; // излом меньше этого угла, град, не делаем
 const LEADER = 34; // минимальный зазор между рядом подписей и кольцом (под линию)
-const CROSS_COST = 40; // пересечение двух линий «стоит» как +40px к самой длинной
-const MEAN_WEIGHT = 0.15; // вес средней длины линий (вторично к самой длинной)
+const CROSS_COST = 15; // пересечение двух линий «стоит» как +15° к самому большому отрыву
+const MEAN_WEIGHT = 0.3; // вес среднего отрыва (вторично к самому большому)
+const LEN_WEIGHT = 0.01; // совсем немного — длина линий (при прочих равных — короче)
 const SEED_ROTATIONS = 24; // повороты для стартовых порядков (шаг 15°)
 const ROT_STEPS = [-10, 0, 10]; // подстройка поворота при обменах, град
 const MAX_ITER = 25; // шагов улучшения обменами, не больше
 const EDGE = 2; // отступ рядов от края
-const DETOUR_COST = 200; // за каждую точку обхода кольца (обход — крайний случай)
+const DETOUR_COST = 60; // за каждую точку обхода кольца, ° (обход — крайний случай)
 // Подпись: иконка и название (1–2 строки); если по высоте тесно — без названия.
 const MODES = [
   { h: 46, icon: 26, name: true },
@@ -222,12 +224,19 @@ function assignRows(slices) {
   return [top.map((p) => p.s), bottom.map((p) => p.s)];
 }
 
+// Отрыв подписи от её сектора по кругу, град: направление на подпись из центра
+// кольца против дуги сектора (0 — подпись прямо «напротив» сектора).
+function arcGap(s, x, y, g) {
+  const a = near(Math.atan2(y - g.cy, x - g.cx), (s.a0 + s.a1) / 2);
+  return (a < s.a0 ? s.a0 - a : a > s.a1 ? a - s.a1 : 0) / DEG;
+}
+
 const polyLen = (pts) => pts.slice(1).reduce((sum, p, i) => sum + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
 
 // Подписи рядов: каждый ряд слева направо по желаемому x (под своим сегментом),
-// затем ломаные линии. Стоимость — длина САМОЙ ДЛИННОЙ линии (её и
-// минимизируем), немного — средняя длина, плюс штрафы за пересечения линий и
-// обходы кольца.
+// затем ломаные линии. Стоимость — САМЫЙ БОЛЬШОЙ отрыв подписи от её сектора
+// по кругу (его и минимизируем), вторично — средний отрыв, чуть-чуть — длина
+// линий, плюс штрафы за пересечения линий и обходы кольца.
 function placeRows(topItems, bottomItems, g, bound = Infinity) {
   const labels = [];
   let detours = 0;
@@ -240,16 +249,19 @@ function placeRows(topItems, bottomItems, g, bound = Infinity) {
       const dir = top ? [0, 1] : [0, -1];
       p.a = leader(p.s, p.x, p.y + dir[1] * (g.labelH / 2 + 3), g, dir);
       p.len = polyLen(p.a.points);
+      p.gap = arcGap(p.s, p.x, p.y, g);
       detours += p.a.detour;
     }
     labels.push(...placed);
   }
-  const lens = labels.map((l) => l.len);
-  const maxLen = Math.max(0, ...lens);
-  const mean = lens.reduce((a, b) => a + b, 0) / (lens.length || 1);
-  const base = maxLen + MEAN_WEIGHT * mean + DETOUR_COST * detours;
+  const gaps = labels.map((l) => l.gap);
+  const maxGap = Math.max(0, ...gaps);
+  const m = labels.length || 1;
+  const mean = gaps.reduce((a, b) => a + b, 0) / m;
+  const meanLen = labels.reduce((a, l) => a + l.len, 0) / m;
+  const base = maxGap + MEAN_WEIGHT * mean + LEN_WEIGHT * meanLen + DETOUR_COST * detours;
   // заведомо хуже лучшего — пересечения не считаем (ускоряет поиск в разы)
-  if (base >= bound) return { labels, cost: base, maxLen };
+  if (base >= bound) return { labels, cost: base, maxGap };
   // пересечения (все отрезки, кроме радиального у кольца — там линии и так расходятся)
   const segs = labels.map((l) => {
     const pts = l.a.stub ? l.a.points.slice(1) : l.a.points;
@@ -261,7 +273,7 @@ function placeRows(topItems, bottomItems, g, bound = Infinity) {
       if (segs[i].some(([p1, p2]) => segs[j].some(([q1, q2]) => crosses(...p1, ...p2, ...q1, ...q2)))) crossings++;
     }
   }
-  return { labels, cost: base + CROSS_COST * crossings, maxLen };
+  return { labels, cost: base + CROSS_COST * crossings, maxGap };
 }
 
 // nameLines — сколько строк отвести под название (2 — если какое-то название не
@@ -341,7 +353,7 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
         const order = [...best.order];
         [order[i], order[j]] = [order[j], order[i]];
         const v = bestRot(order, nearRots(best.rot), (improved ?? best).cost);
-        if (v.cost < (improved ?? best).cost - 0.5) improved = v;
+        if (v.cost < (improved ?? best).cost - 0.2) improved = v;
       }
     }
     if (!improved) break;
@@ -358,7 +370,7 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
       if (nextTop.length > PER_ROW || n - nextTop.length > PER_ROW) continue;
       const set = new Set(nextTop);
       const v = evaluate(best.order, best.rot, (sl) => [sl.filter((s) => set.has(s.name)), sl.filter((s) => !set.has(s.name))]);
-      if (v.cost < best.cost - 0.5) {
+      if (v.cost < best.cost - 0.2) {
         best = v;
         changed = true;
         break;
@@ -370,5 +382,5 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
   let k = 0;
   const color = new Map(best.order.map((d) => [d.name, d.other ? otherColor : palette[k++ % palette.length]]));
   for (const sl of best.slices) sl.color = color.get(sl.name);
-  return { ...g, slices: best.slices, labels: best.labels, maxLen: best.maxLen };
+  return { ...g, slices: best.slices, labels: best.labels, maxGap: best.maxGap };
 }
