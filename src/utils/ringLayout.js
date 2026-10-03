@@ -1,18 +1,17 @@
 // Раскладка кольца категорий главного экрана (см. components/CategoryRing.jsx).
 //
-// Подписи (крупная иконка, название, процент) стоят в фиксированных слотах:
-// ряд сверху и ряд снизу кольца, до 5 в ряду; кольцо — между рядами, на всю
-// доступную ширину. Размеры шрифтов фиксированные; если по высоте тесно, сперва
-// убирается название, затем подпись сжимается в одну строку «иконка процент».
+// Кольцо фиксированного размера — его радиус всегда одна и та же доля ширины
+// (R_FRAC), чтобы на любом экране оно выглядело одинаково; уменьшается, только
+// если по высоте физически не помещается. Проценты — на самих сегментах (если
+// влезают); подписи (иконка + название) — рядами сверху и снизу, до 5 в ряду.
 //
-// Сегменты идут по часовой стрелке по убыванию («Другое» — последним), а если
-// так линии получаются плохими — «по бокам» (sides) или «горкой» (mountain).
-// Поворот кольца и то, какие подряд идущие категории уходят в верхний ряд, подбираются
-// перебором так, чтобы каждая выносная линия отходила от кольца наружу под
-// углом не меньше MIN_ANGLE к касательной (никаких линий «по касательной» и
-// за кольцом) и линии по возможности не пересекались; подписи делятся поровну (больший перекос, чем на одну, — только
-// если иначе линию не провести), при необходимости кольцо чуть уменьшается; при равенстве — самая крупная
-// категория внизу по центру.
+// Сегменты идут строго по убыванию по часовой стрелке («Другое» — последним).
+// Выносные линии ломаные: короткий отрезок строго по радиусу (линия всегда
+// выходит из кольца под прямым углом), затем — к подписи. Поворот кольца и то,
+// какие подряд идущие категории уходят в верхний ряд, подбираются перебором:
+// линии не должны пересекаться и обходить кольцо (это крайний случай — если
+// подписи иначе не разложить), подписи — делиться между рядами поровну; при
+// равенстве крупнейшая категория начинается сверху.
 
 // Кольцо на главной: не больше RING_SLOTS подписей (по 5 сверху и снизу).
 // Категории раскладываются по убыванию, пока есть место и пока остаток больше
@@ -32,20 +31,21 @@ export function ringNamedCount(sorted, total) {
   return sorted.length;
 }
 
+export const R_FRAC = 0.34; // радиус кольца — доля ширины (диаметр ≈ 68%)
+const MAX_SHRINK = 0.15; // на сколько кольцо может уменьшиться ради названий
+export const INNER = 0.6; // внутренний радиус — доля внешнего (толщина под проценты)
 const PAD_ANGLE = 0.02; // зазор между сегментами, рад
 const ROTATIONS = 72; // перебор поворотов с шагом 5°
-const MIN_ANGLE = 20; // минимальный угол линии к касательной кольца, град
 export const PER_ROW = 5;
 export const NAME_LINE_H = 13; // высота строки названия в подписи
+const STUB = 9; // радиальный отрезок линии от кольца
+const LEADER = 24; // зазор между рядом подписей и кольцом (под линию)
 const CROSS_COST = 120; // штраф за пересечение двух выносных линий
-const LEADER = 18; // зазор между рядом подписей и кольцом (под линию)
-const MIN_R = 68; // меньше — пробуем более компактные подписи
-// Варианты подписи: высота, размер иконки; name — есть ли строка с названием,
-// inline — «иконка процент» в одну строку.
+const DETOUR_COST = 150; // за каждую точку обхода кольца (обход — крайний случай)
+// Подпись: иконка и название (1–2 строки); если по высоте тесно — без названия.
 const MODES = [
-  { h: 56, icon: 26, name: true },
-  { h: 44, icon: 24, name: false },
-  { h: 22, icon: 16, inline: true },
+  { h: 46, icon: 26, name: true },
+  { h: 30, icon: 24, name: false },
 ];
 
 const DEG = Math.PI / 180;
@@ -89,19 +89,13 @@ function near(a, ref) {
 
 export const fmtPercent = (p) => (p < 0.01 ? '<1%' : `${Math.round(p * 100)}%`);
 
-// Лучшая точка крепления линии на сегменте для подписи с точкой (lx, ly):
-// по возможности линия идёт по радиусу; dev — отклонение линии от радиуса
-// (90° — по касательной).
-function anchor(s, lx, ly, g) {
-  const want = near(Math.atan2(ly - g.cy, lx - g.cx), s.mid);
-  const m = Math.min(0.03, (s.a1 - s.a0) / 3);
-  const t = Math.min(s.a1 - m, Math.max(s.a0 + m, want));
-  const [px, py] = polar(g.cx, g.cy, g.R, t);
-  const vx = lx - px;
-  const vy = ly - py;
-  const len = Math.hypot(vx, vy) || 1;
-  const cos = (vx * Math.cos(t) + vy * Math.sin(t)) / len;
-  return { px, py, dev: Math.acos(Math.max(-1, Math.min(1, cos))) / DEG, len };
+// Расстояние от точки (px, py) до отрезка (x1, y1)–(x2, y2).
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
 // Пересекаются ли отрезки p1–p2 и p3–p4 (строго, без общих концов).
@@ -111,6 +105,41 @@ function crosses(x1, y1, x2, y2, x3, y3, x4, y4) {
   const d3 = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
   const d4 = (x2 - x1) * (y4 - y1) - (y2 - y1) * (x4 - x1);
   return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+// Ломаная линия к подписи с точкой крепления (lx, ly): точка на сегменте,
+// ближайшая по направлению к подписи, → радиальный отрезок наружу → подпись.
+// Если прямой путь к подписи зашёл бы на кольцо (подпись «с другой стороны»),
+// линия огибает кольцо снаружи по точкам на радиусе R + STUB. points — вершины
+// ломаной; detour — сколько точек обхода понадобилось; bend — излом, град.
+function leader(s, lx, ly, g) {
+  const want = near(Math.atan2(ly - g.cy, lx - g.cx), s.mid);
+  const m = Math.min(0.03, (s.a1 - s.a0) / 3);
+  const t = Math.min(s.a1 - m, Math.max(s.a0 + m, want));
+  const [ax, ay] = polar(g.cx, g.cy, g.R, t);
+  const [sx, sy] = polar(g.cx, g.cy, g.R + STUB, t);
+  const points = [[ax, ay], [sx, sy]];
+  const hits = (x, y) => distToSegment(g.cx, g.cy, x, y, lx, ly) < g.R + 2;
+  let detour = 0;
+  if (hits(sx, sy)) {
+    // Обход по дуге радиуса rw в сторону подписи (кратчайшим путём). Шаг —
+    // такой, чтобы хорда между соседними точками не срезала край кольца.
+    const rw = g.R + STUB + 8;
+    const step = 2 * Math.acos((g.R + 2) / rw) * 0.9 * Math.sign(want - t || 1);
+    let a = t;
+    points.push(polar(g.cx, g.cy, rw, a));
+    for (let i = 0; i < 24 && hits(...points[points.length - 1]); i++) {
+      a += step;
+      points.push(polar(g.cx, g.cy, rw, a));
+      detour++;
+    }
+  }
+  const [px, py] = points[points.length - 1];
+  points.push([lx, ly]);
+  const len = Math.hypot(lx - sx, ly - sy) || 1;
+  const cos = ((lx - sx) * Math.cos(t) + (ly - sy) * Math.sin(t)) / len;
+  const bend = Math.acos(Math.max(-1, Math.min(1, cos))) / DEG;
+  return { points, px, py, len, bend, detour };
 }
 
 // Сегменты при повороте rot: по часовой от угла rot.
@@ -126,8 +155,8 @@ function slicesAt(data, total, rot) {
   });
 }
 
-// Подписи для поворота rot и разреза cut: слайсы по часовой начиная с cut —
-// первые nTop в верхний ряд (слева направо), остальные в нижний (справа налево).
+// Подписи для разреза cut: сегменты по часовой начиная с cut — первые nTop в
+// верхний ряд (слева направо), остальные в нижний (справа налево).
 function placeLabels(slices, cut, nTop, g) {
   const n = slices.length;
   const seq = Array.from({ length: n }, (_, i) => slices[(cut + i) % n]);
@@ -142,56 +171,19 @@ function placeLabels(slices, cut, nTop, g) {
     spread(placed, g.slot, g.slot / 2, g.w - g.slot / 2);
     for (const p of placed) {
       p.ay = p.top ? p.y + g.labelH / 2 + 3 : p.y - g.labelH / 2 - 3;
-      p.a = anchor(p.s, p.x, p.ay, g);
-      cost += p.a.dev + 0.02 * p.a.len;
-      if (p.a.dev > 90 - MIN_ANGLE) cost += 1000 + 20 * (p.a.dev - (90 - MIN_ANGLE));
+      p.a = leader(p.s, p.x, p.ay, g);
+      cost += 0.3 * p.a.bend + 0.02 * p.a.len + DETOUR_COST * p.a.detour;
     }
     labels.push(...placed);
   }
-  // перекрещённые линии читаются плохо
   for (let i = 0; i < labels.length; i++) {
-    const p = labels[i];
+    const p = labels[i].a;
     for (let j = i + 1; j < labels.length; j++) {
-      const q = labels[j];
-      if (crosses(p.a.px, p.a.py, p.x, p.ay, q.a.px, q.a.py, q.x, q.ay)) cost += CROSS_COST;
+      const q = labels[j].a;
+      if (crosses(p.px, p.py, labels[i].x, labels[i].ay, q.px, q.py, labels[j].x, labels[j].ay)) cost += CROSS_COST;
     }
   }
   return { labels, cost };
-}
-
-// Масштабы радиуса, которые пробуем: кольцо во всю ширину красивее, но тогда
-// крайние подписи стоят прямо над его боками и к боковым сегментам линия
-// идёт почти по касательной. Если правило MIN_ANGLE так не выполнить —
-// кольцо чуть уменьшается.
-const R_SCALES = [1, 0.9, 0.8, 0.72];
-
-// Порядок «горкой»: крупнейшая в середине, следующие — по очереди по бокам,
-// мелкие — напротив крупной. Мелкие сегменты тогда не сбиваются в кучу за
-// несколькими крупными подряд.
-function mountain(list) {
-  const left = [];
-  const right = [];
-  list.forEach((d, i) => (i % 2 ? left : right).push(d));
-  return [...left.reverse(), ...right];
-}
-
-// Порядок «по бокам»: у боков кольца (3 и 9 часов) линия из верхнего/нижнего
-// ряда подходит почти по касательной, поэтому туда ставим две крупнейшие
-// категории — к большому сегменту линию можно провести с любого его края.
-// Остальные делятся между верхней и нижней дугой поровну (и по числу, и по
-// сумме), по убыванию слева направо сверху и справа налево снизу.
-function sides(list) {
-  if (list.length < 4) return list;
-  const [a, b, ...rest] = list;
-  const up = [];
-  const down = [];
-  let upSum = 0;
-  let downSum = 0;
-  for (const d of rest) {
-    const toUp = up.length < down.length || (up.length === down.length && upSum <= downSum);
-    if (toUp) { up.push(d); upSum += d.value; } else { down.push(d); downSum += d.value; }
-  }
-  return [a, ...up, b, ...down];
 }
 
 // nameLines — сколько строк отвести под название (2 — если какое-то название не
@@ -201,21 +193,32 @@ export function layoutRing(data, w, h, { nameLines = 1 } = {}) {
   if (!total || w < 100 || h < 80) return null;
 
   const n = data.length;
-  // С двумя строками названия подпись выше; если так кольцу мало места —
-  // сперва пробуем одну строку (названия обрежутся), и лишь потом без названий.
+  const fixedR = w * R_FRAC;
   const modes = MODES.flatMap((m) => {
     if (!m.name) return [m];
     const one = { ...m, nameLines: 1 };
     return nameLines > 1 ? [{ ...m, h: m.h + NAME_LINE_H * (nameLines - 1), nameLines }, one] : [one];
   });
-  const radiusFor = (m) => Math.min(w / 2 - 4, (h - 2 * (m.h + LEADER)) / 2);
-  const mode = modes.find((m) => radiusFor(m) >= MIN_R) || modes[modes.length - 1];
-  const maxR = Math.max(30, radiusFor(mode));
+  const radiusFor = (m) => Math.min(fixedR, (h - 2 * (m.h + LEADER)) / 2);
+  // Первая подпись, при которой кольцо остаётся своего размера (допускаем
+  // уменьшение на MAX_SHRINK, чтобы не терять названия из-за пары пикселей);
+  // иначе — самая компактная, а кольцо меньше (только на совсем низких экранах).
+  const mode = modes.find((m) => radiusFor(m) >= fixedR * (1 - MAX_SHRINK)) || modes[modes.length - 1];
+  const R = Math.max(30, radiusFor(mode));
   const cx = w / 2;
   const cy = h / 2;
-  // Сколько подписей сверху: поровну (перекос на одну — почти бесплатно).
-  // Больший перекос дорог и выбирается, только если иначе линию не провести
-  // (например, все мелкие сегменты в узком секторе рядом с огромным).
+  const g = {
+    w, cx, cy, R, mode,
+    r0: R * INNER,
+    labelH: mode.h,
+    slot: w / PER_ROW,
+    // ряды — вплотную к кольцу (лишняя высота остаётся снаружи)
+    topY: cy - R - LEADER - mode.h / 2,
+    botY: cy + R + LEADER + mode.h / 2,
+  };
+
+  // Подписи поровну между рядами (перекос на одну — почти бесплатно; больший —
+  // только если иначе линиям пришлось бы обходить кольцо).
   const half = n / 2;
   const splits = [];
   for (let k = Math.max(0, n - PER_ROW); k <= Math.min(PER_ROW, n); k++) splits.push(k);
@@ -224,38 +227,19 @@ export function layoutRing(data, w, h, { nameLines = 1 } = {}) {
     return 15 * Math.min(d, 1) + 300 * Math.max(0, d - 1);
   };
 
-  // По убыванию по часовой — привычнее; остальные — если с ними линии лучше.
-  const orders = [[data, 0], [sides(data), 30], [mountain(data), 40]];
-
   let best = null;
-  for (const scale of R_SCALES) {
-    const R = maxR * scale;
-    const g = {
-      w, cx, cy, R, mode,
-      labelH: mode.h,
-      slot: w / PER_ROW,
-      // ряды — вплотную к кольцу (лишняя высота остаётся снаружи)
-      topY: cy - R - LEADER - mode.h / 2,
-      botY: cy + R + LEADER + mode.h / 2,
-    };
-    for (const [order, orderCost] of orders) {
-      for (let i = 0; i < ROTATIONS; i++) {
-        const slices = slicesAt(order, total, (i / ROTATIONS) * Math.PI * 2);
-        // при равенстве — крупнейшая категория внизу по центру (детерминированно)
-        const big = slices.find((x) => x.name === data[0].name);
-        const biggestOff = Math.abs(near(big.mid, Math.PI / 2) - Math.PI / 2) / DEG;
-        for (const nTop of splits) {
-          for (let cut = 0; cut < n; cut++) {
-            const v = placeLabels(slices, cut, nTop, g);
-            const cost = v.cost + orderCost + 0.3 * biggestOff + splitCost(nTop);
-            if (!best || cost < best.cost - 1e-6) best = { ...v, cost, slices, g };
-          }
-        }
+  for (let i = 0; i < ROTATIONS; i++) {
+    const rot = (i / ROTATIONS) * Math.PI * 2;
+    const slices = slicesAt(data, total, -Math.PI / 2 + rot);
+    // при равенстве — крупнейшая начинается сверху (как в обычной диаграмме)
+    const rotCost = 0.2 * Math.abs(near(rot, 0)) / DEG;
+    for (const nTop of splits) {
+      for (let cut = 0; cut < n; cut++) {
+        const v = placeLabels(slices, cut, nTop, g);
+        const cost = v.cost + rotCost + splitCost(nTop);
+        if (!best || cost < best.cost - 1e-6) best = { ...v, cost, slices };
       }
     }
-    // нашёлся вариант без линий «по касательной» — меньше кольцо не делаем
-    if (best.cost < 1000) break;
   }
-  return { ...best.g, r0: best.g.R * 0.66, slices: best.slices, labels: best.labels };
+  return { ...g, slices: best.slices, labels: best.labels };
 }
-

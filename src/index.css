@@ -9,9 +9,9 @@
   --expense: #f87171;
   --income: #34d399;
   --radius: 14px;
-  --nav-h: 64px;
-  /* Насколько круглая кнопка «Главная» выступает над навбаром. */
-  --nav-bump: 24px;
+  --nav-h: 72px;
+  /* Насколько круглая кнопка «Главная» выступает над навбаром (сейчас вписана). */
+  --nav-bump: 0px;
   color-scheme: dark;
 }
 
@@ -963,24 +963,24 @@ h2 {
 .navbar__icon {
   font-size: 1.3rem;
 }
-/* «Главная» — большая круглая кнопка посередине, выступает над панелью. */
+/* «Главная» — большая круглая кнопка посередине, вписана в панель. */
 .navbar__item--home {
-  align-self: flex-start;
+  align-self: center;
   flex: 0 0 auto;
-  width: 72px;
-  height: 72px;
-  margin: calc(-1 * var(--nav-bump)) 0.25rem 0;
+  width: 62px;
+  height: 62px;
+  margin: 0 0.4rem;
   border-radius: 50%;
   background: var(--surface-2);
-  border: 3px solid var(--bg);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  border: 2px solid var(--surface-2);
   -webkit-tap-highlight-color: transparent;
 }
 .navbar__item--home .navbar__icon {
-  font-size: 2.1rem;
+  font-size: 1.9rem;
 }
 .navbar__item--home.navbar__item--active {
-  background: var(--accent);
+  background: rgba(96, 165, 250, 0.18);
+  border-color: var(--accent);
 }
 .navbar__item--home:active {
   filter: brightness(0.9);
@@ -1217,15 +1217,18 @@ code {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.4rem 0.4rem 0.4rem;
+  padding: 0.4rem;
 }
 .home__month {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 0.5rem;
-  margin: 0 0 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 .home__month-title {
   min-width: 9.5rem;
@@ -1320,11 +1323,19 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Низкие экраны (маленькие телефоны): ужимаем отступы, чтобы донату осталось место. */
-@media (max-height: 620px) {
+/* Низкие экраны (маленькие телефоны, браузер с панелями): ужимаем нижнюю часть,
+   чтобы кольцу осталось место. */
+@media (max-height: 700px) {
   .home {
     gap: 0.45rem;
     padding-top: 0.5rem;
+  }
+  .home__month {
+    padding: 0.15rem 0.4rem;
+  }
+  .home__month-btn {
+    width: 40px;
+    height: 40px;
   }
   .home__actions .btn {
     padding: 0.7rem 0.5rem;
@@ -1435,4 +1446,9 @@ code {
 .wallets-total__note {
   font-size: 0.75rem;
   margin-top: 0.25rem;
+}
+.ring__pct-on {
+  fill: #0f172a;
+  font-weight: 700;
+  pointer-events: none;
 }

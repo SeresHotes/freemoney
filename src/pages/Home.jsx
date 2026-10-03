@@ -114,27 +114,28 @@ export default function Home() {
         <h1 className="home__title">FreeMoney{IS_DEV_CHANNEL && <span className="channel-badge">DEV</span>}</h1>
       </header>
 
+      <section className="home__month" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <button className="home__month-btn" aria-label="Предыдущий месяц" onClick={() => setMonth(shiftMonth(month, -1))}>
+          <Icon d="M15 5l-7 7 7 7" />
+        </button>
+        <button
+          className="home__month-title"
+          title={month === curMonth ? 'Расходы за месяц' : 'Вернуться к текущему месяцу'}
+          onClick={() => setMonth(curMonth)}
+        >
+          {monthTitle}
+        </button>
+        <button
+          className="home__month-btn"
+          aria-label="Следующий месяц"
+          disabled={month >= curMonth}
+          onClick={() => setMonth(shiftMonth(month, 1))}
+        >
+          <Icon d="M9 5l7 7-7 7" />
+        </button>
+      </section>
+
       <section className="home__stats" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-        <div className="home__month">
-          <button className="home__month-btn" aria-label="Предыдущий месяц" onClick={() => setMonth(shiftMonth(month, -1))}>
-            <Icon d="M15 5l-7 7 7 7" />
-          </button>
-          <button
-            className="home__month-title"
-            title={month === curMonth ? 'Расходы за месяц' : 'Вернуться к текущему месяцу'}
-            onClick={() => setMonth(curMonth)}
-          >
-            {monthTitle}
-          </button>
-          <button
-            className="home__month-btn"
-            aria-label="Следующий месяц"
-            disabled={month >= curMonth}
-            onClick={() => setMonth(shiftMonth(month, 1))}
-          >
-            <Icon d="M9 5l7 7-7 7" />
-          </button>
-        </div>
         {byCategory.length === 0 ? (
           <div className="home__empty">
             <p className="muted">{month === curMonth ? 'Пока нет расходов в этом месяце' : 'В этом месяце расходов нет'}</p>

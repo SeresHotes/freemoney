@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NAME_LINE_H, PER_ROW, arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
 
-// Кольцо расходов по категориям для главного экрана (в духе Monefy): крупная
-// иконка, название и процент у каждого сегмента, рядами сверху и снизу.
+// Кольцо расходов по категориям для главного экрана (в духе Monefy): проценты
+// на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
+// ломаные выносные линии.
 // Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
 // Тап по сегменту/подписи — onSelect(item).
 // data: [{ name, value, icon, color }]; center: { expense, income }.
 
 const NAME_FS = 11;
 const PCT_FS = 12.5;
+const RING_PCT_FS = 12; // процент на сегменте
 
 // Точная ширина текста шрифтом страницы (canvas), с запасным приближением.
 let measureCtx;
@@ -85,6 +87,15 @@ function labelWidths(labels, w) {
   return widths;
 }
 
+// Процент на сегменте: по центру толщины кольца, если влезает по дуге и толщине.
+function ringPercent(s, g) {
+  const text = fmtPercent(s.percent);
+  const rm = (g.r0 + g.R) / 2;
+  const arc = (s.a1 - s.a0) * rm;
+  if (g.R - g.r0 < RING_PCT_FS + 4 || arc < textWidth(text, RING_PCT_FS) + 8) return null;
+  return { text, x: g.cx + rm * Math.cos(s.mid), y: g.cy + rm * Math.sin(s.mid) };
+}
+
 export default function CategoryRing({ data, center, formatValue, onSelect }) {
   const ref = useRef(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -108,6 +119,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   }, [data, size.w]);
   const g = useMemo(() => layoutRing(data, size.w, size.h, { nameLines }), [data, size.w, size.h, nameLines]);
   const widths = useMemo(() => (g ? labelWidths(g.labels, size.w) : new Map()), [g, size.w]);
+  const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   return (
     <div className="ring" ref={ref}>
@@ -124,51 +136,69 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
               <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
             </path>
           ))}
-          {g.labels.map(({ s, a, x, ay }) => (
-            <line key={`l-${s.name}`} x1={a.px} y1={a.py} x2={x} y2={ay} stroke={s.color} strokeWidth="1.2" />
+          {g.slices.map((s) => {
+            const pct = onRing.get(s.name);
+            return pct ? (
+              <text
+                key={`p-${s.name}`}
+                x={pct.x}
+                y={pct.y}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={RING_PCT_FS}
+                className="ring__pct-on"
+              >
+                {pct.text}
+              </text>
+            ) : null;
+          })}
+          {/* Ломаная: от кольца строго по радиусу, затем к подписи (при нужде — в обход кольца). */}
+          {g.labels.map(({ s, a }) => (
+            <polyline
+              key={`l-${s.name}`}
+              points={a.points.map((pt) => pt.join(',')).join(' ')}
+              fill="none"
+              stroke={s.color}
+              strokeWidth="1.3"
+              strokeLinejoin="round"
+            />
           ))}
           {g.labels.map((l) => {
             const { s, x, y } = l;
             const top = y - g.labelH / 2;
             const { mode } = g;
             const name = mode.name ? wrapName(s.name, widths.get(l) ?? g.slot - 6, mode.nameLines) : null;
+            // процент в подписи — только если на сегменте он не поместился
+            const pctHere = onRing.get(s.name) ? null : fmtPercent(s.percent);
+            const lastY = (i, all) => top + mode.icon + 9 + NAME_LINE_H * (i + (mode.nameLines - all.length) / 2);
             return (
               <g key={s.name} className="ring__label" onClick={() => onSelect?.(s)}>
-                <title>{`${s.name}: ${formatValue(s.value)}`}</title>
+                <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
                 <rect x={x - g.slot / 2} y={top} width={g.slot} height={g.labelH} fill="transparent" />
-                {mode.inline ? (
-                  <text x={x} y={y} textAnchor="middle" dominantBaseline="central">
-                    <tspan fontSize={mode.icon}>{s.icon}</tspan>
-                    <tspan fontSize={PCT_FS} className="ring__pct" fill={s.color} dx="3">
-                      {fmtPercent(s.percent)}
+                {/* процент, не влезший на сегмент, — рядом с иконкой (там есть место) */}
+                <text x={x} y={top + mode.icon / 2 + 1} textAnchor="middle" dominantBaseline="central" fontSize={mode.icon}>
+                  {s.icon}
+                  {pctHere && (
+                    <tspan fontSize={PCT_FS} className="ring__pct" fill={s.color} dx="2">
+                      {pctHere}
                     </tspan>
-                  </text>
-                ) : (
-                  <>
-                    <text x={x} y={top + mode.icon / 2 + 1} textAnchor="middle" dominantBaseline="central" fontSize={mode.icon}>
-                      {s.icon}
+                  )}
+                </text>
+                {name &&
+                  name.lines.map((line, i, all) => (
+                    <text
+                      key={i}
+                      x={x}
+                      y={lastY(i, all)}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={name.fontSize}
+                      className="ring__name"
+                    >
+                      {line}
                     </text>
-                    {name &&
-                      name.lines.map((line, i, all) => (
-                        <text
-                          key={i}
-                          x={x}
-                          // одна строка из двух отведённых — по центру между иконкой и процентом
-                          y={top + mode.icon + 9 + NAME_LINE_H * (i + (mode.nameLines - all.length) / 2)}
-                          textAnchor="middle"
-                          dominantBaseline="central"
-                          fontSize={name.fontSize}
-                          className="ring__name"
-                        >
-                          {line}
-                        </text>
-                      ))}
-                    <text x={x} y={top + g.labelH - 7} textAnchor="middle" dominantBaseline="central" fontSize={PCT_FS} className="ring__pct" fill={s.color}>
-                      {fmtPercent(s.percent)}
-                    </text>
-                  </>
-                )}
+                  ))}
               </g>
             );
           })}
