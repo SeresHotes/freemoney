@@ -69,6 +69,20 @@ h2 {
 .page__header {
   margin-bottom: 1.25rem;
 }
+/* Страница во всю видимую высоту (за вычетом навбара): гибкий блок внутри
+   (.page__grow) растягивается, чтобы форма целиком помещалась на экран.
+   min-height, а не height — на слишком коротком экране страница просто
+   прокручивается, а гибкий блок не становится меньше своего минимума. */
+.page--fill {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--nav-h) - env(safe-area-inset-bottom, 0px));
+  min-height: calc(100dvh - var(--nav-h) - env(safe-area-inset-bottom, 0px));
+}
+.page--fill > .form,
+.page__grow {
+  flex: 1 1 auto;
+}
 .page__header--with-back {
   display: flex;
   align-items: center;
@@ -640,14 +654,20 @@ h2 {
 }
 .emoji-picker__scroll {
   position: relative;
-  height: 45vh;
-  min-height: 14rem;
+  height: min(30vh, 16rem);
+  min-height: 10rem;
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.4rem;
+}
+/* Внутри растягиваемой страницы сетка занимает всё свободное место по высоте
+   (минимум — те же 10rem, ~3 ряда). */
+.page__grow.emoji-picker .emoji-picker__scroll {
+  flex: 1 1 0;
+  height: auto;
 }
 .emoji-picker__title {
   font-size: 0.8rem;
