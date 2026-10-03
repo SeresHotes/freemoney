@@ -71,7 +71,7 @@ export default function CategoryEdit() {
       <form className="form" onSubmit={submit}>
         <div className="add-cat__row">
           <span className="add-cat__preview">{icon}</span>
-          <input className="field__input" type="text" placeholder="Название" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <input className="field__input" type="text" placeholder="Название" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!editing} />
         </div>
 
         <EmojiPicker value={icon} onChange={setIcon} className="page__grow" />

@@ -80,7 +80,7 @@ export default function WalletEdit() {
       </header>
 
       <form className="form" onSubmit={submit}>
-        <input className="field__input" type="text" placeholder="Название кошелька" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <input className="field__input" type="text" placeholder="Название кошелька" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!editing} />
 
         <label className="field">
           <span className="field__label">Валюта</span>
