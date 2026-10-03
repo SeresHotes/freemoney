@@ -62,7 +62,7 @@ export default function CategoryEdit() {
   };
 
   return (
-    <div className="page">
+    <div className="page page--fill">
       <header className="page__header page__header--with-back">
         <BackButton fallback="/categories" />
         <h1>{editing ? 'Категория' : 'Новая категория'}</h1>
@@ -74,7 +74,7 @@ export default function CategoryEdit() {
           <input className="field__input" type="text" placeholder="Название" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </div>
 
-        <EmojiPicker value={icon} onChange={setIcon} />
+        <EmojiPicker value={icon} onChange={setIcon} className="page__grow" />
 
         <label className="field">
           <span className="field__label">Тип</span>
