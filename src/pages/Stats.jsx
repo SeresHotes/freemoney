@@ -114,6 +114,7 @@ export default function Stats() {
 
   // Суммы по категориям выбранного вида (расходы или доходы).
   const byCategory = useMemo(() => totalsByCategory(scoped, toDisplay, matchKind), [scoped, matchKind, singleWallet, toBase]);
+  const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
 
   // Топ категорий за период (для цветов и стек-графика).
   const { series, catTrend } = useMemo(() => {
@@ -185,7 +186,7 @@ export default function Stats() {
               {byCategory.map((c, i) => (
                 <li key={c.name} className="legend__item legend__item--clickable" onClick={() => openCategory(c.name)}>
                   <span className="legend__dot" style={{ background: COLORS[i % COLORS.length] }} />
-                  <span className="legend__name">{c.name}</span>
+                  <span className="legend__name">{iconByCategory.get(c.name) || '🏷️'} {c.name}</span>
                   <span className="legend__value">{fmt(c.value)}</span>
                 </li>
               ))}
