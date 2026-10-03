@@ -9,10 +9,35 @@
     <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="Учёт доходов и расходов с хранением в Google Таблицах" />
     <title>FreeMoney</title>
-    <script type="module" crossorigin src="/assets/index-BH1Az7kB.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-By9vVyQm.css">
+    <script type="module" crossorigin src="/assets/index-CjtQFabL.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-D7JGe34j.css">
   <link rel="manifest" href="/manifest.webmanifest"></head>
   <body>
     <div id="root"></div>
+    <script>
+      // Если сам бандл не загрузился/упал до старта React — показываем ошибку
+      // вместо пустого экрана (React-ошибки ловит ErrorBoundary).
+      (function () {
+        function show(msg) {
+          var root = document.getElementById('root');
+          if (!root || root.childNodes.length) return;
+          root.innerHTML =
+            '<div class="crash"><h1>Не удалось запустить приложение</h1>' +
+            '<pre class="crash__text"></pre>' +
+            '<button class="btn btn--primary" onclick="location.reload()">Перезагрузить</button></div>';
+          root.querySelector('pre').textContent = msg + '\n' + navigator.userAgent;
+        }
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.src || t.href)) show('Не загрузился файл: ' + (t.src || t.href));
+          else show((e.error && e.error.stack) || e.message || String(e));
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e.reason;
+          if (/dynamically imported module|Importing a module script failed|MIME type/i.test(String(r && r.message)))
+            show(String(r && r.stack || r));
+        });
+      })();
+    </script>
   </body>
 </html>
