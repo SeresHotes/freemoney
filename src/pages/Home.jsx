@@ -4,7 +4,6 @@ import { useApp } from '../context/AppContext';
 import { monthKey, monthLabel, shiftMonth, todayIso } from '../utils/format';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isIncome, isExpense } from '../utils/finance';
-import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 import { useNetWorth } from '../hooks/useNetWorth';
 import { IS_DEV_CHANNEL } from '../config';
 import CategoryRing from '../components/CategoryRing';
@@ -118,15 +117,11 @@ export default function Home() {
     const iconOf = new Map(categories.map((c) => [c.name, c.icon]));
     const sorted = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
     const named = sorted.slice(0, ringNamedCount(sorted, exp));
-    const cats = named.map(([name, value], i) => ({
-      name,
-      value,
-      icon: iconOf.get(name) || '🏷️',
-      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
-    }));
+    // цвета раздаёт кольцо — по месту сегмента, чтобы соседние различались
+    const cats = named.map(([name, value]) => ({ name, value, icon: iconOf.get(name) || '🏷️' }));
     if (named.length < sorted.length) {
       const rest = sorted.slice(named.length).reduce((sum, [, v]) => sum + v, 0);
-      cats.push({ name: 'Другое', value: rest, icon: '📦', color: OTHER_COLOR, other: true });
+      cats.push({ name: 'Другое', value: rest, icon: '📦', other: true });
     }
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, categories, toBase, month, selWallet]);

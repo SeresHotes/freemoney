@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NAME_LINE_H, PER_ROW, arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
+import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 
 // Кольцо расходов по категориям для главного экрана (в духе Monefy): проценты
-// на самих сегментах, подписи (иконка + название) рядами сверху и снизу и,
-// если есть место, колонками по бокам; ломаные выносные линии.
+// на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
+// ломаные выносные линии.
 // Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
 // Тап по сегменту/подписи — onSelect(item).
-// data: [{ name, value, icon, color }]; center: { expense, income }.
+// data: [{ name, value, icon, other? }] по убыванию; center: { expense, income }.
+// Цвета — по месту на кольце (см. layoutRing), а не по рангу.
 
 const NAME_FS = 11;
 const PCT_FS = 12.5;
@@ -73,9 +75,8 @@ function wrapName(name, maxW, maxLines) {
   return { lines: lines.map((l) => fitText(l, maxW * SLACK, fontSize)), fontSize };
 }
 
-// Ширина, доступная подписи: в ряду — до середины расстояния к соседям и до
-// края; в боковой колонке — ширина колонки.
-function labelWidths(labels, w, colW) {
+// Ширина, доступная подписи: до середины расстояния к соседям в ряду и до края.
+function labelWidths(labels, w) {
   const widths = new Map();
   for (const top of [true, false]) {
     const row = labels.filter((l) => l.top === top).sort((a, b) => a.x - b.x);
@@ -85,8 +86,16 @@ function labelWidths(labels, w, colW) {
       widths.set(l, Math.min(left, right) - 6);
     });
   }
-  for (const l of labels) if (l.top === null) widths.set(l, colW - 2);
   return widths;
+}
+
+// Цвет текста поверх заливки: тёмный на светлой, белый на тёмной.
+function inkOn(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.18 ? '#0f172a' : '#ffffff';
 }
 
 // Процент на сегменте: по центру толщины кольца, если влезает по дуге и толщине.
@@ -119,8 +128,11 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
     const slotW = size.w / PER_ROW - 6;
     return data.some((d) => textWidth(d.name, NAME_FS) > slotW) ? 2 : 1;
   }, [data, size.w]);
-  const g = useMemo(() => layoutRing(data, size.w, size.h, { nameLines }), [data, size.w, size.h, nameLines]);
-  const widths = useMemo(() => (g ? labelWidths(g.labels, size.w, g.colW) : new Map()), [g, size.w]);
+  const g = useMemo(
+    () => layoutRing(data, size.w, size.h, { nameLines, palette: CATEGORY_COLORS, otherColor: OTHER_COLOR }),
+    [data, size.w, size.h, nameLines],
+  );
+  const widths = useMemo(() => (g ? labelWidths(g.labels, size.w) : new Map()), [g, size.w]);
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   return (
@@ -148,6 +160,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
                 textAnchor="middle"
                 dominantBaseline="central"
                 fontSize={RING_PCT_FS}
+                fill={inkOn(s.color)}
                 className="ring__pct-on"
               >
                 {pct.text}

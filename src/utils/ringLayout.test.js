@@ -13,13 +13,17 @@ describe('layoutRing', () => {
     expect(b.R).toBeCloseTo(306 * R_FRAC);
   });
 
-  it('мало категорий — по убыванию по часовой', () => {
-    const data = mk([['Жильё', 300], ['Продукты', 120], ['Кафе', 50]]);
-    const g = layoutRing(data, 306, 520);
-    expect(g.slices.map((s) => s.name)).toEqual(data.map((d) => d.name));
+  it('крупнейшая — справа (по центру у «3 часов»), вторая — слева', () => {
+    const g = layoutRing(big, 306, 520);
+    const mid = (name) => {
+      const s = g.slices.find((x) => x.name === name);
+      return Math.atan2(Math.sin(s.mid), Math.cos(s.mid));
+    };
+    expect(Math.abs(mid('Жильё'))).toBeLessThan(0.01);
+    expect(Math.abs(Math.abs(mid('Продукты')) - Math.PI)).toBeLessThan(0.35);
   });
 
-  it('в любом порядке — все категории ровно по разу, сегменты идут подряд', () => {
+  it('все категории ровно по разу, сегменты идут подряд', () => {
     const g = layoutRing(big, 306, 520);
     expect([...g.slices.map((s) => s.name)].sort()).toEqual([...big.map((d) => d.name)].sort());
     for (let i = 1; i < g.slices.length; i++) expect(g.slices[i].a0).toBeGreaterThan(g.slices[i - 1].a0);
@@ -70,12 +74,13 @@ describe('ringNamedCount', () => {
     expect(count([90000, 4000, 2500, 1500, 1200, 800])).toBe(6);
   });
 
-  it('10 категорий — все 10 помещаются', () => {
-    expect(count([10, 10, 10, 10, 10, 10, 10, 10, 10, 10])).toBe(10);
+  it('8 категорий — все 8 отдельно', () => {
+    expect(count([10, 10, 10, 10, 10, 10, 10, 10])).toBe(8);
   });
 
-  it('больше 10 — 9 отдельно + «Другое»', () => {
-    expect(count([30, 12, 5.4, 4.2, 3.1, 2.5, 2, 1.8, 1.5, 0.9, 0.7, 0.6])).toBe(9);
+  it('больше 8 — 8 отдельно + «Другое» (цветов 8)', () => {
+    expect(count([10, 10, 10, 10, 10, 10, 10, 10, 10])).toBe(8);
+    expect(count([30, 12, 5.4, 4.2, 3.1, 2.5, 2, 1.8, 1.5, 0.9, 0.7, 0.6])).toBe(8);
   });
 
   it('хвост ≤1% не раскладывается', () => {
@@ -102,5 +107,17 @@ describe('layoutRing: обход кольца', () => {
       // после радиального отрезка ни один отрезок не заходит на кольцо
       for (let i = 1; i < pts.length - 1; i++) expect(dist(pts[i], pts[i + 1])).toBeGreaterThan(g.R);
     }
+  });
+});
+
+describe('layoutRing: цвета по месту на кольце', () => {
+  it('соседние сегменты (и последний с первым) — разных цветов, «Другое» — серое', () => {
+    const palette = ['#a', '#b', '#c', '#d', '#e', '#f', '#g', '#h'];
+    const data = [...mk([['A', 30], ['B', 20], ['C', 12], ['D', 10], ['E', 8], ['F', 6], ['G', 5], ['H', 4]]), { name: 'Другое', value: 5, other: true }];
+    const g = layoutRing(data, 306, 520, { palette, otherColor: '#gray' });
+    const colors = g.slices.map((s) => s.color);
+    for (let i = 0; i < colors.length; i++) expect(colors[i]).not.toBe(colors[(i + 1) % colors.length]);
+    expect(g.slices.find((s) => s.other).color).toBe('#gray');
+    expect(g.slices[0].color).toBe('#a'); // крупнейшая — первый цвет палитры
   });
 });
