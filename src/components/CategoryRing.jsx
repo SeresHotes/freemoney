@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { NAME_LINE_H, PER_ROW, arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
 
 // Кольцо расходов по категориям для главного экрана (в духе Monefy): проценты
-// на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
-// ломаные выносные линии.
+// на самих сегментах, подписи (иконка + название) рядами сверху и снизу и,
+// если есть место, колонками по бокам; ломаные выносные линии.
 // Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
 // Тап по сегменту/подписи — onSelect(item).
 // data: [{ name, value, icon, color }]; center: { expense, income }.
@@ -73,8 +73,9 @@ function wrapName(name, maxW, maxLines) {
   return { lines: lines.map((l) => fitText(l, maxW * SLACK, fontSize)), fontSize };
 }
 
-// Ширина, доступная подписи: до середины расстояния к соседям в ряду и до края.
-function labelWidths(labels, w) {
+// Ширина, доступная подписи: в ряду — до середины расстояния к соседям и до
+// края; в боковой колонке — ширина колонки.
+function labelWidths(labels, w, colW) {
   const widths = new Map();
   for (const top of [true, false]) {
     const row = labels.filter((l) => l.top === top).sort((a, b) => a.x - b.x);
@@ -84,6 +85,7 @@ function labelWidths(labels, w) {
       widths.set(l, Math.min(left, right) - 6);
     });
   }
+  for (const l of labels) if (l.top === null) widths.set(l, colW - 2);
   return widths;
 }
 
@@ -118,7 +120,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
     return data.some((d) => textWidth(d.name, NAME_FS) > slotW) ? 2 : 1;
   }, [data, size.w]);
   const g = useMemo(() => layoutRing(data, size.w, size.h, { nameLines }), [data, size.w, size.h, nameLines]);
-  const widths = useMemo(() => (g ? labelWidths(g.labels, size.w) : new Map()), [g, size.w]);
+  const widths = useMemo(() => (g ? labelWidths(g.labels, size.w, g.colW) : new Map()), [g, size.w]);
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   return (
@@ -175,7 +177,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
               <g key={s.name} className="ring__label" onClick={() => onSelect?.(s)}>
                 <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
-                <rect x={x - g.slot / 2} y={top} width={g.slot} height={g.labelH} fill="transparent" />
+                <rect x={x - (widths.get(l) ?? g.slot) / 2} y={top} width={widths.get(l) ?? g.slot} height={g.labelH} fill="transparent" />
                 {/* процент, не влезший на сегмент, — рядом с иконкой (там есть место) */}
                 <text x={x} y={top + mode.icon / 2 + 1} textAnchor="middle" dominantBaseline="central" fontSize={mode.icon}>
                   {s.icon}
