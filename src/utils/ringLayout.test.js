@@ -13,9 +13,15 @@ describe('layoutRing', () => {
     expect(b.R).toBeCloseTo(306 * R_FRAC);
   });
 
-  it('сегменты — строго по убыванию по часовой', () => {
+  it('мало категорий — по убыванию по часовой', () => {
+    const data = mk([['Жильё', 300], ['Продукты', 120], ['Кафе', 50]]);
+    const g = layoutRing(data, 306, 520);
+    expect(g.slices.map((s) => s.name)).toEqual(data.map((d) => d.name));
+  });
+
+  it('в любом порядке — все категории ровно по разу, сегменты идут подряд', () => {
     const g = layoutRing(big, 306, 520);
-    expect(g.slices.map((s) => s.name)).toEqual(big.map((d) => d.name));
+    expect([...g.slices.map((s) => s.name)].sort()).toEqual([...big.map((d) => d.name)].sort());
     for (let i = 1; i < g.slices.length; i++) expect(g.slices[i].a0).toBeGreaterThan(g.slices[i - 1].a0);
   });
 
@@ -79,7 +85,7 @@ describe('ringNamedCount', () => {
 });
 
 describe('layoutRing: обход кольца', () => {
-  it('шесть мелких подряд — линия обходит кольцо, а не идёт насквозь', () => {
+  it('много мелких категорий — ни одна линия не заходит на кольцо', () => {
     const g = layoutRing(
       mk([['Study', 18800], ['House', 13100], ['Sub', 13100], ['Food', 2850], ['Cafe', 2280], ['Sports', 1710], ['Transport', 1140], ['Sths', 1140], ['Coffee', 570], ['Другое', 1700]]),
       504,
@@ -91,7 +97,6 @@ describe('layoutRing: обход кольца', () => {
       const t = Math.max(0, Math.min(1, ((g.cx - x1) * dx + (g.cy - y1) * dy) / (dx * dx + dy * dy || 1)));
       return Math.hypot(g.cx - (x1 + t * dx), g.cy - (y1 + t * dy));
     };
-    expect(g.labels.some((l) => l.a.detour > 0)).toBe(true);
     for (const l of g.labels) {
       const pts = l.a.points;
       // после радиального отрезка ни один отрезок не заходит на кольцо
