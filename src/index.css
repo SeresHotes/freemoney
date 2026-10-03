@@ -638,8 +638,8 @@ h2 {
 }
 .emoji-picker__scroll {
   position: relative;
-  height: 45vh;
-  min-height: 14rem;
+  height: min(30vh, 16rem);
+  min-height: 10rem;
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--surface);
