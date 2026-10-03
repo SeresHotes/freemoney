@@ -44,6 +44,14 @@ export default function EmojiPicker({ value, onChange }) {
     if (cur !== activeGroup) setActiveGroup(cur);
   };
 
+  // Касание вкладок/сетки прячет экранную клавиатуру: на iOS она открывается сразу
+  // (autoFocus у поля названия) и перекрывает половину пикера — групп не пролистать.
+  // Кнопки в iOS Safari фокус не забирают, поэтому снимаем его с поля явно.
+  const hideKeyboard = () => {
+    const el = document.activeElement;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) el.blur();
+  };
+
   const item = (emoji, label) => (
     <button
       type="button"
@@ -70,7 +78,7 @@ export default function EmojiPicker({ value, onChange }) {
       />
 
       {!searching && (
-        <div className="emoji-picker__tabs">
+        <div className="emoji-picker__tabs" onPointerDown={hideKeyboard}>
           {sections.map((s, i) => (
             <button
               type="button"
@@ -86,7 +94,7 @@ export default function EmojiPicker({ value, onChange }) {
         </div>
       )}
 
-      <div className="emoji-picker__scroll" ref={scrollRef} onScroll={onScroll}>
+      <div className="emoji-picker__scroll" ref={scrollRef} onScroll={onScroll} onPointerDown={hideKeyboard}>
         {searching ? (
           <>
             {typed && (
