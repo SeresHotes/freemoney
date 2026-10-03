@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
 import { walletBalance, isDebtWallet } from '../utils/finance';
+import { useNetWorth } from '../hooks/useNetWorth';
 
 export default function Wallets() {
-  const { wallets, transactions } = useApp();
+  const { wallets, transactions, baseCurrency } = useApp();
+  const { sum: netWorth, ratesNote } = useNetWorth();
   const navigate = useNavigate();
   const [showArchived, setShowArchived] = useState(false);
 
@@ -15,6 +17,12 @@ export default function Wallets() {
   return (
     <div className="page">
       <header className="page__header"><h1>Кошельки</h1></header>
+
+      <section className={`balance-card wallets-total ${netWorth < 0 ? 'balance-card--negative' : 'balance-card--positive'}`}>
+        <div className="muted">Всего на всех кошельках</div>
+        <div className="balance-card__value">{formatAmount(netWorth, baseCurrency)}</div>
+        {ratesNote && <div className="muted wallets-total__note">{ratesNote}</div>}
+      </section>
 
       <button className="btn btn--block btn--primary" onClick={() => navigate('/wallets/new')}>
         ➕ Добавить кошелёк

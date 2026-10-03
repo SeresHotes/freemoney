@@ -9,7 +9,9 @@
   --expense: #f87171;
   --income: #34d399;
   --radius: 14px;
-  --nav-h: 64px;
+  --nav-h: 72px;
+  /* Насколько круглая кнопка «Главная» выступает над навбаром (сейчас вписана). */
+  --nav-bump: 0px;
   color-scheme: dark;
 }
 
@@ -998,6 +1000,31 @@ h2 {
 .navbar__icon {
   font-size: 1.3rem;
 }
+/* «Главная» — большая круглая кнопка посередине, вписана в панель. Поднята
+   так, чтобы домик был на одной высоте с иконками соседних кнопок (у них под
+   иконкой подпись, поэтому иконки выше центра панели). */
+.navbar__item--home {
+  align-self: center;
+  transform: translateY(-8px);
+  flex: 0 0 auto;
+  width: 62px;
+  height: 62px;
+  margin: 0 0.4rem;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 2px solid var(--surface-2);
+  -webkit-tap-highlight-color: transparent;
+}
+.navbar__item--home .navbar__icon {
+  font-size: 1.9rem;
+}
+.navbar__item--home.navbar__item--active {
+  background: rgba(96, 165, 250, 0.18);
+  border-color: var(--accent);
+}
+.navbar__item--home:active {
+  filter: brightness(0.9);
+}
 
 /* --- Gate (login / setup) ------------------------------------------------- */
 .gate {
@@ -1159,4 +1186,305 @@ code {
 .update-toast__btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* --- Главный экран: всё в одном окне, без прокрутки ------------------------ */
+/* Высота страницы = окно минус навбар (с выступом круглой кнопки). Статистика
+   по категориям занимает всё свободное место: донат растягивается/сжимается
+   под экран, а длинная легенда прокручивается внутри карточки. Кнопки внизу —
+   компактные, под большой палец. На совсем низких экранах (горизонтальный
+   телефон) остаётся минимальная высота и обычная прокрутка. */
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  height: calc(100vh - var(--nav-h) - var(--nav-bump) - env(safe-area-inset-bottom, 0px));
+  height: calc(100dvh - var(--nav-h) - var(--nav-bump) - env(safe-area-inset-bottom, 0px));
+  min-height: 480px;
+  padding-top: 0.75rem;
+  padding-bottom: 0.5rem;
+}
+.home__head {
+  /* место под индикатор синхронизации в правом верхнем углу */
+  padding-right: 28px;
+}
+.home__title {
+  font-size: 1.15rem;
+  white-space: nowrap;
+}
+/* Выбранная карточка ленты кошельков (кольцо — по ней): зелёная, первая. */
+.wallet-chip--selected {
+  border-color: var(--income);
+}
+.wallet-chip--selected .wallet-chip__bal {
+  color: var(--income);
+}
+.wallet-chip--negative .wallet-chip__bal {
+  color: var(--expense);
+}
+.home__rates-note {
+  flex: 0 0 auto;
+  margin: -0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.home__actions {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.home__actions .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.85rem 0.5rem;
+}
+.home__actions .btn svg {
+  font-size: 1.15rem;
+}
+.home__stats {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* на высоких экранах (планшет) лишнее место делится сверху и снизу */
+  justify-content: safe center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem;
+}
+.home__month {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.home__month-title {
+  min-width: 9.5rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.home__month-title::first-letter {
+  text-transform: uppercase;
+}
+/* Стрелки — 44×44 (минимум для пальца), с подложкой, чтобы было видно кнопку. */
+.home__month-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--surface-2);
+  border: none;
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.home__month-btn:active,
+.home__month-title:active {
+  filter: brightness(1.25);
+}
+.home__month-title:active {
+  background: var(--surface-2);
+}
+.home__month-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.home__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-align: center;
+}
+.home__wallets {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.home__wallets .wallet-chip {
+  padding: 0.45rem 0.8rem;
+}
+.home__tiles {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+.home__tile {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+}
+.home__tile:active {
+  filter: brightness(0.9);
+}
+.home__tile-icon {
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+.home__tile-label {
+  max-width: 100%;
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Низкие экраны (маленькие телефоны, браузер с панелями): ужимаем нижнюю часть,
+   чтобы кольцу осталось место. */
+@media (max-height: 700px) {
+  .home {
+    gap: 0.45rem;
+    padding-top: 0.5rem;
+  }
+  .home__month {
+    padding: 0.15rem 0.4rem;
+  }
+  .home__month-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .home__actions .btn {
+    padding: 0.7rem 0.5rem;
+  }
+  .home__tile {
+    padding: 0.35rem 0.2rem;
+  }
+  /* кошелёк в одну строку: имя и баланс рядом */
+  .home__wallets .wallet-chip {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.35rem 0.7rem;
+  }
+  /* плитки — только иконки (полное название во всплывающей подсказке) */
+  .home__tile-label {
+    display: none;
+  }
+  .home__tile-icon {
+    font-size: 1.15rem;
+  }
+}
+
+/* Кольцо категорий главного экрана (CategoryRing): SVG по размеру контейнера,
+   суммы в центре — HTML поверх. */
+.ring {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ring__svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.ring__slice,
+.ring__label {
+  cursor: pointer;
+}
+.ring__slice:active,
+.ring__label:active {
+  opacity: 0.7;
+}
+.ring__name {
+  fill: var(--text);
+}
+.ring__pct {
+  font-weight: 700;
+}
+.ring__center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+  line-height: 1.15;
+}
+.ring__center .donut__label {
+  font-size: calc(var(--ring-fs) * 0.6);
+}
+.ring__center .donut__expense,
+.ring__center .donut__income {
+  font-size: var(--ring-fs);
+}
+
+/* --- Экран ошибки (ErrorBoundary / index.html) ---------------------------- */
+.crash {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  color: var(--text);
+}
+.crash h1 {
+  margin-bottom: 0.75rem;
+}
+.crash__text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin: 1rem 0;
+  user-select: text;
+}
+.crash__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* Общий баланс вверху страницы «Кошельки». */
+.wallets-total {
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+.wallets-total .balance-card__value {
+  font-size: 2rem;
+  margin-top: 0.15rem;
+}
+.wallets-total__note {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+.ring__pct-on {
+  font-weight: 700;
+  pointer-events: none;
 }
