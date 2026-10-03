@@ -1172,15 +1172,12 @@ code {
   font-size: 1.15rem;
   white-space: nowrap;
 }
-/* Общий баланс — первая карточка ленты кошельков. */
-.wallet-chip--total {
+/* Выбранная карточка ленты кошельков (кольцо — по ней): зелёная, первая. */
+.wallet-chip--selected {
   border-color: var(--income);
 }
-.wallet-chip--total .wallet-chip__bal {
+.wallet-chip--selected .wallet-chip__bal {
   color: var(--income);
-}
-.wallet-chip--negative {
-  border-color: var(--expense);
 }
 .wallet-chip--negative .wallet-chip__bal {
   color: var(--expense);

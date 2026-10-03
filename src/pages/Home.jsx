@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { monthKey, monthLabel, shiftMonth, todayIso } from '../utils/format';
@@ -18,6 +18,16 @@ function Icon({ d }) {
       <path d={d} />
     </svg>
   );
+}
+
+// Выбранный на главной кошелёк (пусто — все) — переживает перезапуск.
+const LS_HOME_WALLET = 'freemoney:homeWallet';
+function readHomeWallet() {
+  try {
+    return localStorage.getItem(LS_HOME_WALLET) || '';
+  } catch {
+    return '';
+  }
 }
 
 export default function Home() {
@@ -40,6 +50,21 @@ export default function Home() {
       .sort((a, b) => (a.at === b.at ? a.i - b.i : a.at < b.at ? 1 : -1))
       .map((x) => x.w);
   }, [activeWallets, transactions]);
+
+  // Выбранный кошелёк: кольцо и суммы — только по нему; '' — все кошельки.
+  // Архивный/удалённый кошелёк — как «все».
+  const [storedWallet, setStoredWallet] = useState(readHomeWallet);
+  const selWallet = activeWallets.some((w) => w.name === storedWallet) ? storedWallet : '';
+  const selectWallet = (name) => {
+    setStoredWallet(name);
+    try {
+      if (name) localStorage.setItem(LS_HOME_WALLET, name);
+      else localStorage.removeItem(LS_HOME_WALLET);
+    } catch {
+      /* без хранилища выбор просто не переживёт перезапуск */
+    }
+  };
+  const walletQuery = selWallet ? `wallet=${encodeURIComponent(selWallet)}` : '';
 
   // Выбранный месяц — в адресе (?month=YYYY-MM), чтобы не сбрасывался после
   // возврата с формы операции; без параметра — текущий месяц.
@@ -78,6 +103,7 @@ export default function Home() {
     const catMap = new Map();
     for (const t of transactions) {
       if (monthKey(t.date) !== key) continue;
+      if (selWallet && t.wallet !== selWallet) continue;
       const inBase = toBase(t.amount, t.currency);
       if (inBase == null) continue;
       // amount знаковый (расход < 0); в суммах доход/расход показываем величину.
@@ -103,7 +129,28 @@ export default function Home() {
       cats.push({ name: 'Другое', value: rest, icon: '📦', color: OTHER_COLOR, other: true });
     }
     return { income: inc, expense: exp, byCategory: cats };
-  }, [transactions, categories, toBase, month]);
+  }, [transactions, categories, toBase, month, selWallet]);
+
+  // Карточки ленты: выбранная — первой, затем «Всего» и кошельки (недавние первыми).
+  const chips = [
+    {
+      key: '',
+      name: `Всего${ratesNote ? ' *' : ''}`,
+      balance: formatAmount(netWorth, baseCurrency),
+      negative: netWorth < 0,
+      title: ratesNote ? `Все кошельки (${ratesNote})` : 'Все кошельки',
+    },
+    ...recentWallets.map((w) => {
+      const bal = walletBalance(transactions, w.name);
+      return { key: w.name, name: w.name, balance: formatAmount(bal, w.currency), negative: bal < 0, title: w.name };
+    }),
+  ].sort((a, b) => (b.key === selWallet) - (a.key === selWallet));
+
+  // Новая операция — в выбранном кошельке (и с категорией, если задана).
+  const addUrl = (type, extra = '') => {
+    const q = [extra, walletQuery].filter(Boolean).join('&');
+    return `/add/${type}${q ? `?${q}` : ''}`;
+  };
 
   // Главный экран всегда помещается в окно без прокрутки: сверху — кольцо
   // расходов с подписями категорий (тянется на свободное место), ниже —
@@ -146,35 +193,36 @@ export default function Home() {
             data={byCategory}
             center={{ expense, income }}
             formatValue={(v) => formatAmount(v, baseCurrency)}
-            onSelect={(c) => navigate(c.other ? '/add/expense' : `/add/expense?category=${encodeURIComponent(c.name)}`)}
+            onSelect={(c) => navigate(addUrl('expense', c.other ? '' : `category=${encodeURIComponent(c.name)}`))}
           />
         )}
       </section>
 
-      {/* Лента кошельков; первая карточка — общий баланс по всем кошелькам. */}
-      <section className="wallet-chips home__wallets">
-        <button
-          className={`wallet-chip wallet-chip--total${netWorth < 0 ? ' wallet-chip--negative' : ''}`}
-          title={ratesNote ? `Общий баланс (${ratesNote})` : 'Общий баланс'}
-          onClick={() => navigate('/wallets')}
-        >
-          <span className="wallet-chip__name">Всего{ratesNote && ' *'}</span>
-          <span className="wallet-chip__bal">{formatAmount(netWorth, baseCurrency)}</span>
-        </button>
-        {recentWallets.map((w) => (
-          <button key={w.name} className="wallet-chip" onClick={() => navigate(`/transactions?wallet=${encodeURIComponent(w.name)}`)}>
-            <span className="wallet-chip__name">{w.name}</span>
-            <span className="wallet-chip__bal">{formatAmount(walletBalance(transactions, w.name), w.currency)}</span>
+      {/* Лента: «Всего» и кошельки. Выбранный — зелёный и первый; тап выбирает
+          (кольцо — по нему), повторный тап — операции кошелька. */}
+      <section className="wallet-chips home__wallets" key={selWallet}>
+        {chips.map((c) => (
+          <button
+            key={c.key}
+            className={`wallet-chip${c.key === selWallet ? ' wallet-chip--selected' : ''}${c.negative ? ' wallet-chip--negative' : ''}`}
+            title={c.title}
+            onClick={() => {
+              if (c.key !== selWallet) selectWallet(c.key);
+              else navigate(c.key ? `/transactions?wallet=${encodeURIComponent(c.key)}` : '/wallets');
+            }}
+          >
+            <span className="wallet-chip__name">{c.name}</span>
+            <span className="wallet-chip__bal">{c.balance}</span>
           </button>
         ))}
       </section>
       {ratesNote && <p className="home__rates-note">* {ratesNote}</p>}
 
       <section className="home__actions">
-        <button className="btn btn--expense" onClick={() => navigate('/add/expense')}>
+        <button className="btn btn--expense" onClick={() => navigate(addUrl('expense'))}>
           <Icon d="M5 12h14" /> Расход
         </button>
-        <button className="btn btn--income" onClick={() => navigate('/add/income')}>
+        <button className="btn btn--income" onClick={() => navigate(addUrl('income'))}>
           <Icon d="M5 12h14M12 5v14" /> Доход
         </button>
       </section>

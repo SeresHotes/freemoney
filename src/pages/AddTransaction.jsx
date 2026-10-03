@@ -43,7 +43,13 @@ export default function AddTransaction() {
   );
 
   const [walletId, setWalletId] = useState(
-    () => editingTx?.wallet || lastUsedWalletId || activeWallets[0]?.name || '',
+    () => {
+      // ?wallet=… — кошелёк, выбранный на главной (если он активен)
+      const preset = editingTx ? null : searchParams.get('wallet');
+      if (preset && activeWallets.some((w) => w.name === preset)) return preset;
+      if (editingTx?.wallet) return editingTx.wallet;
+      return lastUsedWalletId || activeWallets[0]?.name || '';
+    },
   );
   const walletCurrency = currencyOf(walletId);
 
