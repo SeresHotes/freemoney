@@ -45,7 +45,7 @@ export default function EmojiPicker({ value, onChange, className = '' }) {
   };
 
   // Касание вкладок/сетки прячет экранную клавиатуру: на iOS она открывается сразу
-  // (autoFocus у поля названия) и перекрывает половину пикера — групп не пролистать.
+  // (autoFocus у поля названия новой категории) и перекрывает половину пикера — групп не пролистать.
   // Кнопки в iOS Safari фокус не забирают, поэтому снимаем его с поля явно.
   const hideKeyboard = () => {
     const el = document.activeElement;
