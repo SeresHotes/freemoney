@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
-import { monthKey, monthLabel } from '../utils/format';
+import { monthKey, monthLabel, dayHeading } from '../utils/format';
 import { matchesFilters, isDebtWallet, debtBalanceBefore, debtRowLabel } from '../utils/finance';
 import { usePeriod } from '../hooks/usePeriod';
 import ChipMultiSelect from '../components/ChipMultiSelect';
@@ -112,15 +112,19 @@ export default function Transactions() {
     return n;
   }, [filtered]);
 
-  // Группировка по месяцам (filtered уже отсортирован по убыванию даты).
+  // Группировка по месяцам, внутри — по дням (filtered уже отсортирован по
+  // убыванию даты): [[month, [[date, items], ...]], ...].
   const groups = useMemo(() => {
-    const map = new Map();
+    const months = new Map();
     for (const t of filtered) {
-      const k = monthKey(t.date) || '—';
-      if (!map.has(k)) map.set(k, []);
-      map.get(k).push(t);
+      const mk = monthKey(t.date) || '—';
+      if (!months.has(mk)) months.set(mk, new Map());
+      const days = months.get(mk);
+      const dk = t.date || '—';
+      if (!days.has(dk)) days.set(dk, []);
+      days.get(dk).push(t);
     }
-    return [...map.entries()];
+    return [...months.entries()].map(([mk, days]) => [mk, [...days.entries()]]);
   }, [filtered]);
 
   // Перевод/долг — одна строка на пару. Обычный перевод: «A → B» нейтрально.
@@ -175,7 +179,7 @@ export default function Transactions() {
         </div>
         <div className="tx-item__right">
           <span className={`tx-item__amount${amountClass ? ` tx-item__amount--${amountClass}` : ''}`}>{amountText}</span>
-          <span className="tx-item__date">{t.time ? `${t.date} ${t.time.slice(0, 5)}` : t.date}</span>
+          {t.time && <span className="tx-item__date">{t.time.slice(0, 5)}</span>}
         </div>
       </li>
     );
@@ -210,7 +214,7 @@ export default function Transactions() {
         </div>
         <div className="tx-item__right">
           <span className={`tx-item__amount tx-item__amount--${positive ? 'income' : 'expense'}`}>{positive ? '+' : '−'}{formatAmount(Math.abs(t.amount), t.currency)}</span>
-          <span className="tx-item__date">{t.time ? `${t.date} ${t.time.slice(0, 5)}` : t.date}</span>
+          {t.time && <span className="tx-item__date">{t.time.slice(0, 5)}</span>}
         </div>
       </li>
     );
@@ -257,10 +261,15 @@ export default function Transactions() {
       ) : (
         (() => {
           const shown = new Set();
-          return groups.map(([month, items]) => (
+          return groups.map(([month, days]) => (
             <section key={month} className="tx-group">
               <h3 className="tx-month">{month === '—' ? 'Без даты' : monthLabel(month)}</h3>
-              <ul className="tx-list">{items.map((t) => renderRow(t, shown))}</ul>
+              {days.map(([day, items]) => (
+                <div key={day} className="tx-day">
+                  {day !== '—' && <h4 className="tx-day__title">{dayHeading(day)}</h4>}
+                  <ul className="tx-list">{items.map((t) => renderRow(t, shown))}</ul>
+                </div>
+              ))}
             </section>
           ));
         })()
