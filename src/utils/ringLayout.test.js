@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_GAP, OTHER, R_FRAC, SHOWN_MAX, layoutRing } from './ringLayout';
+import { MAX_GAP, OTHER, R_FRAC, SLOTS, layoutRing } from './ringLayout';
 
 const mk = (vals) => vals.map((value, i) => ({ name: `c${i}`, value }));
 const sum = (a) => a.reduce((s, x) => s + x, 0);
@@ -9,7 +9,8 @@ const SCREENS = [[360, 383], [320, 300], [412, 560], [600, 420]];
 // Разные распределения: поровну, по убыванию, одна крупная на 70/78/90%, две крупных.
 const CASES = {
   ровно12: Array(12).fill(10),
-  ровно15: Array(15).fill(10),
+  ровно14: Array(14).fill(10),
+  ровно16: Array(16).fill(10),
   убывание: [30, 15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 0.5, 0.3],
   крупная70: [70, 5, 4, 4, 3, 3, 3, 2, 2, 1.5, 1.5, 1],
   крупная78: [91500, 5800, 4700, 3500, 3500, 3500, 2350, 1200, 600, 400, 300],
@@ -18,19 +19,33 @@ const CASES = {
 };
 
 describe('layoutRing: какие категории на кольце', () => {
-  it('12 категорий поровну — все 12 отдельно, без «Другого»', () => {
-    const g = layoutRing(mk(CASES.ровно12), 360, 383);
-    expect(g.slices).toHaveLength(12);
+  it('14 категорий поровну — все 14 отдельно, без «Другого»', () => {
+    const g = layoutRing(mk(CASES.ровно14), 360, 383);
+    expect(g.slices).toHaveLength(14);
     expect(g.slices.some((s) => s.other)).toBe(false);
   });
 
-  it('больше 12 — 11 категорий + «Другое» с суммой остальных', () => {
-    const g = layoutRing(mk(CASES.ровно15), 360, 383);
-    expect(g.slices).toHaveLength(SHOWN_MAX);
+  it('больше 14 — 13 категорий + «Другое» с суммой остальных', () => {
+    const g = layoutRing(mk(CASES.ровно16), 360, 383);
+    expect(g.slices).toHaveLength(SLOTS);
     const other = g.slices.find((s) => s.other);
     expect(other.name).toBe(OTHER.name);
-    expect(other.items).toHaveLength(4);
-    expect(other.value).toBe(40);
+    expect(other.items).toHaveLength(3);
+    expect(other.value).toBe(30);
+  });
+
+  it('отвязанные категории — в секторе «Другое», но их иконки на свободных местах, без линии', () => {
+    const g = layoutRing(mk(CASES.крупная70), 360, 383);
+    const other = g.slices.find((s) => s.other);
+    const detached = g.labels.filter((l) => l.s.detached);
+    expect(detached.length).toBe(other.items.length); // мест хватает всем
+    for (const l of detached) {
+      expect(l.a).toBeNull();
+      expect(other.items.map((d) => d.name)).toContain(l.s.name);
+      expect(l.s.percent).toBeCloseTo(l.s.value / 100);
+    }
+    // каждая категория видна подписью (12 категорий + «Другое» ≤ 14 мест)
+    expect(g.labels).toHaveLength(13);
   });
 
   it('мало категорий — все отдельно, сколько есть', () => {
@@ -53,7 +68,8 @@ describe('layoutRing: какие категории на кольце', () => {
     for (const [name, vals] of Object.entries(CASES)) {
       it(`${name}, ${w}×${h}: каждая подпись не дальше MAX_GAP от сектора, в «Другом» — самые мелкие`, () => {
         const g = layoutRing(mk(vals), w, h);
-        expect(g.slices.length).toBeLessThanOrEqual(SHOWN_MAX);
+        expect(g.slices.length).toBeLessThanOrEqual(SLOTS);
+        expect(g.labels.length).toBeLessThanOrEqual(SLOTS);
         expect(g.maxGap).toBeLessThanOrEqual(MAX_GAP);
         // каждая подпись — на своём месте сетки, места не повторяются
         expect(new Set(g.labels.map((l) => `${l.x},${l.y}`)).size).toBe(g.labels.length);
@@ -72,8 +88,11 @@ describe('layoutRing: какие категории на кольце', () => {
           expect(l.y - g.labelH / 2).toBeGreaterThanOrEqual(-0.5);
           expect(l.y + g.labelH / 2).toBeLessThanOrEqual(h + 0.5);
         }
-        // линии не обходят кольцо
-        expect(g.labels.every((l) => l.a.detour === 0)).toBe(true);
+        // линии не обходят кольцо и без лишних изломов (прямая или излом у подписи)
+        for (const l of g.labels.filter((x) => x.a)) {
+          expect(l.a.detour).toBe(0);
+          expect(l.a.points.length).toBeLessThanOrEqual(3);
+        }
       });
     }
   }
@@ -82,7 +101,7 @@ describe('layoutRing: какие категории на кольце', () => {
 describe('layoutRing: места подписей', () => {
   it('сетка 4×5 по периметру: сверху и снизу по 4 (с углами), по бокам по 3', () => {
     const g = layoutRing(mk(CASES.ровно12), 360, 383);
-    expect(g.slots).toHaveLength(14);
+    expect(g.slots).toHaveLength(SLOTS);
     const count = (side) => g.slots.filter((t) => t.side === side).length;
     expect(count('top') + count('bottom')).toBe(4);
     expect(count('corner')).toBe(4);
@@ -93,9 +112,10 @@ describe('layoutRing: места подписей', () => {
   it('подписи идут по кругу в том же порядке, что и сегменты (линии не пересекаются)', () => {
     for (const vals of Object.values(CASES)) {
       const g = layoutRing(mk(vals), 360, 383);
-      const ang = g.labels.map((l) => Math.atan2(l.y - g.cy, l.x - g.cx));
+      const ang = g.labels.filter((l) => l.a).map((l) => Math.atan2(l.y - g.cy, l.x - g.cx));
       // по часовой от первой подписи — углы только растут (один полный оборот)
       let turns = 0;
+      if (ang.length < 2) continue;
       for (let i = 1; i <= ang.length; i++) {
         let d = ang[i % ang.length] - ang[i - 1];
         while (d <= 0) d += Math.PI * 2;
@@ -136,7 +156,7 @@ describe('layoutRing: места подписей', () => {
 describe('layoutRing: цвета', () => {
   it('без своего цвета — по палитре, соседние разные; «Другое» — серое', () => {
     const palette = ['#a', '#b', '#c', '#d', '#e', '#f', '#g', '#h'];
-    const g = layoutRing(mk([30, 20, 12, 10, 8, 6, 5, 4, 1, 1, 1, 1, 1]), 360, 383, { palette, otherColor: '#gray' });
+    const g = layoutRing(mk([30, 20, 12, 10, 8, 6, 5, 4, 1, 1, 1, 1, 1, 1, 1, 1]), 360, 383, { palette, otherColor: '#gray' });
     expect(g.slices.find((s) => s.other).color).toBe('#gray');
     const colors = g.slices.filter((s) => !s.other).map((s) => s.color);
     for (let i = 1; i < colors.length; i++) expect(colors[i]).not.toBe(colors[i - 1]);

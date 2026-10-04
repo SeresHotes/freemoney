@@ -2,12 +2,15 @@
 //
 // Подписи (иконка + название) — в 14 местах по периметру вокруг кольца, сеткой
 // 4×5 (как в Monefy): 4 сверху (два угла и два между ними), 4 снизу, по 3 слева
-// и справа. Занято не больше SHOWN_MAX (11 категорий + «Другое»).
+// и справа.
 //
-// Подпись привязывается к своему сектору, только если её место не слишком далеко
-// по кругу от сектора: направление на подпись из центра уходит за дугу сектора
-// не больше чем на MAX_GAP. Если так разместить все не получается — самая
-// маленькая из показанных уходит в «Другое», и так, пока не получится.
+// Категория привязывается к своему сектору (своя дуга и линия к подписи),
+// только если место подписи не слишком далеко по кругу от сектора: направление
+// на подпись из центра уходит за дугу сектора не больше чем на MAX_GAP. Если
+// так разместить все не получается — самая маленькая из привязанных уходит в
+// «Другое», и так, пока не получится. Отвязанная категория на кольце — часть
+// сектора «Другое», но её подпись (иконка, название, процент) остаётся на
+// свободном месте — без линии, ближе к «Другому», пока места хватает.
 //
 // Поиск: порядок сегментов по кругу (любой) и поворот кольца; места подписям —
 // с сохранением кругового порядка (линии не пересекаются), оптимально
@@ -15,7 +18,7 @@
 // сегментов, пока стоимость падает. Детерминированно.
 // Выносные линии ломаные (до двух изломов, см. leader).
 
-export const SHOWN_MAX = 12; // мест под подписи занято не больше (11 категорий + «Другое»)
+export const SLOTS = 14; // мест под подписи (сетка 4×5 по периметру)
 export const MAX_GAP = 20; // град: подпись дальше от своего сектора — категория уходит в «Другое»
 export const OTHER = { name: 'Другое', icon: '📦', other: true };
 
@@ -29,17 +32,20 @@ const SIDE_MIN = 60;
 const SIDE_MAX = 84;
 const SIDE_GAP = 10; // зазор между боковой колонкой и кольцом (под линию)
 const V_GAP = 22; // зазор между верхним/нижним рядом и кольцом (под линию)
-const ROW_GAP = 4; // зазор между подписями в боковой колонке
+const ROW_GAP = 2; // зазор между подписями в боковой колонке
 const ASPECT = 1.15; // сетка подписей по высоте — до ASPECT своей ширины (высокие экраны)
-const STUB = 16; // радиальный отрезок линии от кольца (1-й излом)
-const TAIL = 10; // прямой вход линии в подпись (2-й излом)
-const STRAIGHT = 12; // излом меньше этого угла, град, не делаем
+const STUB = 16; // радиальный отрезок линии от кольца (только для обхода кольца)
+const TAIL = 10; // прямой вход линии в подпись (излом у подписи)
+const ENTRY_MAX = 60; // град: прямая входит в подпись наискось не больше — иначе излом у подписи
+const OUTWARD_MAX = 80; // град: прямая от кольца должна уходить наружу (не круче к касательной)
 const SEED_ROTATIONS = 24; // повороты для стартовых порядков (шаг 15°)
 const ROT_STEPS = [-8, 0, 8]; // подстройка поворота при обменах, град
-const MAX_ITER = 25; // шагов улучшения обменами, не больше
+const MAX_ITER = 10; // шагов улучшения обменами, не больше
 const EDGE = 2; // отступ подписей от края
-// Подпись: иконка и название (1–2 строки); если по высоте тесно — без названия,
-// на совсем низких экранах — с иконкой поменьше.
+// Подпись: иконка и название (1–2 строки); если по высоте тесно — две строки
+// с иконкой поменьше, затем одна строка, затем без названия, на совсем низких
+// экранах — с иконкой поменьше.
+const SMALL_ICON = 36;
 const MODES = [
   { h: 66, icon: 46, name: true },
   { h: 48, icon: 44, name: false },
@@ -86,30 +92,34 @@ function distToSegment(px, py, x1, y1, x2, y2) {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-// Ломаная линия к подписи с точкой крепления (lx, ly) — до двух изломов:
-// от кольца строго по радиусу (STUB), затем к «хвосту» и прямо в подпись
-// (TAIL; [dx, dy] — направление от подписи к кольцу). Излом пропускается,
-// если линия и так идёт почти прямо. Если путь зашёл бы на кольцо (подпись «с другой стороны»),
-// линия огибает кольцо снаружи по дуге. points — вершины; detour — точки
-// обхода; bend — отклонение направления к подписи от радиуса, град.
+// Линия к подписи с точкой крепления (lx, ly); [dx, dy] — направление от
+// подписи к кольцу (так линия «правильно» входит в подпись). Без лишних изломов:
+// прямая от кольца к подписи, если она уходит от кольца наружу и входит в
+// подпись не слишком наискось (до ENTRY_MAX); иначе — один излом прямо перед
+// подписью (прямой вход TAIL). Только если и так линия зашла бы на кольцо
+// (подпись «с другой стороны») — от кольца по радиусу (STUB) и в обход кольца
+// по дуге. points — вершины; detour — точки обхода.
 function leader(s, lx, ly, g, [dx, dy]) {
   const want = near(Math.atan2(ly - g.cy, lx - g.cx), s.mid);
   const m = Math.min(0.03, (s.a1 - s.a0) / 3);
   const t = Math.min(s.a1 - m, Math.max(s.a0 + m, want));
   const [ax, ay] = polar(g.cx, g.cy, g.R, t);
-  const [bx, by] = polar(g.cx, g.cy, g.R + STUB, t);
   const tail = [lx + dx * TAIL, ly + dy * TAIL];
   const angleTo = (x0, y0, x1, y1, ux, uy) => {
     const len = Math.hypot(x1 - x0, y1 - y0) || 1;
     return Math.acos(Math.max(-1, Math.min(1, ((x1 - x0) * ux + (y1 - y0) * uy) / len))) / DEG;
   };
-  const bend = angleTo(ax, ay, tail[0], tail[1], Math.cos(t), Math.sin(t));
-  // 1-й излом не нужен, если к хвосту и так почти по радиусу
-  const points = bend < STRAIGHT ? [[ax, ay]] : [[ax, ay], [bx, by]];
-  const [fx, fy] = points[points.length - 1];
+  // отрезок от точки на кольце, направленный наружу, на кольцо уже не зайдёт
+  const outward = (x, y) => angleTo(ax, ay, x, y, Math.cos(t), Math.sin(t)) < OUTWARD_MAX;
+  const len = Math.hypot(lx - ax, ly - ay);
+  if (outward(lx, ly) && angleTo(ax, ay, lx, ly, -dx, -dy) <= ENTRY_MAX) {
+    return { points: [[ax, ay], [lx, ly]], len, detour: 0 };
+  }
+  if (outward(...tail)) return { points: [[ax, ay], tail, [lx, ly]], len, detour: 0 };
+  const points = [[ax, ay], polar(g.cx, g.cy, g.R + STUB, t)];
   const hits = (x, y) => distToSegment(g.cx, g.cy, x, y, tail[0], tail[1]) < g.R + 2;
   let detour = 0;
-  if (points.length > 1 && hits(fx, fy)) {
+  if (hits(...points[1])) {
     // Обход по дуге радиуса rw в сторону подписи (кратчайшим путём). Шаг —
     // такой, чтобы хорда между соседними точками не срезала край кольца.
     const rw = g.R + STUB + 6;
@@ -122,12 +132,8 @@ function leader(s, lx, ly, g, [dx, dy]) {
       detour++;
     }
   }
-  // 2-й излом (прямой вход в подпись) не нужен, если линия и так почти прямо
-  // входит в неё
-  const [px, py] = points[points.length - 1];
-  if (angleTo(px, py, lx, ly, -dx, -dy) >= STRAIGHT) points.push(tail);
-  points.push([lx, ly]);
-  return { points, stub: bend >= STRAIGHT, len: Math.hypot(lx - ax, ly - ay), bend, detour };
+  points.push(tail, [lx, ly]);
+  return { points, len, detour };
 }
 
 // Стартовые порядки сегментов для поиска (по часовой): по убыванию;
@@ -221,6 +227,25 @@ function assignSlots(slices, slots, bound = Infinity) {
   return best;
 }
 
+// Точка крепления линии к подписи на месте t и направление от подписи к кольцу.
+// Линия входит в подпись: в верхнюю — снизу, в нижнюю — сверху, в боковую —
+// сбоку на уровне иконки, в угловую — в угол иконки, обращённый к кольцу
+// (наискось, чтобы не пересечь соседей).
+function attach(t, mode, cx, cy) {
+  const top = t.y - mode.h / 2;
+  const iconY = top + mode.icon / 2;
+  const half = mode.icon / 2 + 3;
+  const sx = Math.sign(cx - t.x);
+  const sy = Math.sign(cy - t.y);
+  return {
+    corner: [t.x + sx * half * 0.8, iconY + sy * half * 0.8, [sx * Math.SQRT1_2, sy * Math.SQRT1_2]],
+    top: [t.x, t.y + mode.h / 2 + 3, [0, 1]],
+    bottom: [t.x, top - 3, [0, -1]],
+    left: [t.x + half, iconY, [1, 0]],
+    right: [t.x - half, iconY, [-1, 0]],
+  }[t.side];
+}
+
 // Геометрия: кольцо и 14 мест для подписей (сетка 4×5 по периметру).
 // Режим подписи — первый, при котором боковые колонки не налезают по высоте и
 // кольцо почти своего размера; иначе самый компактный.
@@ -228,7 +253,9 @@ function frame(w, h, nameLines) {
   const modes = MODES.flatMap((m) => {
     if (!m.name) return [m];
     const one = { ...m, nameLines: 1 };
-    return nameLines > 1 ? [{ ...m, h: m.h + NAME_LINE_H * (nameLines - 1), nameLines }, one] : [one];
+    if (nameLines < 2) return [one];
+    const two = { ...m, h: m.h + NAME_LINE_H, nameLines: 2 };
+    return [two, { ...two, icon: SMALL_ICON, h: two.h - (m.icon - SMALL_ICON) }, one];
   });
   const sideW = sideWidth(w);
   const cx = w / 2;
@@ -250,7 +277,12 @@ function frame(w, h, nameLines) {
   const xs = [colX, colX + d, colX + 2 * d, w - colX];
   const ys = [0, 1, 2, 3, 4].map((j) => cy - halfH + (j * halfH) / 2);
   const slots = [];
-  const add = (x, y, side, sw) => slots.push({ x, y, side, w: sw, ang: Math.atan2(y - cy, x - cx) });
+  // угол места — по точке крепления линии (по ней и считается отрыв от сектора)
+  const add = (x, y, side, sw) => {
+    const t = { x, y, side, w: sw };
+    const [ax, ay, dir] = attach(t, mode, cx, cy);
+    slots.push({ ...t, ax, ay, dir, ang: Math.atan2(ay - cy, ax - cx) });
+  };
   xs.forEach((x, i) => {
     const corner = i === 0 || i === 3;
     const sw = corner ? Math.min(sideW, d - 6) : d - 6;
@@ -305,25 +337,11 @@ function search(list, total, g, doSearch) {
   return best;
 }
 
-// Подписи на выбранных местах и линии к ним. Линия входит в подпись: в верхнюю —
-// снизу, в нижнюю — сверху, в боковую — сбоку на уровне иконки, в угловую —
-// в угол иконки, обращённый к кольцу (наискось, чтобы не пересечь соседей).
+// Подписи на выбранных местах и линии к ним.
 function placeLabels(best, g) {
   return best.slices.map((s, i) => {
     const t = g.slots[best.pick[i]];
-    const top = t.y - g.labelH / 2;
-    const iconY = top + g.mode.icon / 2;
-    const half = g.mode.icon / 2 + 3;
-    const sx = Math.sign(g.cx - t.x);
-    const sy = Math.sign(g.cy - t.y);
-    const [lx, ly, dir] = {
-      corner: [t.x + sx * half * 0.8, iconY + sy * half * 0.8, [sx * Math.SQRT1_2, sy * Math.SQRT1_2]],
-      top: [t.x, t.y + g.labelH / 2 + 3, [0, 1]],
-      bottom: [t.x, top - 3, [0, -1]],
-      left: [t.x + half, iconY, [1, 0]],
-      right: [t.x - half, iconY, [-1, 0]],
-    }[t.side];
-    return { s, x: t.x, y: t.y, side: t.side, w: t.w, gap: arcGap(s, t.ang), a: leader(s, lx, ly, g, dir) };
+    return { s, x: t.x, y: t.y, side: t.side, w: t.w, gap: arcGap(s, t.ang), a: leader(s, t.ax, t.ay, g, t.dir) };
   });
 }
 
@@ -352,11 +370,10 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
   if (!total || w < 100 || h < 80) return null;
   const g = frame(w, h, nameLines);
 
-  // Сколько категорий показать отдельно: сначала сколько влезает по местам,
-  // затем меньше — пока все подписи не окажутся рядом со своими секторами.
-  // «Другое» из одной категории не бывает — она тогда показана сама.
-  // Подходит ли «отдельно k» — двоичным поиском (с ростом k разместить только
-  // труднее), чтобы не перебирать поиском каждое k.
+  // Сколько категорий привязать к секторам: сначала сколько влезает по местам
+  // (все — или SLOTS − 1 и «Другое»), затем меньше — пока все подписи не
+  // окажутся рядом со своими секторами (двоичным поиском: с ростом k разместить
+  // только труднее). «Другое» из одной категории не бывает — она тогда сама.
   const N = sorted.length;
   const tried = new Map();
   const attempt = (k) => {
@@ -364,15 +381,14 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
       const rest = sorted.slice(k);
       const list = rest.length ? [...sorted.slice(0, k), { ...OTHER, value: rest.reduce((sum, d) => sum + d.value, 0), items: rest }] : sorted;
       const v = search(list, total, g, doSearch);
-      v.maxGap = Math.max(...v.slices.map((s, i) => arcGap(s, g.slots[v.pick[i]].ang)));
+      v.maxGap = Math.max(...v.slices.map((sl, i) => arcGap(sl, g.slots[v.pick[i]].ang)));
       tried.set(k, v);
     }
     return tried.get(k);
   };
-  // допустимые k: все, или k ≤ N − 2 (k = N − 1 дал бы «Другое» из одной)
   const ks = [];
-  for (let k = 1; k <= Math.min(N, SHOWN_MAX - 1); k++) if (k !== N - 1) ks.push(k);
-  if (N <= SHOWN_MAX) ks.push(N);
+  for (let k = 1; k <= Math.min(N, SLOTS - 1); k++) if (k !== N - 1) ks.push(k);
+  if (N <= SLOTS) ks.push(N);
   const uniq = [...new Set(ks)];
   let lo = 0; // uniq[lo] подходит (k = 1: два сегмента — всегда)
   let hi = uniq.length - 1;
@@ -383,12 +399,25 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
     else hi = mid;
   }
   const best = attempt(uniq[lo]);
-  const list = best.order;
+  const other = best.slices.find((sl) => sl.other);
+  // отвязанные (из «Другого») — на свободные места, крупные — ближе к «Другому»
+  const used = new Set(best.pick);
+  const free = g.slots
+    .map((t, i) => ({ t, i }))
+    .filter(({ i }) => !used.has(i))
+    .sort((p, q) => Math.abs(near(p.t.ang, other?.mid ?? 0) - (other?.mid ?? 0)) - Math.abs(near(q.t.ang, other?.mid ?? 0) - (other?.mid ?? 0)));
+  const detached = (other?.items ?? []).slice(0, free.length).map((d, i) => ({ d, t: free[i].t }));
 
   // цвета — свои у категории; иначе по месту на кольце, по часовой от первого сегмента
   let k = 0;
   const color = new Map(best.order.map((d) => [d.name, d.other ? otherColor : d.color || palette[k++ % palette.length]]));
+  for (const { d } of detached) color.set(d.name, d.color || palette[k++ % palette.length]);
   for (const sl of best.slices) sl.color = color.get(sl.name);
   const labels = placeLabels(best, g);
-  return { ...g, slices: best.slices, labels, maxGap: Math.max(0, ...labels.map((l) => l.gap)), shown: list.length };
+  // подписи отвязанных — без линии (gap и a — null)
+  for (const { d, t } of detached) {
+    const s = { ...d, percent: d.value / total, color: color.get(d.name), detached: true };
+    labels.push({ s, x: t.x, y: t.y, side: t.side, w: t.w, gap: null, a: null });
+  }
+  return { ...g, slices: best.slices, labels, maxGap: Math.max(0, ...labels.map((l) => l.gap ?? 0)), shown: best.slices.length };
 }

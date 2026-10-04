@@ -12,7 +12,8 @@ import CategoryIcon from './CategoryIcon';
 // центре вместо итогов месяца её траты; короткий тап — onSelect(item);
 // сдвиг в первые HOLD_MS — свайп месяца, дольше — удержание.
 // data: все категории [{ name, value, icon, color? }]; мелкие, которым не нашлось
-// места рядом с сектором, кольцо само собирает в «Другое» (other: true).
+// места рядом с сектором, кольцо само собирает в сектор «Другое» (other: true),
+// а их подписи остаются на свободных местах — без линии (detached).
 // center: { expense, income }.
 // Цвет — свой у категории (color), иначе по месту на кольце (см. layoutRing).
 
@@ -218,7 +219,9 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
       el.removeEventListener('touchend', onTouchEnd);
     };
   }, []);
-  const heldSlice = held && g ? g.slices.find((s) => s.name === held) : null;
+  // зажатая категория: сегмент или подпись отвязанной (её сумма — внутри «Другого»)
+  const heldItem = held && g ? g.labels.find((l) => l.s.name === held)?.s ?? g.slices.find((s) => s.name === held) : null;
+  const isHeld = (s) => s.name === held || (s.other && heldItem?.detached);
 
   return (
     <div className={`ring${held ? ' ring--held' : ''}`} ref={ref} onContextMenu={(e) => e.preventDefault()}>
@@ -227,9 +230,9 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
           {g.slices.map((s) => (
             <path
               key={s.name}
-              d={arcPath(g.cx, g.cy, g.r0, s.name === held ? g.R + HELD_GROW : g.R, s.a0, s.a1)}
+              d={arcPath(g.cx, g.cy, g.r0, isHeld(s) ? g.R + HELD_GROW : g.R, s.a0, s.a1)}
               fill={s.color}
-              className={`ring__slice${s.name === held ? ' is-held' : ''}`}
+              className={`ring__slice${isHeld(s) ? ' is-held' : ''}`}
               {...pressProps(s)}
             >
               <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
@@ -246,14 +249,14 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
                 dominantBaseline="central"
                 fontSize={RING_PCT_FS}
                 fill={inkOn(s.color)}
-                className={`ring__pct-on${s.name === held ? ' is-held' : ''}`}
+                className={`ring__pct-on${isHeld(s) ? ' is-held' : ''}`}
               >
                 {pct.text}
               </text>
             ) : null;
           })}
           {/* Ломаная: от кольца строго по радиусу, затем к подписи (при нужде — в обход кольца). */}
-          {g.labels.map(({ s, a }) => (
+          {g.labels.map(({ s, a }) => a && (
             <polyline
               key={`l-${s.name}`}
               points={a.points.map((pt) => pt.join(',')).join(' ')}
@@ -309,12 +312,12 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
           className="ring__center"
           style={{ width: g.r0 * 2, height: g.r0 * 2, '--ring-fs': `${Math.min(22, Math.max(12, g.r0 * 0.2))}px` }}
         >
-          {heldSlice ? (
+          {heldItem ? (
             <>
-              <span className="ring__held-icon">{heldSlice.icon}</span>
-              <span className="donut__label ring__held-name">{heldSlice.name}</span>
-              <span className="donut__expense">{formatValue(heldSlice.value)}</span>
-              {g.r0 > 52 && <span className="donut__label">{fmtPercent(heldSlice.percent)}</span>}
+              <span className="ring__held-icon">{heldItem.icon}</span>
+              <span className="donut__label ring__held-name">{heldItem.name}</span>
+              <span className="donut__expense">{formatValue(heldItem.value)}</span>
+              {g.r0 > 52 && <span className="donut__label">{fmtPercent(heldItem.percent)}</span>}
             </>
           ) : (
             <>
