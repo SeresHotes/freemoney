@@ -1527,23 +1527,9 @@ code {
   text-align: center;
   line-height: 1.15;
 }
-.ring__center .donut__label {
-  font-size: calc(var(--ring-fs) * 0.6);
-}
 .ring__center .donut__expense,
 .ring__center .donut__income {
   font-size: var(--ring-fs);
-}
-/* Категория под долгим нажатием (вместо итогов месяца). */
-.ring__held-icon {
-  font-size: var(--ring-fs);
-  line-height: 1.2;
-}
-.ring__held-name {
-  max-width: 90%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* --- Экран ошибки (ErrorBoundary / index.html) ---------------------------- */
