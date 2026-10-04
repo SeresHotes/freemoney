@@ -117,7 +117,8 @@ h2 {
   flex: 0 0 auto;
   width: 44px;
   height: 44px;
-  margin-left: -10px;
+  /* -4px по вертикали: шапка с «Назад» той же высоты (36px), что и без неё */
+  margin: -4px 0 -4px -10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1172,7 +1173,9 @@ code {
 /* --- Правый верхний угол: синхронизация + настройки ----------------------- */
 .top-corner {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  /* на линии заголовков: сверху отступ как у .page, а кнопка 36px — ровно
+     строка h1, так что центры совпадают */
+  top: calc(env(safe-area-inset-top, 0px) + 1.25rem);
   right: 10px;
   z-index: 80;
   display: flex;
@@ -1297,7 +1300,8 @@ code {
   height: calc(100vh - var(--nav-h) - var(--nav-bump) - env(safe-area-inset-bottom, 0px));
   height: calc(100dvh - var(--nav-h) - var(--nav-bump) - env(safe-area-inset-bottom, 0px));
   min-height: 480px;
-  padding-top: 0.75rem;
+  /* как у .page — шапка на той же высоте, что и на остальных экранах */
+  padding-top: 1.25rem;
   padding-bottom: 0.5rem;
 }
 .home__head {
@@ -1305,7 +1309,6 @@ code {
   padding-right: 28px;
 }
 .home__title {
-  font-size: 1.15rem;
   white-space: nowrap;
 }
 /* Выбранная карточка ленты кошельков (кольцо — по ней): зелёная, первая. */
