@@ -21,6 +21,9 @@ export default function CategoryEdit() {
   const [icon, setIcon] = useState(current?.icon || EMOJI_PALETTE[0]);
   // Новой категории сразу предлагаем случайный свободный цвет — его можно сменить.
   const [color, setColor] = useState(() => (isColor(current?.color) ? current.color : pickColor(categories.map((c) => c.color))));
+  // Раскрыт не больше чем один выбор: 'icon' | 'color' | null.
+  const [open, setOpen] = useState(null);
+  const toggle = (what) => setOpen((v) => (v === what ? null : what));
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -75,12 +78,28 @@ export default function CategoryEdit() {
 
       <form className="form" onSubmit={submit}>
         <div className="add-cat__row">
-          <span className="add-cat__preview"><CategoryIcon icon={icon} color={color} /></span>
+          <button
+            type="button"
+            className={`add-cat__preview${open === 'icon' ? ' add-cat__preview--open' : ''}`}
+            aria-label="Иконка категории"
+            aria-expanded={open === 'icon'}
+            onClick={() => toggle('icon')}
+          >
+            <CategoryIcon icon={icon} color={color} />
+          </button>
           <input className="field__input" type="text" placeholder="Название" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!editing} />
-          <ColorPicker value={color} onChange={setColor} />
+          <button
+            type="button"
+            className={`color-swatch${open === 'color' ? ' color-swatch--open' : ''}`}
+            style={{ background: color }}
+            aria-label="Цвет категории"
+            aria-expanded={open === 'color'}
+            onClick={() => toggle('color')}
+          />
         </div>
 
-        <EmojiPicker value={icon} onChange={setIcon} className="page__grow" />
+        {open === 'icon' && <EmojiPicker value={icon} onChange={(e) => { setIcon(e); setOpen(null); }} className="page__grow" />}
+        {open === 'color' && <ColorPicker value={color} onChange={(c) => { setColor(c); setOpen(null); }} />}
 
         <label className="field">
           <span className="field__label">Тип</span>

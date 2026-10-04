@@ -640,7 +640,6 @@ h2 {
 }
 .add-cat__row {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
 }
@@ -648,6 +647,9 @@ h2 {
   flex: 1;
 }
 .add-cat__preview {
+  padding: 0;
+  border: 2px solid transparent;
+  cursor: pointer;
   font-size: 1.6rem;
   width: 2.4rem;
   height: 2.4rem;
@@ -668,11 +670,13 @@ h2 {
   border-radius: var(--radius);
   cursor: pointer;
 }
+.add-cat__preview--open,
+.color-swatch--open {
+  border-color: var(--accent);
+}
 .color-palette {
-  flex-basis: 100%;
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 0.5rem;
+  gap: 0.35rem;
   padding: 0.6rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -683,7 +687,7 @@ h2 {
   min-width: 0;
   padding: 0;
   border: 2px solid transparent;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
 }
 .color-palette__item--active {
