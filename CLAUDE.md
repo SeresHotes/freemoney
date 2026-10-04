@@ -78,7 +78,8 @@
   категории, эмодзи — тонированным SVG-фильтром `tint-rrggbb` (`CategoryTints`).
   Данные Lucide генерирует `npm run lucide` (`scripts/gen-lucide.mjs`): популярные —
   `lucidePopular.json` в основном бандле, полный набор — `lucideData.json` лениво.
-  Русские слова для поиска — словарь `RU` в генераторе; группы — снимок категорий
+  Русские слова для поиска — перевод всего набора `scripts/lucide-ru.json` плюс
+  ручной словарь `RU` в генераторе (сверху); группы — снимок категорий
   `scripts/lucide-categories.json` (в npm-пакет они не входят).
 - Эмодзи прежней палитры разово (флаг `freemoney:lucideIcons` в localStorage)
   меняются на аналоги Lucide в `loadData` (`EMOJI_TO_LUCIDE`, `src/utils/icons.js`).
