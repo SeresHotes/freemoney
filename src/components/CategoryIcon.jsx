@@ -18,8 +18,8 @@ function useArt(style, icon) {
 
 // Иконка категории — эмодзи, нарисованный выбранным стилем (настройка «Стиль
 // иконок»): одноцветные стили — цветом категории (без цвета — цветом текста),
-// цветной — своими цветами. Нет рисовки — системный эмодзи, тонированный в цвет
-// категории (см. CategoryTints). В SVG (кольцо главной) — x/y/size: иконка
+// цветной и «Системные эмодзи» — своими цветами. Нет рисовки — системный эмодзи,
+// тонированный в цвет категории (см. CategoryTints). В SVG (кольцо главной) — x/y/size: иконка
 // рисуется вложенным <svg> с центром в (x, y).
 // iconStyle — нарисовать другим стилем, а не выбранным (превью в настройках).
 export default function CategoryIcon({ icon, color, className, x, y, size, iconStyle }) {
@@ -47,9 +47,10 @@ export default function CategoryIcon({ icon, color, className, x, y, size, iconS
   }
   // Пока рисовка грузится — пустое место того же размера, без мигания эмодзи.
   const pending = a === undefined;
-  // Системный эмодзи вместо рисовки: в цвет категории; без цвета — серым (чтобы
-  // не выбивался из одноцветного стиля), кроме стиля «Системные эмодзи».
-  const filter = color ? tintFilter(color) : style !== 'native' ? 'grayscale(1)' : undefined;
+  // Стиль «Системные эмодзи» — родными цветами эмодзи, без тонировки. Иначе
+  // системный эмодзи — запасной вариант без рисовки: в цвет категории; без
+  // цвета — серым (чтобы не выбивался из одноцветного стиля).
+  const filter = style === 'native' ? undefined : color ? tintFilter(color) : 'grayscale(1)';
   if (inSvg) {
     return pending ? null : (
       <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central" fontSize={size * 0.9} style={{ filter }}>

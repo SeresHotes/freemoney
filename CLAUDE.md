@@ -77,8 +77,9 @@
   **стилем иконок** (настройка `iconStyle`, синхронизируется): Fluent Emoji High
   Contrast (по умолчанию), EmojiOne Monotone, Fluent Emoji Flat или системные
   эмодзи. Рисует **только** `CategoryIcon` (HTML и SVG-кольцо); одноцветные стили —
-  цветом категории, нет рисовки — системный эмодзи, тонированный фильтром
-  `tint-rrggbb` (`CategoryTints`).
+  цветом категории; стиль «Системные эмодзи» — родными цветами эмодзи, **без**
+  тонировки; в остальных стилях нет рисовки — системный эмодзи, тонированный
+  фильтром `tint-rrggbb` (`CategoryTints`).
 - Рисовки — `src/utils/emojiArt/` (`npm run emoji-art`, `scripts/gen-emoji-art.mjs`,
   из пакетов `@iconify-json/*`): по файлу на группу пикера и стиль, грузятся лениво
   (`ensureArt`), в `loadData` — заранее для иконок категорий. Service worker их **не
