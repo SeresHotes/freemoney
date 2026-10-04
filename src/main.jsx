@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+import UpdatePrompt from './components/UpdatePrompt';
 import './index.css';
 
 // Документ не прокручивается (скроллится только .app__main), но iOS при
@@ -22,5 +23,8 @@ createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
+    {/* Вне ErrorBoundary: баннер «Обновить» должен остаться, даже если
+        приложение упало, — иначе починку не поставить. */}
+    <UpdatePrompt />
   </StrictMode>,
 );
