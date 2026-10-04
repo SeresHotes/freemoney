@@ -8,7 +8,7 @@ import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 // Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
 // Касание сегмента/подписи — пока палец держится, категория подсвечена, а в
 // центре вместо итогов месяца её траты; короткий тап — onSelect(item);
-// сдвиг в первые LONG_PRESS_MS — свайп месяца, дольше — удержание.
+// сдвиг в первые HOLD_MS — свайп месяца, дольше — удержание.
 // data: [{ name, value, icon, other? }] по убыванию; center: { expense, income }.
 // Цвета — по месту на кольце (см. layoutRing), а не по рангу.
 
@@ -16,7 +16,8 @@ const NAME_FS = 11;
 const PCT_FS = 12.5;
 const RING_PCT_FS = 12; // процент на сегменте
 const HELD_GROW = 5; // px: на сколько выдвигается наружу зажатый сегмент
-const LONG_PRESS_MS = 400; // столько без движения — удержание, не тап и не свайп
+const HOLD_MS = 200; // столько без движения — удержание: дальше сдвиг уже не свайп
+const TAP_MS = 400; // отпустил раньше и не сдвигал — тап
 const LONG_PRESS_SLOP = 10; // px: сдвиг пальца больше — это свайп, не нажатие
 
 // Точная ширина текста шрифтом страницы (canvas), с запасным приближением.
@@ -141,12 +142,12 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   // Касание сегмента/подписи: сразу подсвечивает категорию и показывает её
-  // траты в центре — пока палец держится. Первые LONG_PRESS_MS решают, что
-  // это: палец сдвинулся — свайп (подсветка снимается, месяц листает Home);
-  // отпустил не сдвигая — тап, onSelect (новый расход); держит дольше —
+  // траты в центре — пока палец держится. Первые HOLD_MS решают, что это:
+  // палец сдвинулся — свайп (подсветка снимается, месяц листает Home); нет —
   // удержание: подсветка ходит за пальцем по категориям, свайпа месяца нет.
+  // Отпустил раньше TAP_MS, ни разу не сдвинув, — тап, onSelect (новый расход).
   const [held, setHeld] = useState(null);
-  const pressRef = useRef(null); // { s, x, y, mode: 'pending'|'hold'|'swipe', timer, cleanup }
+  const pressRef = useRef(null); // { s, at, x, y, moved, mode: 'pending'|'hold'|'swipe', timer, cleanup }
   const holdTouch = useRef(false); // текущее касание — удержание: его touchend не до Home
   const endPress = (select) => {
     const p = pressRef.current;
@@ -155,7 +156,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
     clearTimeout(p.timer);
     p.cleanup();
     setHeld(null);
-    if (select && p.mode === 'pending') onSelect?.(p.s);
+    if (select && p.mode !== 'swipe' && !p.moved && Date.now() - p.at < TAP_MS) onSelect?.(p.s);
   };
   const endRef = useRef(endPress);
   endRef.current = endPress;
@@ -167,14 +168,16 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
     const onMove = (ev) => {
       const p = pressRef.current;
       if (!p || p.mode === 'swipe') return;
+      const far = Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP;
       if (p.mode === 'pending') {
-        if (Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP) {
+        if (far) {
           p.mode = 'swipe';
           clearTimeout(p.timer);
           setHeld(null);
         }
         return;
       }
+      if (far) p.moved = true;
       // удержание: категория под пальцем (мимо сегментов и подписей — прежняя)
       const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-cat]');
       const name = hit && ref.current?.contains(hit) ? hit.getAttribute('data-cat') : null;
@@ -196,8 +199,8 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
       if (p?.mode !== 'pending') return;
       p.mode = 'hold';
       holdTouch.current = true;
-    }, LONG_PRESS_MS);
-    pressRef.current = { s, x: e.clientX, y: e.clientY, mode: 'pending', timer, cleanup };
+    }, HOLD_MS);
+    pressRef.current = { s, at: Date.now(), x: e.clientX, y: e.clientY, moved: false, mode: 'pending', timer, cleanup };
     setHeld(s.name);
   };
   const pressProps = (s) => ({ 'data-cat': s.name, onPointerDown: (e) => startPress(e, s) });
