@@ -6,6 +6,7 @@ import { ICON_STYLES } from '../utils/emojiArt';
 import { CURRENCIES, formatAmount } from '../utils/currencies';
 import { APP_VERSION, CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
 import { agoLabel } from '../utils/format';
+import { HOME_WALLETS_VIEWS, readHomeWalletsView, writeHomeWalletsView } from '../utils/homeWalletsView';
 import { downloadTemplateXlsx, downloadTemplateCsv } from '../api/tableImport';
 
 // Версию подставляет сборка (vite define). Локально без vite — 'dev'.
@@ -399,6 +400,26 @@ function IconStyleSection() {
   );
 }
 
+// ВРЕМЕННО: выбор вида кошельков на главной (только на этом устройстве).
+function HomeWalletsViewSection() {
+  const [view, setView] = useState(readHomeWalletsView);
+  return (
+    <section>
+      <h2 className="section-title">Кошельки на главной (эксперимент)</h2>
+      <select
+        className="field__input field__input--select"
+        value={view}
+        onChange={(e) => {
+          setView(e.target.value);
+          writeHomeWalletsView(e.target.value);
+        }}
+      >
+        {Object.entries(HOME_WALLETS_VIEWS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+      </select>
+    </section>
+  );
+}
+
 export default function Settings() {
   const {
     transactions, categories, wallets, baseCurrency,
@@ -474,6 +495,8 @@ export default function Settings() {
       </section>
 
       <IconStyleSection />
+
+      <HomeWalletsViewSection />
 
       <SyncSection />
 

@@ -1404,6 +1404,29 @@ code {
 .home__wallets .wallet-chip {
   padding: 0.45rem 0.8rem;
 }
+/* ВРЕМЕННО: варианты ленты кошельков (utils/homeWalletsView). */
+.home__wallets--blur {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.home__wallets--blur .wallet-chip__bal {
+  filter: blur(6px);
+}
+.home__wallets .wallet-chip__bal {
+  transition: filter 0.15s;
+}
+.home__wallets--names .wallet-chip {
+  min-width: 0;
+}
+.home__wallets--names .wallet-chip__name {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.home__wallets-toggle {
+  min-width: 0;
+  justify-content: center;
+}
 .home__tiles {
   flex: 0 0 auto;
   display: grid;

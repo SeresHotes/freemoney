@@ -8,6 +8,7 @@ import { walletBalance, isIncome, isExpense } from '../utils/finance';
 import { useNetWorth } from '../hooks/useNetWorth';
 import { IS_DEV_CHANNEL } from '../config';
 import CategoryRing from '../components/CategoryRing';
+import { readHomeWalletsView } from '../utils/homeWalletsView';
 
 // Иконка-контур 24×24 (стрелки, плюс/минус): в отличие от символов шрифта
 // («‹», «−»), всегда ровно по центру по вертикали.
@@ -86,6 +87,24 @@ export default function Home() {
     }
   };
 
+  // ВРЕМЕННО: вид ленты кошельков выбирается в настройках (utils/homeWalletsView).
+  const [walletsView] = useState(readHomeWalletsView);
+  const masked = walletsView === 'eye' && !balancesShown;
+  // blur: удержание пальцем на ленте снимает размытие (с задержкой, чтобы
+  // обычный тап не мигал суммами).
+  const [revealed, setRevealed] = useState(false);
+  const revealTimer = useRef(null);
+  const holdStart = () => {
+    clearTimeout(revealTimer.current);
+    revealTimer.current = setTimeout(() => setRevealed(true), 250);
+  };
+  const holdEnd = () => {
+    clearTimeout(revealTimer.current);
+    setRevealed(false);
+  };
+  // collapsed: лента раскрывается тапом и сворачивается после выбора.
+  const [expanded, setExpanded] = useState(false);
+
   const walletQuery = selWallet ? `wallet=${encodeURIComponent(selWallet)}` : '';
 
   // Выбранный месяц — в адресе (?month=YYYY-MM), чтобы не сбрасывался после
@@ -152,8 +171,8 @@ export default function Home() {
     {
       key: '',
       name: `Всего${ratesNote ? ' *' : ''}`,
-      balance: balancesShown ? formatAmount(netWorth, baseCurrency) : HIDDEN_BALANCE,
-      negative: balancesShown && netWorth < 0,
+      balance: masked ? HIDDEN_BALANCE : formatAmount(netWorth, baseCurrency),
+      negative: !masked && netWorth < 0,
       title: ratesNote ? `Все кошельки (${ratesNote})` : 'Все кошельки',
     },
     ...recentWallets.map((w) => {
@@ -161,8 +180,8 @@ export default function Home() {
       return {
         key: w.name,
         name: w.name,
-        balance: balancesShown ? formatAmount(bal, w.currency) : HIDDEN_BALANCE,
-        negative: balancesShown && bal < 0,
+        balance: masked ? HIDDEN_BALANCE : formatAmount(bal, w.currency),
+        negative: !masked && bal < 0,
         title: w.name,
       };
     }),
@@ -181,7 +200,7 @@ export default function Home() {
     <div className="page home">
       <header className="home__head">
         <h1 className="home__title">FreeMoney{IS_DEV_CHANNEL && <span className="channel-badge">DEV</span>}</h1>
-        <button
+        {walletsView === 'eye' && <button
           className="home__eye"
           aria-label={balancesShown ? 'Скрыть балансы' : 'Показать балансы'}
           title={balancesShown ? 'Скрыть балансы' : 'Показать балансы'}
@@ -195,7 +214,7 @@ export default function Home() {
                 : 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 100 6 3 3 0 000-6zM3 3l18 18'
             }
           />
-        </button>
+        </button>}
       </header>
 
       <section className="home__month" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -239,22 +258,48 @@ export default function Home() {
 
       {/* Лента: «Всего» и кошельки. Выбранный — зелёный и первый; тап выбирает
           (кольцо — по нему), повторный тап — операции кошелька. */}
-      <section className="wallet-chips home__wallets" key={selWallet}>
-        {chips.map((c) => (
-          <button
-            key={c.key}
-            className={`wallet-chip${c.key === selWallet ? ' wallet-chip--selected' : ''}${c.negative ? ' wallet-chip--negative' : ''}`}
-            title={c.title}
-            onClick={() => {
-              if (c.key !== selWallet) selectWallet(c.key);
-              else navigate(c.key ? `/transactions?wallet=${encodeURIComponent(c.key)}` : '/wallets');
-            }}
-          >
-            <span className="wallet-chip__name">{c.name}</span>
-            <span className="wallet-chip__bal">{c.balance}</span>
+      {walletsView === 'collapsed' && !expanded ? (
+        <section className="wallet-chips home__wallets">
+          <button className="wallet-chip wallet-chip--selected home__wallets-toggle" onClick={() => setExpanded(true)}>
+            <span className="wallet-chip__name">Кошелёк</span>
+            <span className="wallet-chip__bal">{selWallet || 'Все'} ▾</span>
           </button>
-        ))}
-      </section>
+        </section>
+      ) : (
+        <section
+          className={`wallet-chips home__wallets${walletsView === 'blur' && !revealed ? ' home__wallets--blur' : ''}${walletsView === 'names' ? ' home__wallets--names' : ''}`}
+          key={selWallet}
+          {...(walletsView === 'blur' && {
+            onPointerDown: holdStart,
+            onPointerUp: holdEnd,
+            onPointerCancel: holdEnd,
+            onPointerLeave: holdEnd,
+            onContextMenu: (e) => e.preventDefault(),
+          })}
+        >
+          {chips.map((c) => (
+            <button
+              key={c.key}
+              className={`wallet-chip${c.key === selWallet ? ' wallet-chip--selected' : ''}${c.negative ? ' wallet-chip--negative' : ''}`}
+              title={c.title}
+              onClick={() => {
+                if (c.key !== selWallet) {
+                  selectWallet(c.key);
+                  setExpanded(false);
+                } else navigate(c.key ? `/transactions?wallet=${encodeURIComponent(c.key)}` : '/wallets');
+              }}
+            >
+              <span className="wallet-chip__name">{c.name}</span>
+              {walletsView !== 'names' && <span className="wallet-chip__bal">{c.balance}</span>}
+            </button>
+          ))}
+          {walletsView === 'collapsed' && (
+            <button className="wallet-chip home__wallets-toggle" aria-label="Свернуть" onClick={() => setExpanded(false)}>
+              <span className="wallet-chip__bal">▴</span>
+            </button>
+          )}
+        </section>
+      )}
       {ratesNote && <p className="home__rates-note">* {ratesNote}</p>}
 
       <section className="home__actions">
