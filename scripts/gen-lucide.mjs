@@ -3,13 +3,15 @@
 // Группы иконок — из scripts/lucide-categories.json (снимок папки icons/ репозитория
 // lucide: имя → категории; в npm-пакет категории не входят). Обновить снимок:
 //   node scripts/gen-lucide.mjs --categories <путь к клону lucide-icons/lucide>
-// Русские слова для поиска — словарь RU ниже (плюс название группы у каждой иконки).
+// Русские слова для поиска — у каждой иконки: scripts/lucide-ru.json (перевод всего
+// набора: «название слова…»), сверху — ручной словарь RU ниже для популярных, плюс
+// название группы.
 // Результат:
 //   src/utils/lucideData.json    — полный набор, грузится лениво (отдельный чанк);
 //   src/utils/lucidePopular.json — популярные (POPULAR), в основном бандле, чтобы
 //                                  базовые категории рисовались без догрузки.
 // Запуск: npm run lucide
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -34,6 +36,8 @@ const pkg = (p) => JSON.parse(readFileSync(join(root, 'node_modules', 'lucide-st
 const nodes = pkg('icon-nodes.json');
 const tags = pkg('tags.json');
 const categories = JSON.parse(readFileSync(catFile, 'utf8'));
+const ruFile = join(root, 'scripts', 'lucide-ru.json');
+const ruAll = existsSync(ruFile) ? JSON.parse(readFileSync(ruFile, 'utf8')) : {};
 
 // Вкладки пикера: русское название, иконка вкладки и категории Lucide. Иконка
 // попадает в первую подходящую группу. Чисто интерфейсные категории (стрелки,
@@ -68,7 +72,8 @@ const POPULAR = [
 // Иконки служебных строк (операции без категории, «Другое» на кольце) — тоже в основной бандл.
 const EXTRA = ['package', 'scale', 'handshake', 'arrow-left-right'];
 
-// Русские слова для поиска (имя иконки → слова через пробел).
+// Ручные русские слова для популярных иконок (имя → слова через пробел; первое —
+// подпись). Дополняют и перекрывают перевод из lucide-ru.json.
 const RU = {
   tag: 'метка ярлык ценник прочее', 'shopping-cart': 'корзина продукты покупки магазин супермаркет',
   'shopping-basket': 'корзинка продукты покупки', 'shopping-bag': 'пакет сумка покупки шопинг',
@@ -131,12 +136,14 @@ if (missing.length) console.warn('⚠ нет в Lucide:', [...new Set(missing)].
 
 const items = GROUPS.map(() => []);
 const used = {};
+const noRu = [];
 for (const name of Object.keys(nodes).sort()) {
   const cats = categories[name] || [];
   const gi = GROUPS.findIndex((g) => g.cats.some((c) => cats.includes(c)));
   if (gi < 0 && !POPULAR.includes(name)) continue;
   const g = gi < 0 ? GROUPS[GROUPS.length - 1] : GROUPS[gi];
-  const ru = RU[name] || '';
+  const ru = [...new Set(`${RU[name] || ''} ${ruAll[name] || ''}`.split(/\s+/).filter(Boolean))].join(' ');
+  if (!ru) noRu.push(name);
   const label = ru ? ru.split(' ')[0] : name.replace(/-/g, ' ');
   const keywords = [ru, g.name.toLowerCase(), name.replace(/-/g, ' '), ...(tags[name] || [])].filter(Boolean).join(' ');
   items[gi < 0 ? GROUPS.length - 1 : gi].push([name, `${label}|${keywords}`]);
@@ -151,4 +158,5 @@ const data = {
 writeFileSync(join(root, 'src', 'utils', 'lucideData.json'), JSON.stringify(data));
 const popular = Object.fromEntries([...POPULAR, ...EXTRA].filter((n) => nodes[n]).map((n) => [n, svgInner(n)]));
 writeFileSync(join(root, 'src', 'utils', 'lucidePopular.json'), JSON.stringify({ order: POPULAR, svg: popular }));
+if (noRu.length) console.warn(`⚠ без русских слов (${noRu.length}):`, noRu.join(', '));
 console.log(`✓ ${Object.keys(used).length} иконок, популярных ${POPULAR.length}`);
