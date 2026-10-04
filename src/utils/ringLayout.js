@@ -37,9 +37,8 @@ const V_GAP = 22; // зазор между верхним/нижним рядо�
 const ROW_GAP = 2; // зазор между подписями в боковой колонке
 const ASPECT = 1.15; // сетка подписей по высоте — до ASPECT своей ширины (высокие экраны)
 const STUB = 16; // радиальный отрезок линии от кольца (только для обхода кольца)
-const TAIL = 14; // прямой вход линии в подпись (излом у подписи)
-const ENTRY_MAX = 30; // град: прямая входит в подпись наискось не больше — иначе излом у подписи
-const OUTWARD_MAX = 80; // град: прямая от кольца должна уходить наружу (не круче к касательной)
+const BEND_ANGLE = 25; // град: линия отходит от кольца не круче к радиусу — иначе излом
+const BEND_AT = 0.5; // излом — на такой доле прямого пути от кольца до подписи
 const SEED_ROTATIONS = 24; // повороты для стартовых порядков (шаг 15°)
 const ROT_STEPS = [-8, 0, 8]; // подстройка поворота при обменах, град
 const MAX_ITER = 10; // шагов улучшения обменами, не больше
@@ -94,55 +93,43 @@ function distToSegment(px, py, x1, y1, x2, y2) {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-// Линия к подписи с точкой крепления (lx, ly); [dx, dy] — направление от
-// подписи к кольцу (так линия «правильно» входит в подпись). Без лишних изломов:
-// прямая от кольца к подписи, если она уходит от кольца наружу и входит в
-// подпись не слишком наискось (до ENTRY_MAX); иначе — один излом прямо перед
-// подписью (прямой вход TAIL; если ему мешает кольцо — всё же прямая). Если и
-// прямая зашла бы на кольцо — один излом у кольца (радиальный отрезок STUB).
-// Только если и так нельзя
-// (подпись «с другой стороны») — от кольца по радиусу (STUB) и в обход кольца
-// по дуге. points — вершины; detour — точки обхода.
-function leader(s, lx, ly, g, [dx, dy]) {
+// Линия к подписи с точкой крепления (lx, ly) — не больше одного излома.
+// Прямая, если она отходит от кольца не круче BEND_ANGLE к радиусу; иначе
+// первый отрезок — ровно под BEND_ANGLE к радиусу (в сторону подписи), примерно
+// до середины пути, а оттуда — прямо к подписи. Если второму отрезку мешает
+// кольцо, излом отодвигается дальше по лучу. Только если и так нельзя
+// (подпись «за кольцом») — обход кольца по дуге. points — вершины; detour —
+// точки обхода.
+function leader(s, lx, ly, g) {
   const want = near(Math.atan2(ly - g.cy, lx - g.cx), s.mid);
   const m = Math.min(0.03, (s.a1 - s.a0) / 3);
   const t = Math.min(s.a1 - m, Math.max(s.a0 + m, want));
   const [ax, ay] = polar(g.cx, g.cy, g.R, t);
-  const tail = [lx + dx * TAIL, ly + dy * TAIL];
-  const angleTo = (x0, y0, x1, y1, ux, uy) => {
-    const len = Math.hypot(x1 - x0, y1 - y0) || 1;
-    return Math.acos(Math.max(-1, Math.min(1, ((x1 - x0) * ux + (y1 - y0) * uy) / len))) / DEG;
-  };
-  // отрезок от точки на кольце, направленный наружу, на кольцо уже не зайдёт
-  const outward = (x, y) => angleTo(ax, ay, x, y, Math.cos(t), Math.sin(t)) < OUTWARD_MAX;
   const len = Math.hypot(lx - ax, ly - ay);
-  if (outward(lx, ly) && angleTo(ax, ay, lx, ly, -dx, -dy) <= ENTRY_MAX) {
-    return { points: [[ax, ay], [lx, ly]], len, detour: 0 };
+  const [ux, uy] = [Math.cos(t), Math.sin(t)]; // радиус наружу
+  const angle = Math.acos(Math.max(-1, Math.min(1, ((lx - ax) * ux + (ly - ay) * uy) / (len || 1)))) / DEG;
+  if (angle <= BEND_ANGLE) return { points: [[ax, ay], [lx, ly]], len, detour: 0 };
+  // луч под BEND_ANGLE к радиусу, повёрнутый в сторону подписи
+  const side = Math.sign(ux * (ly - ay) - uy * (lx - ax)) || 1;
+  const r = t + side * BEND_ANGLE * DEG;
+  const clear = (p) => distToSegment(g.cx, g.cy, ...p, lx, ly) >= g.R + 2;
+  for (let k = BEND_AT; k <= 2; k += 0.25) {
+    const bend = [ax + Math.cos(r) * len * k, ay + Math.sin(r) * len * k];
+    if (clear(bend)) return { points: [[ax, ay], bend, [lx, ly]], len, detour: 0 };
   }
-  if (outward(...tail)) return { points: [[ax, ay], tail, [lx, ly]], len, detour: 0 };
-  // излому у подписи мешает кольцо — тогда уж прямая, хоть и наискось
-  if (outward(lx, ly)) return { points: [[ax, ay], [lx, ly]], len, detour: 0 };
-  // и прямой мешает — один излом у кольца: сперва по радиусу, затем к подписи
-  const stub = polar(g.cx, g.cy, g.R + STUB, t);
-  const clear = (p, q) => distToSegment(g.cx, g.cy, ...p, ...q) >= g.R + 2;
-  if (clear(stub, [lx, ly])) return { points: [[ax, ay], stub, [lx, ly]], len, detour: 0 };
-  const points = [[ax, ay], stub];
-  const hits = (x, y) => distToSegment(g.cx, g.cy, x, y, tail[0], tail[1]) < g.R + 2;
+  // Обход по дуге радиуса rw в сторону подписи (кратчайшим путём). Шаг —
+  // такой, чтобы хорда между соседними точками не срезала край кольца.
+  const rw = g.R + STUB + 6;
+  const points = [[ax, ay], polar(g.cx, g.cy, g.R + STUB, t)];
+  const step = 2 * Math.acos((g.R + 2) / rw) * 0.9 * Math.sign(want - t || 1);
+  let a = t;
   let detour = 0;
-  if (hits(...points[1])) {
-    // Обход по дуге радиуса rw в сторону подписи (кратчайшим путём). Шаг —
-    // такой, чтобы хорда между соседними точками не срезала край кольца.
-    const rw = g.R + STUB + 6;
-    const step = 2 * Math.acos((g.R + 2) / rw) * 0.9 * Math.sign(want - t || 1);
-    let a = t;
+  while (detour < 24 && !clear(points[points.length - 1])) {
+    a += step;
     points.push(polar(g.cx, g.cy, rw, a));
-    for (let i = 0; i < 24 && hits(...points[points.length - 1]); i++) {
-      a += step;
-      points.push(polar(g.cx, g.cy, rw, a));
-      detour++;
-    }
+    detour++;
   }
-  points.push(tail, [lx, ly]);
+  points.push([lx, ly]);
   return { points, len, detour };
 }
 
@@ -237,8 +224,8 @@ function assignSlots(slices, slots, bound = Infinity) {
   return best;
 }
 
-// Точка крепления линии к подписи на месте t и направление от подписи к кольцу.
-// Линия входит в подпись: в верхнюю — снизу, в нижнюю — сверху, в боковую —
+// Точка крепления линии к подписи на месте t.
+// Линия приходит в подпись: в верхнюю — снизу, в нижнюю — сверху, в боковую —
 // сбоку на уровне иконки, в угловую — в угол иконки, обращённый к кольцу
 // (наискось, чтобы не пересечь соседей).
 function attach(t, mode, cx, cy) {
@@ -248,11 +235,11 @@ function attach(t, mode, cx, cy) {
   const sx = Math.sign(cx - t.x);
   const sy = Math.sign(cy - t.y);
   return {
-    corner: [t.x + sx * half * 0.8, iconY + sy * half * 0.8, [sx * Math.SQRT1_2, sy * Math.SQRT1_2]],
-    top: [t.x, t.y + mode.h / 2 + 3, [0, 1]],
-    bottom: [t.x, top - 3, [0, -1]],
-    left: [t.x + half, iconY, [1, 0]],
-    right: [t.x - half, iconY, [-1, 0]],
+    corner: [t.x + sx * half * 0.8, iconY + sy * half * 0.8],
+    top: [t.x, t.y + mode.h / 2 + 3],
+    bottom: [t.x, top - 3],
+    left: [t.x + half, iconY],
+    right: [t.x - half, iconY],
   }[t.side];
 }
 
@@ -290,8 +277,8 @@ function frame(w, h, nameLines) {
   // угол места — по точке крепления линии (по ней и считается отрыв от сектора)
   const add = (x, y, side, sw) => {
     const t = { x, y, side, w: sw };
-    const [ax, ay, dir] = attach(t, mode, cx, cy);
-    slots.push({ ...t, ax, ay, dir, ang: Math.atan2(ay - cy, ax - cx) });
+    const [ax, ay] = attach(t, mode, cx, cy);
+    slots.push({ ...t, ax, ay, ang: Math.atan2(ay - cy, ax - cx) });
   };
   xs.forEach((x, i) => {
     const corner = i === 0 || i === 3;
@@ -353,7 +340,7 @@ function search(list, total, g, doSearch) {
 function placeLabels(best, g) {
   return best.named.map((s, i) => {
     const t = g.slots[best.pick[i]];
-    return { s, x: t.x, y: t.y, side: t.side, w: t.w, gap: arcGap(s, t.ang), a: leader(s, t.ax, t.ay, g, t.dir) };
+    return { s, x: t.x, y: t.y, side: t.side, w: t.w, gap: arcGap(s, t.ang), a: leader(s, t.ax, t.ay, g) };
   });
 }
 
