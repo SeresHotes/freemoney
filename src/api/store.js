@@ -303,14 +303,78 @@ function rowToSetting(r) {
   return { key: r[0] || '', value: r[1] ?? '', updatedAt: decStamp(r[2]), deleted: false };
 }
 
-// Диапазоны данных (без строки заголовка) и мапперы по сущностям.
+// Листы и мапперы по сущностям; width — число известных этой версии колонок.
 const ENTITY = {
-  transactions: { sheet: SHEET_TX, lastCol: 'O', toRow: txToRow, fromRow: rowToTx },
-  categories: { sheet: SHEET_CAT, lastCol: 'I', toRow: catToRow, fromRow: rowToCat },
-  wallets: { sheet: SHEET_WALLET, lastCol: 'G', toRow: walletToRow, fromRow: rowToWallet },
-  tags: { sheet: SHEET_TAG, lastCol: 'D', toRow: tagToRow, fromRow: rowToTag },
-  settings: { sheet: SHEET_SETTINGS, lastCol: 'C', toRow: settingToRow, fromRow: rowToSetting },
+  transactions: { sheet: SHEET_TX, width: TX_HEADER.length, toRow: txToRow, fromRow: rowToTx },
+  categories: { sheet: SHEET_CAT, width: CAT_HEADER.length, toRow: catToRow, fromRow: rowToCat },
+  wallets: { sheet: SHEET_WALLET, width: WALLET_HEADER.length, toRow: walletToRow, fromRow: rowToWallet },
+  tags: { sheet: SHEET_TAG, width: TAG_HEADER.length, toRow: tagToRow, fromRow: rowToTag },
+  settings: { sheet: SHEET_SETTINGS, width: SETTINGS_HEADER.length, toRow: settingToRow, fromRow: rowToSetting },
 };
+
+// --- Неизвестные колонки (таблица на более новой схеме) ----------------------
+//
+// Таблицу могла уже обновить более новая версия приложения (другое устройство,
+// dev-канал), дописав колонки справа. Эта версия их не понимает, но обязана
+// сохранить: ячейки за пределами известных колонок едут вместе с записью как
+// `extra` (массив ячеек) + `extraFrom` (номер колонки, с которой они начинаются),
+// живут в локальном сторе и записываются обратно в те же колонки. Когда
+// приложение обновится и узнает эти колонки, hydrateExtra разберёт сохранённые
+// ячейки в поля записи — данные «доедут» без повторного скачивания.
+// Схема меняется только дописыванием колонок в конец — на этом держится
+// позиционное соответствие.
+
+const colLetter = (n) => {
+  let s = '';
+  for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) s = String.fromCharCode(65 + ((x - 1) % 26)) + s;
+  return s;
+};
+
+const hasExtra = (rec) => Array.isArray(rec?.extra) && rec.extra.length > 0;
+
+function withoutExtra(rec) {
+  const { extra: _e, extraFrom: _f, ...rest } = rec;
+  return rest;
+}
+
+// Разобрать сохранённые неизвестные ячейки в поля, которые эта версия уже знает
+// (запись пришла от старой версии приложения). Остаток — снова в extra.
+export function hydrateExtra(entity, rec) {
+  const meta = ENTITY[entity];
+  if (!meta || !hasExtra(rec)) return rec;
+  const from = Number.isInteger(rec.extraFrom) ? rec.extraFrom : meta.width;
+  if (from >= meta.width) return rec;
+  const row = meta.toRow(rec);
+  rec.extra.forEach((v, i) => { if (from + i < meta.width) row[from + i] = v; });
+  const parsed = meta.fromRow(row, rec.order ?? 0);
+  const rest = rec.extra.slice(meta.width - from);
+  const out = { ...withoutExtra(rec), ...parsed, updatedAt: rec.updatedAt, deleted: rec.deleted };
+  // id категории не в первой колонке и может быть пуст в row — не теряем локальный.
+  if (entity === 'categories' && !out.id) out.id = rec.id;
+  return rest.some((v) => v !== '' && v != null) ? { ...out, extra: rest, extraFrom: meta.width } : out;
+}
+
+// Строка листа → запись + неизвестные хвостовые ячейки.
+function fromSheetRow(entity, r, index) {
+  const meta = ENTITY[entity];
+  const rec = meta.fromRow(r, index);
+  const tail = r.slice(meta.width);
+  return tail.some((v) => v !== '' && v != null) ? { ...rec, extra: tail, extraFrom: meta.width } : rec;
+}
+
+// Запись → строка листа, с неизвестными ячейками на их прежних местах.
+function toSheetRow(entity, rec) {
+  const meta = ENTITY[entity];
+  const h = hydrateExtra(entity, rec);
+  const row = meta.toRow(h);
+  if (!hasExtra(h)) return row;
+  while (row.length < h.extraFrom) row.push('');
+  return [...row, ...h.extra];
+}
+
+// Ширина листа по последнему чтению — чтобы перезапись очищала и неизвестные
+// колонки (иначе их значения остались бы на чужих строках).
+const sheetWidth = {};
 
 // --- Создание и схема -------------------------------------------------------
 
@@ -396,21 +460,18 @@ export async function findExistingSpreadsheets() {
 // Прочитать все сущности одним batch-запросом. Возвращает канонические записи
 // ВКЛЮЧАЯ tombstones (deleted:true) — их видит мердж.
 export async function fetchAllForSync(id) {
-  const [txRows, catRows, walletRows, tagRows, settingsRows] = await getValuesBatch(id, [
-    `${SHEET_TX}!A2:O`,
-    `${SHEET_CAT}!A2:I`,
-    `${SHEET_WALLET}!A2:H`,
-    `${SHEET_TAG}!A2:D`,
-    `${SHEET_SETTINGS}!A2:C`,
-  ]);
-  return {
-    transactions: txRows.filter((r) => r[0]).map(rowToTx),
-    categories: catRows.filter((r) => r[0]).map(rowToCat),
-    // Кошельки идентифицируются по имени (колонка A).
-    wallets: walletRows.filter((r) => r[0]).map(rowToWallet),
-    tags: tagRows.filter((r) => r[0]).map(rowToTag),
-    settings: settingsRows.filter((r) => r[0]).map(rowToSetting),
-  };
+  // Листы читаем целиком (диапазон = имя листа), а не A2:<последняя известная>:
+  // колонки, дописанные более новой версией, должны доехать до записи (extra).
+  const entities = Object.keys(ENTITY);
+  const sheets = await getValuesBatch(id, entities.map((e) => ENTITY[e].sheet));
+  const out = {};
+  entities.forEach((entity, i) => {
+    const rows = sheets[i];
+    sheetWidth[entity] = rows.reduce((w, r) => Math.max(w, r.length), 0);
+    // Первая строка — шапка. Кошельки/теги/настройки идентифицируются по колонке A.
+    out[entity] = rows.slice(1).filter((r) => r[0]).map((r, index) => fromSheetRow(entity, r, index));
+  });
+  return out;
 }
 
 // Полностью перезаписать лист сущности набором записей (со 2-й строки).
@@ -419,7 +480,8 @@ export async function fetchAllForSync(id) {
 export async function overwriteEntity(id, entity, records) {
   const meta = ENTITY[entity];
   if (!meta) throw new Error(`Неизвестная сущность: ${entity}`);
-  await clearValues(id, `${meta.sheet}!A2:${meta.lastCol}`);
-  const rows = records.map(meta.toRow);
+  const rows = records.map((r) => toSheetRow(entity, r));
+  const width = rows.reduce((w, r) => Math.max(w, r.length), Math.max(meta.width, sheetWidth[entity] || 0));
+  await clearValues(id, `${meta.sheet}!A2:${colLetter(width)}`);
   if (rows.length) await updateValues(id, `${meta.sheet}!A2`, rows);
 }

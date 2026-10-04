@@ -464,7 +464,11 @@ export function createLocalBackend() {
 
     updateTransaction: async (t) => {
       const db = await openDb();
-      await putStamped(db, STORE_TX, { ...t, tags: t.tags || [], deleted: false });
+      // Форма редактирования собирает операцию из своих полей — неизвестные
+      // этой версии колонки листа (extra, см. api/store.js) берём из стора.
+      const cur = await reqToPromise(store(db, STORE_TX).get(t.id));
+      const keep = cur?.extra && !t.extra ? { extra: cur.extra, extraFrom: cur.extraFrom } : {};
+      await putStamped(db, STORE_TX, { ...t, ...keep, tags: t.tags || [], deleted: false });
       db.close();
     },
 
