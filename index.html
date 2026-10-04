@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="Учёт доходов и расходов с хранением в Google Таблицах" />
     <title>FreeMoney</title>
-    <script type="module" crossorigin src="/assets/index-CK9HIfAy.js"></script>
+    <script type="module" crossorigin src="/assets/index-In8Zh9nW.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-BgqwNecH.css">
   <link rel="manifest" href="/manifest.webmanifest"></head>
   <body>
@@ -18,6 +18,8 @@
       // Если сам бандл не загрузился/упал до старта React — показываем ошибку
       // вместо пустого экрана (React-ошибки ловит ErrorBoundary).
       (function () {
+        // Подставляется при сборке (vite.config.js, buildLabelHtml).
+        var BUILD = 'FreeMoney prod · 969acf9';
         function show(msg) {
           var root = document.getElementById('root');
           if (!root || root.childNodes.length) return;
@@ -25,7 +27,7 @@
             '<div class="crash"><h1>Не удалось запустить приложение</h1>' +
             '<pre class="crash__text"></pre>' +
             '<button class="btn btn--primary" onclick="location.reload()">Перезагрузить</button></div>';
-          root.querySelector('pre').textContent = msg + '\n' + navigator.userAgent;
+          root.querySelector('pre').textContent = msg + '\n' + BUILD + '\n' + navigator.userAgent;
         }
         window.addEventListener('error', function (e) {
           var t = e.target;
