@@ -105,6 +105,10 @@ export default function Home() {
   // popup: кнопка открывает список кошельков; выбор его не закрывает —
   // закрывает сам пользователь (✕ или тап мимо).
   const [listOpen, setListOpen] = useState(false);
+  // popup-*: лента убрана, кнопка списка — в одном из мест экрана.
+  const isPopup = walletsView.startsWith('popup');
+  const pickerLabel = selWallet || 'Все кошельки';
+  const openList = () => setListOpen(true);
 
   const walletQuery = selWallet ? `wallet=${encodeURIComponent(selWallet)}` : '';
 
@@ -216,19 +220,39 @@ export default function Home() {
             }
           />
         </button>}
+        {walletsView === 'popup-head' && (
+          <button className="home__wallet-pill" title="Выбрать кошелёк" onClick={openList}>
+            <span className="home__wallet-pill-name">👛 {pickerLabel}</span> ▾
+          </button>
+        )}
       </header>
 
       <section className="home__month" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <button className="home__month-btn" aria-label="Предыдущий месяц" onClick={() => setMonth(shiftMonth(month, -1))}>
           <Icon d="M15 5l-7 7 7 7" />
         </button>
-        <button
-          className="home__month-title"
-          title={month === curMonth ? 'Расходы за месяц' : 'Вернуться к текущему месяцу'}
-          onClick={() => setMonth(curMonth)}
-        >
-          {monthTitle}
-        </button>
+        {walletsView === 'popup-month' ? (
+          <div className="home__month-center">
+            <button
+              className="home__month-title home__month-title--compact"
+              title={month === curMonth ? 'Расходы за месяц' : 'Вернуться к текущему месяцу'}
+              onClick={() => setMonth(curMonth)}
+            >
+              {monthTitle}
+            </button>
+            <button className="home__month-wallet" title="Выбрать кошелёк" onClick={openList}>
+              <span className="home__wallet-pill-name">{pickerLabel}</span> ▾
+            </button>
+          </div>
+        ) : (
+          <button
+            className="home__month-title"
+            title={month === curMonth ? 'Расходы за месяц' : 'Вернуться к текущему месяцу'}
+            onClick={() => setMonth(curMonth)}
+          >
+            {monthTitle}
+          </button>
+        )}
         <button
           className="home__month-btn"
           aria-label="Следующий месяц"
@@ -259,13 +283,10 @@ export default function Home() {
 
       {/* Лента: «Всего» и кошельки. Выбранный — зелёный и первый; тап выбирает
           (кольцо — по нему), повторный тап — операции кошелька. */}
-      {walletsView === 'popup' ? (
-        <section className="wallet-chips home__wallets">
-          <button className="wallet-chip wallet-chip--selected home__wallets-toggle" onClick={() => setListOpen(true)}>
-            <span className="wallet-chip__name">Кошелёк</span>
-            <span className="wallet-chip__bal">{selWallet || 'Все'} ▾</span>
-          </button>
-        </section>
+      {isPopup ? walletsView === 'popup' && (
+        <button className="home__wallet-bar" title="Выбрать кошелёк" onClick={openList}>
+          <span className="home__wallet-pill-name">👛 {pickerLabel}</span> ▾
+        </button>
       ) : (
         <section
           className={`wallet-chips home__wallets${walletsView === 'blur' && !revealed ? ' home__wallets--blur' : ''}${walletsView === 'names' ? ' home__wallets--names' : ''}`}
@@ -321,15 +342,27 @@ export default function Home() {
       )}
       {ratesNote && <p className="home__rates-note">* {ratesNote}</p>}
 
-      <section className="home__actions">
+      <section className={`home__actions${walletsView === 'popup-actions' ? ' home__actions--wallet' : ''}`}>
         <button className="btn btn--expense" onClick={() => navigate(addUrl('expense'))}>
           <Icon d="M5 12h14" /> Расход
         </button>
+        {walletsView === 'popup-actions' && (
+          <button className="btn home__wallet-mid" title="Выбрать кошелёк" onClick={openList}>
+            <span className="home__wallet-mid-icon">👛</span>
+            <span className="home__wallet-mid-name">{selWallet || 'Все'} ▾</span>
+          </button>
+        )}
         <button className="btn btn--income" onClick={() => navigate(addUrl('income'))}>
           <Icon d="M5 12h14M12 5v14" /> Доход
         </button>
       </section>
-      <section className="home__tiles">
+      <section className={`home__tiles${walletsView === 'popup-tile' ? ' home__tiles--5' : ''}`}>
+        {walletsView === 'popup-tile' && (
+          <button className="home__tile home__tile--wallet" title="Выбрать кошелёк" onClick={openList}>
+            <span className="home__tile-icon">👛</span>
+            <span className="home__tile-label">{selWallet || 'Все'} ▾</span>
+          </button>
+        )}
         {[
           ['/transfer', '⇄', 'Перевод'],
           ['/debt', '🤝', 'Долг'],
