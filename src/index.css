@@ -1412,6 +1412,11 @@ code {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  /* долгое нажатие на категорию — без системного меню/выделения */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .ring__svg {
   position: absolute;
@@ -1422,9 +1427,26 @@ code {
 .ring__label {
   cursor: pointer;
 }
-.ring__slice:active,
-.ring__label:active {
-  opacity: 0.7;
+.ring__slice,
+.ring__label {
+  outline: none;
+}
+/* Зажатая категория: её сегмент (выдвинут наружу), линия и подпись — как
+   есть, остальные приглушены. */
+.ring__slice,
+.ring__label,
+.ring__line,
+.ring__pct-on {
+  transition: opacity 0.15s;
+}
+.ring--held .ring__slice:not(.is-held),
+.ring--held .ring__label:not(.is-held),
+.ring--held .ring__line:not(.is-held),
+.ring--held .ring__pct-on:not(.is-held) {
+  opacity: 0.3;
+}
+.ring__label.is-held .ring__name {
+  font-weight: 700;
 }
 .ring__name {
   fill: var(--text);
@@ -1451,6 +1473,17 @@ code {
 .ring__center .donut__expense,
 .ring__center .donut__income {
   font-size: var(--ring-fs);
+}
+/* Категория под долгим нажатием (вместо итогов месяца). */
+.ring__held-icon {
+  font-size: var(--ring-fs);
+  line-height: 1.2;
+}
+.ring__held-name {
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --- Экран ошибки (ErrorBoundary / index.html) ---------------------------- */
