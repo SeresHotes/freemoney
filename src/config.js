@@ -31,6 +31,11 @@ export const DEFAULT_BASE_CURRENCY = 'RUB';
 export const CHANNEL = import.meta.env.VITE_CHANNEL || 'prod';
 export const IS_DEV_CHANNEL = CHANNEL === 'dev';
 
+// Версия сборки (git describe, см. vite.config.js) и подпись «канал · версия» —
+// для экрана ошибки, чтобы по присланному тексту было видно, какая сборка упала.
+export const APP_VERSION = typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__;
+export const BUILD_LABEL = `FreeMoney ${CHANNEL} · ${APP_VERSION}`;
+
 // Ключи в localStorage.
 export const LS_SPREADSHEET_ID = 'freemoney:spreadsheetId';
 // Устаревший ключ выбора режима ('google' | 'local' | 'device').

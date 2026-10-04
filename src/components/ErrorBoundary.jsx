@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { BUILD_LABEL } from '../config';
 
 // Если приложение упало при отрисовке — вместо пустого экрана показываем
 // ошибку (по ней можно понять причину) и способы восстановиться. Данные не
@@ -32,7 +33,7 @@ export default class ErrorBoundary extends Component {
       <div className="crash">
         <h1>Что-то сломалось</h1>
         <p className="muted">Ваши данные не тронуты. Пришлите, пожалуйста, текст ниже разработчику.</p>
-        <pre className="crash__text">{`${error?.name || 'Error'}: ${error?.message || error}\n${(error?.stack || '').split('\n').slice(1, 6).join('\n')}\n${navigator.userAgent}`}</pre>
+        <pre className="crash__text">{`${error?.name || 'Error'}: ${error?.message || error}\n${(error?.stack || '').split('\n').slice(1, 6).join('\n')}\n${BUILD_LABEL}\n${navigator.userAgent}`}</pre>
         <div className="crash__actions">
           <button className="btn btn--primary" onClick={() => window.location.reload()}>Перезагрузить</button>
           <button className="btn" onClick={this.resetCache}>Сбросить кэш приложения</button>

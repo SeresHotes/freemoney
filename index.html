@@ -16,6 +16,8 @@
       // Если сам бандл не загрузился/упал до старта React — показываем ошибку
       // вместо пустого экрана (React-ошибки ловит ErrorBoundary).
       (function () {
+        // Подставляется при сборке (vite.config.js, buildLabelHtml).
+        var BUILD = '%BUILD_LABEL%';
         function show(msg) {
           var root = document.getElementById('root');
           if (!root || root.childNodes.length) return;
@@ -23,7 +25,7 @@
             '<div class="crash"><h1>Не удалось запустить приложение</h1>' +
             '<pre class="crash__text"></pre>' +
             '<button class="btn btn--primary" onclick="location.reload()">Перезагрузить</button></div>';
-          root.querySelector('pre').textContent = msg + '\n' + navigator.userAgent;
+          root.querySelector('pre').textContent = msg + '\n' + BUILD + '\n' + navigator.userAgent;
         }
         window.addEventListener('error', function (e) {
           var t = e.target;

@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES, formatAmount } from '../utils/currencies';
-import { CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
+import { APP_VERSION, CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
 import { agoLabel } from '../utils/format';
 import { downloadTemplateXlsx, downloadTemplateCsv } from '../api/tableImport';
 
 // Версию подставляет сборка (vite define). Локально без vite — 'dev'.
-const APP_VERSION = typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__;
 
 // Извлекает spreadsheetId из вставленной ссылки или id.
 function parseSpreadsheetId(input) {

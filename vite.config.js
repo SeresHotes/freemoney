@@ -33,6 +33,13 @@ const base = process.env.BASE_PATH || '/freemoney/';
 const channel = process.env.VITE_CHANNEL || 'prod';
 const isDev = channel === 'dev';
 
+// «канал · версия» в inline-скрипте index.html — экран ошибки, когда бандл не
+// загрузился (в React-части то же берётся из config.js).
+const buildLabelHtml = {
+  name: 'build-label-html',
+  transformIndexHtml: (html) => html.replace('%BUILD_LABEL%', `FreeMoney ${channel} · ${appVersion}`),
+};
+
 export default defineConfig({
   base,
   // Версия доступна в коде как глобальная константа __APP_VERSION__.
@@ -41,6 +48,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    buildLabelHtml,
     VitePWA({
       // 'prompt' — не обновляемся молча: показываем пользователю баннер
       // «Доступна новая версия», обновление применяется по клику
