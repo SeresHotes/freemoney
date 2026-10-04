@@ -6,13 +6,16 @@ import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 // на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
 // ломаные выносные линии.
 // Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
-// Тап по сегменту/подписи — onSelect(item).
+// Тап по сегменту/подписи — onSelect(item). Долгое нажатие — пока палец
+// держится, в центре вместо итогов месяца траты этой категории.
 // data: [{ name, value, icon, other? }] по убыванию; center: { expense, income }.
 // Цвета — по месту на кольце (см. layoutRing), а не по рангу.
 
 const NAME_FS = 11;
 const PCT_FS = 12.5;
 const RING_PCT_FS = 12; // процент на сегменте
+const LONG_PRESS_MS = 400;
+const LONG_PRESS_SLOP = 10; // px: сдвиг пальца больше — это свайп, не нажатие
 
 // Точная ширина текста шрифтом страницы (canvas), с запасным приближением.
 let measureCtx;
@@ -135,8 +138,57 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   const widths = useMemo(() => (g ? labelWidths(g.labels, size.w) : new Map()), [g, size.w]);
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
+  // Долгое нажатие на сегмент/подпись: категория в центре — только пока держат.
+  const [held, setHeld] = useState(null);
+  const pressRef = useRef(null); // { timer, x, y, cleanup }
+  const suppressClick = useRef(false); // клик после долгого нажатия — не переход
+  const endPress = () => {
+    const p = pressRef.current;
+    pressRef.current = null;
+    if (p) {
+      clearTimeout(p.timer);
+      p.cleanup();
+    }
+    setHeld(null);
+  };
+  useEffect(() => endPress, []);
+  const startPress = (e, s) => {
+    if (e.button > 0) return;
+    endPress();
+    suppressClick.current = false;
+    const onMove = (ev) => {
+      const p = pressRef.current;
+      if (p && !p.fired && Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP) endPress();
+    };
+    // отпускание где угодно (палец мог съехать с сегмента) — вернуть итоги
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', endPress);
+    window.addEventListener('pointercancel', endPress);
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', endPress);
+      window.removeEventListener('pointercancel', endPress);
+    };
+    const timer = setTimeout(() => {
+      const p = pressRef.current;
+      if (!p) return;
+      p.fired = true;
+      suppressClick.current = true;
+      setHeld(s.name);
+    }, LONG_PRESS_MS);
+    pressRef.current = { timer, x: e.clientX, y: e.clientY, cleanup };
+  };
+  const pressProps = (s) => ({
+    onPointerDown: (e) => startPress(e, s),
+    onClick: () => {
+      if (suppressClick.current) suppressClick.current = false;
+      else onSelect?.(s);
+    },
+  });
+  const heldSlice = held && g ? g.slices.find((s) => s.name === held) : null;
+
   return (
-    <div className="ring" ref={ref}>
+    <div className="ring" ref={ref} onContextMenu={(e) => e.preventDefault()}>
       {g && (
         <svg width={size.w} height={size.h} className="ring__svg" role="img" aria-label="Расходы по категориям">
           {g.slices.map((s) => (
@@ -145,7 +197,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
               d={arcPath(g.cx, g.cy, g.r0, g.R, s.a0, s.a1)}
               fill={s.color}
               className="ring__slice"
-              onClick={() => onSelect?.(s)}
+              {...pressProps(s)}
             >
               <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
             </path>
@@ -187,7 +239,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
             const pctHere = onRing.get(s.name) ? null : fmtPercent(s.percent);
             const lastY = (i, all) => top + mode.icon + 9 + NAME_LINE_H * (i + (mode.nameLines - all.length) / 2);
             return (
-              <g key={s.name} className="ring__label" onClick={() => onSelect?.(s)}>
+              <g key={s.name} className="ring__label" {...pressProps(s)}>
                 <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
                 <rect x={x - (widths.get(l) ?? g.slot) / 2} y={top} width={widths.get(l) ?? g.slot} height={g.labelH} fill="transparent" />
@@ -224,12 +276,23 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
           className="ring__center"
           style={{ width: g.r0 * 2, height: g.r0 * 2, '--ring-fs': `${Math.min(22, Math.max(12, g.r0 * 0.2))}px` }}
         >
-          <span className="donut__label">Расходы</span>
-          <span className="donut__expense">{formatValue(center.expense)}</span>
-          {g.r0 > 52 && (
+          {heldSlice ? (
             <>
-              <span className="donut__label">Доходы</span>
-              <span className="donut__income">{formatValue(center.income)}</span>
+              <span className="ring__held-icon">{heldSlice.icon}</span>
+              <span className="donut__label ring__held-name">{heldSlice.name}</span>
+              <span className="donut__expense">{formatValue(heldSlice.value)}</span>
+              {g.r0 > 52 && <span className="donut__label">{fmtPercent(heldSlice.percent)}</span>}
+            </>
+          ) : (
+            <>
+              <span className="donut__label">Расходы</span>
+              <span className="donut__expense">{formatValue(center.expense)}</span>
+              {g.r0 > 52 && (
+                <>
+                  <span className="donut__label">Доходы</span>
+                  <span className="donut__income">{formatValue(center.income)}</span>
+                </>
+              )}
             </>
           )}
         </div>

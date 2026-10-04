@@ -1403,6 +1403,10 @@ code {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  /* долгое нажатие на категорию — без системного меню/выделения */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .ring__svg {
   position: absolute;
@@ -1442,6 +1446,17 @@ code {
 .ring__center .donut__expense,
 .ring__center .donut__income {
   font-size: var(--ring-fs);
+}
+/* Категория под долгим нажатием (вместо итогов месяца). */
+.ring__held-icon {
+  font-size: var(--ring-fs);
+  line-height: 1.2;
+}
+.ring__held-name {
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --- Экран ошибки (ErrorBoundary / index.html) ---------------------------- */
