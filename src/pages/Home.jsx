@@ -102,8 +102,9 @@ export default function Home() {
     clearTimeout(revealTimer.current);
     setRevealed(false);
   };
-  // collapsed: лента раскрывается тапом и сворачивается после выбора.
-  const [expanded, setExpanded] = useState(false);
+  // popup: кнопка открывает список кошельков; выбор его не закрывает —
+  // закрывает сам пользователь (✕ или тап мимо).
+  const [listOpen, setListOpen] = useState(false);
 
   const walletQuery = selWallet ? `wallet=${encodeURIComponent(selWallet)}` : '';
 
@@ -258,9 +259,9 @@ export default function Home() {
 
       {/* Лента: «Всего» и кошельки. Выбранный — зелёный и первый; тап выбирает
           (кольцо — по нему), повторный тап — операции кошелька. */}
-      {walletsView === 'collapsed' && !expanded ? (
+      {walletsView === 'popup' ? (
         <section className="wallet-chips home__wallets">
-          <button className="wallet-chip wallet-chip--selected home__wallets-toggle" onClick={() => setExpanded(true)}>
+          <button className="wallet-chip wallet-chip--selected home__wallets-toggle" onClick={() => setListOpen(true)}>
             <span className="wallet-chip__name">Кошелёк</span>
             <span className="wallet-chip__bal">{selWallet || 'Все'} ▾</span>
           </button>
@@ -283,22 +284,40 @@ export default function Home() {
               className={`wallet-chip${c.key === selWallet ? ' wallet-chip--selected' : ''}${c.negative ? ' wallet-chip--negative' : ''}`}
               title={c.title}
               onClick={() => {
-                if (c.key !== selWallet) {
-                  selectWallet(c.key);
-                  setExpanded(false);
-                } else navigate(c.key ? `/transactions?wallet=${encodeURIComponent(c.key)}` : '/wallets');
+                if (c.key !== selWallet) selectWallet(c.key);
+                else navigate(c.key ? `/transactions?wallet=${encodeURIComponent(c.key)}` : '/wallets');
               }}
             >
               <span className="wallet-chip__name">{c.name}</span>
               {walletsView !== 'names' && <span className="wallet-chip__bal">{c.balance}</span>}
             </button>
           ))}
-          {walletsView === 'collapsed' && (
-            <button className="wallet-chip home__wallets-toggle" aria-label="Свернуть" onClick={() => setExpanded(false)}>
-              <span className="wallet-chip__bal">▴</span>
-            </button>
-          )}
         </section>
+      )}
+      {listOpen && (
+        <div className="wallet-sheet" onClick={() => setListOpen(false)}>
+          <div className="wallet-sheet__box" onClick={(e) => e.stopPropagation()}>
+            <div className="wallet-sheet__head">
+              <span>Кошельки</span>
+              <button className="wallet-sheet__close" aria-label="Закрыть" onClick={() => setListOpen(false)}>✕</button>
+            </div>
+            <ul className="wallet-sheet__list">
+              {/* «Всего» и кошельки в постоянном порядке — строки не прыгают при выборе */}
+              {[chips.find((c) => !c.key), ...recentWallets.map((w) => chips.find((c) => c.key === w.name))].map((c) => (
+                <li key={c.key}>
+                  <button
+                    className={`wallet-sheet__row${c.key === selWallet ? ' wallet-sheet__row--selected' : ''}${c.negative ? ' wallet-sheet__row--negative' : ''}`}
+                    title={c.title}
+                    onClick={() => selectWallet(c.key)}
+                  >
+                    <span className="wallet-sheet__name">{c.name}</span>
+                    <span className="wallet-sheet__bal">{c.balance}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
       {ratesNote && <p className="home__rates-note">* {ratesNote}</p>}
 

@@ -5,7 +5,7 @@ export const HOME_WALLETS_VIEWS = {
   eye: 'Скрыты «••••», глаз в шапке показывает',
   blur: 'Размыты, удержание пальцем показывает',
   names: 'Только названия, без балансов',
-  collapsed: 'Свёрнуто в одну кнопку, тап раскрывает',
+  popup: 'Кнопка, по ней всплывает список кошельков',
 };
 
 const LS_HOME_WALLETS_VIEW = 'freemoney:homeWalletsView';

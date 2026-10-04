@@ -1427,6 +1427,79 @@ code {
   min-width: 0;
   justify-content: center;
 }
+/* Всплывающий список кошельков (вариант popup): снизу, над кнопками. */
+.wallet-sheet {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+.wallet-sheet__box {
+  width: 100%;
+  max-width: 480px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom));
+}
+.wallet-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+.wallet-sheet__close {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+}
+.wallet-sheet__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+.wallet-sheet__row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.35rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+.wallet-sheet__row--selected {
+  border-color: var(--income);
+}
+.wallet-sheet__bal {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.wallet-sheet__row--selected .wallet-sheet__bal {
+  color: var(--income);
+}
+.wallet-sheet__row--negative .wallet-sheet__bal {
+  color: var(--expense);
+}
 .home__tiles {
   flex: 0 0 auto;
   display: grid;
