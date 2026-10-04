@@ -25,7 +25,7 @@
 // таблицу как источник (бывший google-пользователь / второе устройство), не
 // смешивая её со свежесозданными дефолтами. Иначе — обычный merge без потерь.
 
-import { ensureSyncSchema, fetchAllForSync, overwriteEntity } from './store';
+import { ensureSyncSchema, fetchAllForSync, overwriteEntity, hydrateExtra } from './store';
 import { rawDump, applyRecords, rekeyRecords, replaceAllData, getMeta, setMeta, hardDeleteSettings } from './localBackend';
 import { nowStamp, newId } from '../utils/format';
 import { DEFAULT_CATEGORIES } from './defaults';
@@ -57,8 +57,15 @@ function snapKeyOf(entity, r) {
 }
 
 // Поля, определяющие «содержимое» записи для сравнения (без updatedAt).
-// Для категорий id исключён намеренно (см. шапку).
+// Для категорий id исключён намеренно (см. шапку). Неизвестные этой версии
+// колонки (extra, см. store.js) тоже часть содержимого: их правка в листе —
+// изменение записи.
 function contentSig(entity, r) {
+  const sig = knownSig(entity, r);
+  return Array.isArray(r.extra) && r.extra.length ? `${sig}|${JSON.stringify(r.extra)}` : sig;
+}
+
+function knownSig(entity, r) {
   switch (entity) {
     case 'transactions':
       return JSON.stringify([
@@ -228,7 +235,16 @@ export async function syncNow(spreadsheetId) {
   await ensureSyncSchema(spreadsheetId);
   const now = nowStamp();
 
-  const [remote, local] = await Promise.all([fetchAllForSync(spreadsheetId), rawDump()]);
+  const [remote, dump] = await Promise.all([fetchAllForSync(spreadsheetId), rawDump()]);
+  // Ячейки колонок, которые прошлая версия приложения не знала и хранила как есть
+  // (extra), разбираем в поля — если эта версия их уже знает.
+  // Разобранное сразу сохраняем локально (UI читает стор, а не результат мерджа).
+  const local = {};
+  for (const [entity, recs] of Object.entries(dump)) {
+    local[entity] = (recs || []).map((r) => hydrateExtra(entity, r));
+    const hydrated = local[entity].filter((r, i) => r !== recs[i]);
+    if (hydrated.length) await applyRecords(entity, hydrated);
+  }
 
   // Разовая чистка устаревших служебных ключей настроек — из листа и локально.
   const isDead = (r) => DEAD_SETTINGS.includes(r.key);

@@ -10,6 +10,7 @@ import { DEFAULT_CATEGORIES, DEFAULT_ICON } from './defaults';
 import { DEFAULT_BASE_CURRENCY } from '../config';
 import { newId, nowStamp } from '../utils/format';
 import { normalizeTx, normalizeArchivable } from '../utils/model';
+import { hydrateExtra } from './store';
 
 const DB_NAME = 'freemoney';
 const DB_VERSION = 4;
@@ -373,14 +374,19 @@ export function createLocalBackend() {
       // актуальными, чтобы они не проиграли пустой/старой таблице при первом мердже.
       // Заодно лечим метки из будущего (сбой формата/часов): такая метка вечно
       // выигрывает LWW и откатывает свежие правки — срезаем её до «сейчас».
+      //
+      // Там же — колонки листа, которые прошлая версия приложения не знала и
+      // хранила как есть (extra, см. api/store.js): если эта версия их уже знает,
+      // разбираем в поля сразу при запуске, не дожидаясь синхронизации. Метка не
+      // меняется — содержимое то же, что в таблице.
       const stamp = nowStamp();
-      for (const name of DATA_STORES) {
+      for (const [entity, name] of Object.entries(STORE_BY_ENTITY)) {
         const rows = await getAll(db, name);
         const s = store(db, name, 'readwrite');
         for (const r of rows) {
-          if (r.updatedAt == null || r.updatedAt > stamp) {
-            await reqToPromise(s.put({ ...r, updatedAt: stamp }));
-          }
+          let next = hydrateExtra(entity, r);
+          if (next.updatedAt == null || next.updatedAt > stamp) next = { ...next, updatedAt: stamp };
+          if (next !== r) await reqToPromise(s.put(next));
         }
       }
       db.close();
@@ -464,7 +470,12 @@ export function createLocalBackend() {
 
     updateTransaction: async (t) => {
       const db = await openDb();
-      await putStamped(db, STORE_TX, { ...t, tags: t.tags || [], deleted: false });
+      // Форма редактирования собирает операцию из своих полей — неизвестные
+      // этой версии колонки листа (extra, см. api/store.js) берём из стора.
+      const cur = await reqToPromise(store(db, STORE_TX).get(t.id));
+      const h = cur && hydrateExtra('transactions', cur);
+      const keep = h?.extra && !t.extra ? { extra: h.extra, extraFrom: h.extraFrom } : {};
+      await putStamped(db, STORE_TX, { ...t, ...keep, tags: t.tags || [], deleted: false });
       db.close();
     },
 
