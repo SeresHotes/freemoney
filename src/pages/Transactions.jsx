@@ -174,7 +174,7 @@ export default function Transactions() {
 
     return (
       <li key={t.groupId} className="tx-item tx-item--clickable" onClick={() => navigate(to)}>
-        <CategoryIcon icon={icon} className="tx-item__cat-icon" />
+        <span className="tx-item__cat-icon">{icon}</span>
         <div className="tx-item__main">
           <span className="tx-item__category">{title}</span>
           <span className="tx-item__note">{subtitle}{t.note ? ` · ${t.note}` : ''}</span>
