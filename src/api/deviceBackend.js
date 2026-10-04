@@ -165,10 +165,10 @@ export function createDeviceBackend() {
     },
     setCategoryArchived: async (id, archived) => { const l = await loadCats(); await saveCats(l.map((c) => (c.id === id ? { ...c, archived } : c))); },
     updateCategory: async (id, patch) => { const l = await loadCats(); await saveCats(l.map((c) => (c.id === id ? { ...c, ...patch } : c))); },
-    setCategoryColors: async (list) => {
-      const byId = new Map(list.map((x) => [x.id, x.color]));
+    patchCategories: async (list) => {
+      const byId = new Map(list.map(({ id, ...patch }) => [id, patch]));
       const l = await loadCats();
-      await saveCats(l.map((c) => (byId.has(c.id) ? { ...c, color: byId.get(c.id) } : c)));
+      await saveCats(l.map((c) => (byId.has(c.id) ? { ...c, ...byId.get(c.id) } : c)));
     },
     renameCategory: async (oldName, newName) => { const l = await loadTx(); await saveTx(l.map((t) => (t.category === oldName ? { ...t, category: newName } : t))); },
 

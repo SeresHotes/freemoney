@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NAME_LINE_H, PER_ROW, arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
 import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
-import { tintFilter } from '../utils/categoryColors';
+import CategoryIcon from './CategoryIcon';
 
 // Кольцо расходов по категориям для главного экрана (в духе Monefy): проценты
 // на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
@@ -290,15 +290,13 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
                 <rect x={x - (widths.get(l) ?? g.slot) / 2} y={top} width={widths.get(l) ?? g.slot} height={g.labelH} fill="transparent" />
                 {/* процент, не влезший на сегмент, — рядом с иконкой (там есть место) */}
-                {/* иконка бесцветная, тонирована в цвет категории (см. CategoryTints) */}
-                <text x={x} y={top + mode.icon / 2 + 1} textAnchor="middle" dominantBaseline="central" fontSize={mode.icon} filter={tintFilter(s.color)}>
-                  {s.icon}
-                  {pctHere && (
-                    <tspan fontSize={PCT_FS} className="ring__pct" fill={s.color} dx="2">
-                      {pctHere}
-                    </tspan>
-                  )}
-                </text>
+                {/* иконка — цветом категории (аутлайн Lucide или тонированный эмодзи) */}
+                <CategoryIcon icon={s.icon} color={s.color} x={x} y={top + mode.icon / 2} size={mode.icon * 0.9} />
+                {pctHere && (
+                  <text x={x + mode.icon / 2 + 2} y={top + mode.icon / 2 + 1} dominantBaseline="central" fontSize={PCT_FS} className="ring__pct" fill={s.color}>
+                    {pctHere}
+                  </text>
+                )}
                 {name &&
                   name.lines.map((line, i, all) => (
                     <text

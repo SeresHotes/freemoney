@@ -73,9 +73,15 @@
   `loadData` в `AppContext` — случайный из свободных — и **сохраняет** его
   (`backend.setCategoryColors`), чтобы цвет не менялся между запусками.
 - В листе `Categories` цвет — колонка I (миграция схемы v4→v5 дописывает шапку).
-- Иконки-эмодзи категорий рисуются тонированными: SVG-фильтры `tint-rrggbb`
-  (`CategoryTints`, один на цвет) подключаются через `tintFilter(color)`;
-  в HTML — компонент `CategoryIcon`.
+- Иконка категории — аутлайн Lucide (`lucide:<имя>`, по умолчанию) или эмодзи.
+  Рисует **только** `CategoryIcon` (HTML и SVG-кольцо): Lucide — линией цвета
+  категории, эмодзи — тонированным SVG-фильтром `tint-rrggbb` (`CategoryTints`).
+  Данные Lucide генерирует `npm run lucide` (`scripts/gen-lucide.mjs`): популярные —
+  `lucidePopular.json` в основном бандле, полный набор — `lucideData.json` лениво.
+  Русские слова для поиска — словарь `RU` в генераторе; группы — снимок категорий
+  `scripts/lucide-categories.json` (в npm-пакет они не входят).
+- Эмодзи прежней палитры разово (флаг `freemoney:lucideIcons` в localStorage)
+  меняются на аналоги Lucide в `loadData` (`EMOJI_TO_LUCIDE`, `src/utils/icons.js`).
 
 ## Каналы и деплой
 

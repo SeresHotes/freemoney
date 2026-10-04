@@ -11,12 +11,13 @@ import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api
 import { exportBackup, importBackup } from '../api/backup';
 import { readTableFile, parseTableRows, planTableImport, applyTableImport } from '../api/tableImport';
 import {
-  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_SYNC_PENDING, LS_LAST_SYNC,
+  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_SYNC_PENDING, LS_LAST_SYNC, LS_ICONS_MIGRATED,
   DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED,
 } from '../config';
 import { newId, todayIso, nowTime } from '../utils/format';
 import { walletBalance } from '../utils/finance';
 import { assignMissingColors, pickColor } from '../utils/categoryColors';
+import { migrateIcon } from '../utils/icons';
 
 const AppContext = createContext(null);
 
@@ -80,13 +81,21 @@ export function AppProvider({ children }) {
       await backend.fetchAll();
     // Категориям без цвета (старые данные, импорт, чужое устройство) — раздаём
     // случайные свободные цвета и сохраняем, чтобы цвет больше не менялся.
-    let cats = fetchedCats;
-    const assigned = assignMissingColors(cats);
-    if (assigned.length) {
-      await backend.setCategoryColors(assigned);
-      const colorOf = new Map(assigned.map((a) => [a.id, a.color]));
-      cats = cats.map((c) => (colorOf.has(c.id) ? { ...c, color: colorOf.get(c.id) } : c));
+    // Разово (на устройство) — эмодзи прежней палитры меняем на аутлайн-иконки
+    // Lucide; эмодзи, выбранные после этого, остаются как есть.
+    const patches = new Map(assignMissingColors(fetchedCats).map(({ id, color }) => [id, { id, color }]));
+    if (!localStorage.getItem(LS_ICONS_MIGRATED)) {
+      for (const c of fetchedCats) {
+        const icon = migrateIcon(c.icon);
+        if (icon !== c.icon) patches.set(c.id, { ...patches.get(c.id), id: c.id, icon });
+      }
     }
+    let cats = fetchedCats;
+    if (patches.size) {
+      await backend.patchCategories([...patches.values()]);
+      cats = cats.map((c) => (patches.has(c.id) ? { ...c, ...patches.get(c.id) } : c));
+    }
+    localStorage.setItem(LS_ICONS_MIGRATED, '1');
     const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
     const defaultWallet = wls.find((w) => !w.archived) || wls[0];
     const walletCurrency = Object.fromEntries(wls.map((w) => [w.name, w.currency]));

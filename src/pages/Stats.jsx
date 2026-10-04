@@ -14,6 +14,7 @@ import PeriodPicker from '../components/PeriodPicker';
 import CategoryTrendChart from '../components/CategoryTrendChart';
 import CategoryDonut from '../components/CategoryDonut';
 import { buildCategorySeries, categoryColor } from '../utils/chartColors';
+import { DEFAULT_ICON } from '../api/defaults';
 import CategoryIcon from '../components/CategoryIcon';
 
 export default function Stats() {
@@ -83,7 +84,7 @@ export default function Stats() {
     () => activeCategories.filter((c) => c.kind === kind || c.kind === 'both'),
     [activeCategories, kind],
   );
-  const catOptions = useMemo(() => kindCategories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [kindCategories]);
+  const catOptions = useMemo(() => kindCategories.map((c) => ({ value: c.name, label: <><CategoryIcon icon={c.icon} color={c.color} /> {c.name}</> })), [kindCategories]);
   const walletOptions = useMemo(() => activeWallets.map((w) => ({ value: w.name, label: w.name })), [activeWallets]);
   const tagOptions = useMemo(() => {
     const set = new Set(tags.filter((t) => !t.archived).map((t) => t.name));
@@ -193,7 +194,7 @@ export default function Stats() {
                 <li key={c.name} className="legend__item legend__item--clickable" onClick={() => openCategory(c.name)}>
                   <span className="legend__dot" style={{ background: catColors[i] }} />
                   <span className="legend__name">
-                    <CategoryIcon icon={iconByCategory.get(c.name) || '🏷️'} color={catColors[i]} /> {c.name}
+                    <CategoryIcon icon={iconByCategory.get(c.name) || DEFAULT_ICON} color={catColors[i]} /> {c.name}
                   </span>
                   <span className="legend__value">{fmt(c.value)}</span>
                 </li>

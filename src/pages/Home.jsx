@@ -1,3 +1,4 @@
+import { DEFAULT_ICON } from '../api/defaults';
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
@@ -119,11 +120,11 @@ export default function Home() {
     const named = sorted.slice(0, ringNamedCount(sorted, exp));
     // цвет — свой у категории (у «Без категории» его нет — его раздаст кольцо)
     const cats = named.map(([name, value]) => ({
-      name, value, icon: catOf.get(name)?.icon || '🏷️', color: catOf.get(name)?.color || '',
+      name, value, icon: catOf.get(name)?.icon || DEFAULT_ICON, color: catOf.get(name)?.color || '',
     }));
     if (named.length < sorted.length) {
       const rest = sorted.slice(named.length).reduce((sum, [, v]) => sum + v, 0);
-      cats.push({ name: 'Другое', value: rest, icon: '📦', other: true });
+      cats.push({ name: 'Другое', value: rest, icon: 'lucide:package', other: true });
     }
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, categories, toBase, month, selWallet]);

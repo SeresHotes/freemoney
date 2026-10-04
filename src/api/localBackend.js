@@ -507,13 +507,13 @@ export function createLocalBackend() {
       db.close();
     },
 
-    // Проставить цвета категориям: [{ id, color }] (бэкфилл старых данных).
-    setCategoryColors: async (list) => {
+    // Точечно поправить поля категорий: [{ id, ...поля }] (бэкфилл цвета, замена иконок).
+    patchCategories: async (list) => {
       const db = await openDb();
       const s = store(db, STORE_CAT, 'readwrite');
-      for (const { id, color } of list) {
+      for (const { id, ...patch } of list) {
         const cat = await reqToPromise(s.get(id));
-        if (cat) await reqToPromise(s.put({ ...cat, color, updatedAt: nowStamp() }));
+        if (cat) await reqToPromise(s.put({ ...cat, ...patch, updatedAt: nowStamp() }));
       }
       db.close();
     },

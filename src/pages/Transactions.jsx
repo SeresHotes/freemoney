@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import CategoryIcon from '../components/CategoryIcon';
+import { DEFAULT_ICON } from '../api/defaults';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
 import { monthKey, monthLabel, dayHeading } from '../utils/format';
@@ -64,7 +65,7 @@ export default function Transactions() {
     return m;
   }, [transactions]);
 
-  const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [categories]);
+  const catOptions = useMemo(() => categories.map((c) => ({ value: c.name, label: <><CategoryIcon icon={c.icon} color={c.color} /> {c.name}</> })), [categories]);
   const walletOptions = useMemo(
     () => wallets.filter((w) => !w.archived).map((w) => ({ value: w.name, label: w.name })),
     [wallets],
@@ -154,7 +155,7 @@ export default function Transactions() {
       const balBefore = debtLeg ? debtBalanceBefore(transactions, debtW.name, debtLeg) : 0;
       const amt = Math.abs(cashLeg ? cashLeg.amount : debtLeg?.amount || 0);
       const cur = cashLeg ? cashLeg.currency : debtLeg?.currency;
-      icon = '🤝';
+      icon = 'lucide:handshake';
       title = debtRowLabel(cashOut, balBefore);
       subtitle = debtW?.name || '';
       amountClass = cashOut ? 'expense' : 'income';
@@ -162,7 +163,7 @@ export default function Transactions() {
       to = `/debt/${t.groupId}`;
     } else {
       const sameVal = outLeg && inLeg && outLeg.currency === inLeg.currency && Math.abs(outLeg.amount) === Math.abs(inLeg.amount);
-      icon = '⇄';
+      icon = 'lucide:arrow-left-right';
       title = 'Перевод';
       subtitle = `${outW?.name || '—'} → ${inW?.name || '—'}`;
       amountText = sameVal
@@ -173,7 +174,7 @@ export default function Transactions() {
 
     return (
       <li key={t.groupId} className="tx-item tx-item--clickable" onClick={() => navigate(to)}>
-        <CategoryIcon icon={icon} color={cat?.color} className="tx-item__cat-icon" />
+        <CategoryIcon icon={icon} className="tx-item__cat-icon" />
         <div className="tx-item__main">
           <span className="tx-item__category">{title}</span>
           <span className="tx-item__note">{subtitle}{t.note ? ` · ${t.note}` : ''}</span>
@@ -196,13 +197,13 @@ export default function Transactions() {
     const interest = t.type === 'interest';
     const positive = t.amount >= 0;
     const cat = interest || adjust ? null : catByName.get(t.category);
-    const icon = interest ? '📈' : adjust ? '⚖️' : cat?.icon || '🏷️';
+    const icon = interest ? 'lucide:trending-up' : adjust ? 'lucide:scale' : cat?.icon || DEFAULT_ICON;
     const title = interest
       ? (t.rate != null ? `Проценты · ${t.rate}%` : 'Проценты')
       : adjust ? 'Корректировка' : t.category || 'Без категории';
     return (
       <li key={t.id} className="tx-item tx-item--clickable" onClick={() => navigate(`/edit/${t.id}`)}>
-        <span className="tx-item__cat-icon">{icon}</span>
+        <CategoryIcon icon={icon} color={cat?.color} className="tx-item__cat-icon" />
         <div className="tx-item__main">
           <span className="tx-item__category">{title}</span>
           <span className="tx-item__note">

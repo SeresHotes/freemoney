@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
-import EmojiPicker from '../components/EmojiPicker';
+import IconPicker from '../components/IconPicker';
 import ColorPicker from '../components/ColorPicker';
 import CategoryIcon from '../components/CategoryIcon';
 import { useApp } from '../context/AppContext';
-import { EMOJI_PALETTE } from '../utils/emoji';
+import { DEFAULT_ICON } from '../api/defaults';
 import { isColor, pickColor } from '../utils/categoryColors';
 
 export default function CategoryEdit() {
@@ -18,7 +18,7 @@ export default function CategoryEdit() {
 
   const [name, setName] = useState(current?.name || '');
   const [kind, setKind] = useState(current?.kind || 'expense');
-  const [icon, setIcon] = useState(current?.icon || EMOJI_PALETTE[0]);
+  const [icon, setIcon] = useState(current?.icon || DEFAULT_ICON);
   // Новой категории сразу предлагаем случайный свободный цвет — его можно сменить.
   const [color, setColor] = useState(() => (isColor(current?.color) ? current.color : pickColor(categories.map((c) => c.color))));
   // Раскрыт не больше чем один выбор: 'icon' | 'color' | null.
@@ -98,7 +98,7 @@ export default function CategoryEdit() {
           />
         </div>
 
-        {open === 'icon' && <EmojiPicker value={icon} onChange={(e) => { setIcon(e); setOpen(null); }} className="page__grow" />}
+        {open === 'icon' && <IconPicker value={icon} onChange={(e) => { setIcon(e); setOpen(null); }} className="page__grow" />}
         {open === 'color' && <ColorPicker value={color} onChange={(c) => { setColor(c); setOpen(null); }} />}
 
         <label className="field">
