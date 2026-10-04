@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="Учёт доходов и расходов с хранением в Google Таблицах" />
     <title>FreeMoney</title>
-    <script type="module" crossorigin src="/assets/index-In8Zh9nW.js"></script>
+    <script type="module" crossorigin src="/assets/index-DARBUnQ5.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-BgqwNecH.css">
   <link rel="manifest" href="/manifest.webmanifest"></head>
   <body>
@@ -19,15 +19,37 @@
       // вместо пустого экрана (React-ошибки ловит ErrorBoundary).
       (function () {
         // Подставляется при сборке (vite.config.js, buildLabelHtml).
-        var BUILD = 'FreeMoney prod · 969acf9';
+        var BUILD = 'FreeMoney prod · 24a3b8c';
+        // «Обновить»: подтянуть новую версию (в ней может быть исправление),
+        // активировать её и перезагрузиться; нет новой — просто перезагрузка.
+        function update() {
+          var sw = navigator.serviceWorker;
+          var reload = function () { location.reload(); };
+          if (!sw) return reload();
+          setTimeout(reload, 5000);
+          sw.addEventListener('controllerchange', reload);
+          sw.getRegistration().then(function (reg) {
+            if (!reg) return reload();
+            return reg.update().catch(function () {}).then(function () {
+              var w = reg.waiting || reg.installing;
+              if (!w) return reload();
+              w.addEventListener('statechange', function () {
+                if (w.state === 'installed' && reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                if (w.state === 'activated' || w.state === 'redundant') reload();
+              });
+              if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            });
+          }, reload);
+        }
         function show(msg) {
           var root = document.getElementById('root');
           if (!root || root.childNodes.length) return;
           root.innerHTML =
             '<div class="crash"><h1>Не удалось запустить приложение</h1>' +
             '<pre class="crash__text"></pre>' +
-            '<button class="btn btn--primary" onclick="location.reload()">Перезагрузить</button></div>';
+            '<button class="btn btn--primary">Обновить</button></div>';
           root.querySelector('pre').textContent = msg + '\n' + BUILD + '\n' + navigator.userAgent;
+          root.querySelector('button').onclick = update;
         }
         window.addEventListener('error', function (e) {
           var t = e.target;
