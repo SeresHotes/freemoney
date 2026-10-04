@@ -71,6 +71,22 @@ export function monthLabel(key) {
   return date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 }
 
+// Подпись дня для разделителей в списке операций: «Сегодня», «Вчера»,
+// иначе «4 октября, суббота». today — ISO-дата «сегодня» (для тестов).
+export function dayHeading(iso, today = todayIso()) {
+  const [y, m, d] = (iso || '').split('-').map(Number);
+  if (!y || !m || !d) return iso || '';
+  if (iso === today) return 'Сегодня';
+  const date = new Date(y, m - 1, d);
+  const [ty, tm, td] = today.split('-').map(Number);
+  const yesterday = new Date(ty, tm - 1, td - 1);
+  if (date.getTime() === yesterday.getTime()) return 'Вчера';
+  const label = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
+  // «суббота, 4 октября» -> «4 октября, суббота»
+  const [weekday, ...rest] = label.split(', ');
+  return rest.length ? `${rest.join(', ')}, ${weekday}` : label;
+}
+
 // Дата "2026-08-21" -> "21.08.2026".
 export function dateLabel(iso) {
   const [y, m, d] = (iso || '').split('-');
