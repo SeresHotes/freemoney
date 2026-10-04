@@ -8,7 +8,6 @@ import { walletBalance, isIncome, isExpense } from '../utils/finance';
 import { useNetWorth } from '../hooks/useNetWorth';
 import { IS_DEV_CHANNEL } from '../config';
 import CategoryRing from '../components/CategoryRing';
-import { ringNamedCount } from '../utils/ringLayout';
 
 // Иконка-контур 24×24 (стрелки, плюс/минус): в отличие от символов шрифта
 // («‹», «−»), всегда ровно по центру по вертикали.
@@ -116,16 +115,12 @@ export default function Home() {
       }
     }
     const catOf = new Map(categories.map((c) => [c.name, c]));
-    const sorted = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-    const named = sorted.slice(0, ringNamedCount(sorted, exp));
-    // цвет — свой у категории (у «Без категории» его нет — его раздаст кольцо)
-    const cats = named.map(([name, value]) => ({
+    // все категории — что не поместится рядом со своим сектором, кольцо само
+    // соберёт в «Другое»; цвет — свой у категории (у «Без категории» его нет —
+    // его раздаст кольцо)
+    const cats = [...catMap.entries()].map(([name, value]) => ({
       name, value, icon: catOf.get(name)?.icon || DEFAULT_ICON, color: catOf.get(name)?.color || '',
     }));
-    if (named.length < sorted.length) {
-      const rest = sorted.slice(named.length).reduce((sum, [, v]) => sum + v, 0);
-      cats.push({ name: 'Другое', value: rest, icon: '📦', other: true });
-    }
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, categories, toBase, month, selWallet]);
 
@@ -191,7 +186,8 @@ export default function Home() {
             data={byCategory}
             center={{ expense, income }}
             formatValue={(v) => formatAmount(v, baseCurrency)}
-            onSelect={(c) => navigate(addUrl('expense', c.other ? '' : `category=${encodeURIComponent(c.name)}`))}
+            // тап по «Другому» — ничего (это не категория): только удержание с суммой
+            onSelect={(c) => !c.other && navigate(addUrl('expense', `category=${encodeURIComponent(c.name)}`))}
           />
         )}
       </section>

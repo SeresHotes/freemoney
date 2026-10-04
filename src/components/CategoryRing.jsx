@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NAME_LINE_H, PER_ROW, arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
+import { NAME_LINE_H, arcPath, fmtPercent, layoutRing, sideWidth } from '../utils/ringLayout';
 import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 import CategoryIcon from './CategoryIcon';
 
 // Кольцо расходов по категориям для главного экрана (в духе Monefy): проценты
-// на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
-// ломаные выносные линии.
-// Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
+// на самих сегментах, подписи (иконка + название) по периметру вокруг кольца
+// (4 сверху, 4 снизу, по 3 по бокам), ломаные выносные линии.
+// Раскладка (поворот, порядок, места подписей, что уходит в «Другое», размер
+// кольца) — utils/ringLayout.js.
 // Касание сегмента/подписи — пока палец держится, категория подсвечена, а в
 // центре вместо итогов месяца её траты; короткий тап — onSelect(item);
 // сдвиг в первые HOLD_MS — свайп месяца, дольше — удержание.
-// data: [{ name, value, icon, color?, other? }] по убыванию; center: { expense, income }.
+// data: все категории [{ name, value, icon, color? }]; мелкие, которым не нашлось
+// места рядом с сектором, кольцо само собирает в «Другое» (other: true).
+// center: { expense, income }.
 // Цвет — свой у категории (color), иначе по месту на кольце (см. layoutRing).
 
 const NAME_FS = 11;
@@ -82,20 +85,6 @@ function wrapName(name, maxW, maxLines) {
   return { lines: lines.map((l) => fitText(l, maxW * SLACK, fontSize)), fontSize };
 }
 
-// Ширина, доступная подписи: до середины расстояния к соседям в ряду и до края.
-function labelWidths(labels, w) {
-  const widths = new Map();
-  for (const top of [true, false]) {
-    const row = labels.filter((l) => l.top === top).sort((a, b) => a.x - b.x);
-    row.forEach((l, i) => {
-      const left = i > 0 ? l.x - row[i - 1].x : 2 * l.x;
-      const right = i < row.length - 1 ? row[i + 1].x - l.x : 2 * (w - l.x);
-      widths.set(l, Math.min(left, right) - 6);
-    });
-  }
-  return widths;
-}
-
 // Цвет текста поверх заливки: тёмный на светлой, белый на тёмной.
 function inkOn(hex) {
   const [r, g, b] = [1, 3, 5].map((i) => {
@@ -130,16 +119,15 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   }, []);
 
   // Вторая строка под название — только если какое-то не влезает в одну строку
-  // обычного слота (иначе зря отнимали бы высоту у кольца).
+  // боковой колонки (самой узкой; иначе зря отнимали бы высоту у кольца).
   const nameLines = useMemo(() => {
-    const slotW = size.w / PER_ROW - 6;
+    const slotW = sideWidth(size.w) - 4;
     return data.some((d) => textWidth(d.name, NAME_FS) > slotW) ? 2 : 1;
   }, [data, size.w]);
   const g = useMemo(
     () => layoutRing(data, size.w, size.h, { nameLines, palette: CATEGORY_COLORS, otherColor: OTHER_COLOR }),
     [data, size.w, size.h, nameLines],
   );
-  const widths = useMemo(() => (g ? labelWidths(g.labels, size.w) : new Map()), [g, size.w]);
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   // Касание сегмента/подписи: сразу подсвечивает категорию и показывает её
@@ -280,7 +268,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
             const { s, x, y } = l;
             const top = y - g.labelH / 2;
             const { mode } = g;
-            const name = mode.name ? wrapName(s.name, widths.get(l) ?? g.slot - 6, mode.nameLines) : null;
+            const name = mode.name ? wrapName(s.name, l.w - 4, mode.nameLines) : null;
             // процент в подписи — только если на сегменте он не поместился
             const pctHere = onRing.get(s.name) ? null : fmtPercent(s.percent);
             const lastY = (i, all) => top + mode.icon + 9 + NAME_LINE_H * (i + (mode.nameLines - all.length) / 2);
@@ -288,7 +276,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
               <g key={s.name} className={`ring__label${s.name === held ? ' is-held' : ''}`} {...pressProps(s)}>
                 <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
-                <rect x={x - (widths.get(l) ?? g.slot) / 2} y={top} width={widths.get(l) ?? g.slot} height={g.labelH} fill="transparent" />
+                <rect x={x - l.w / 2} y={top} width={l.w} height={g.labelH} fill="transparent" />
                 {/* процент, не влезший на сегмент, — у верхнего правого угла иконки (с обводкой цветом фона) */}
                 {/* иконка — цветом категории (аутлайн Lucide или тонированный эмодзи) */}
                 <CategoryIcon icon={s.icon} color={s.color} x={x} y={top + mode.icon / 2} size={mode.icon} />
