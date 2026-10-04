@@ -25,7 +25,7 @@ const SKIP_WAITING = { type: 'SKIP_WAITING' };
 // SW не вызывает clientsClaim(), так что в этом случае не приходит даже
 // controllerchange. Поэтому работаем с регистрацией напрямую и в любом
 // исходе заканчиваем перезагрузкой.
-async function applyUpdate(registration) {
+export async function applyUpdate(registration) {
   let done = false;
   const reload = () => {
     if (done) return;
@@ -76,6 +76,15 @@ async function applyUpdate(registration) {
   // Ждать нечего: новая версия уже активна (например, её активировала другая
   // вкладка) — просто перезагружаемся, чтобы её подхватить.
   reload();
+}
+
+// Кнопка «Обновить» на экране ошибки: баннер мог ещё не появиться (новую
+// версию не успели скачать), поэтому сначала спрашиваем сервер, а потом
+// применяем найденное. Нет новой версии — applyUpdate просто перезагрузит.
+export async function checkAndApplyUpdate() {
+  const reg = await navigator.serviceWorker?.getRegistration?.().catch(() => null);
+  if (reg) await reg.update().catch(() => {});
+  return applyUpdate(reg);
 }
 
 // Баннер «Доступна новая версия». Появляется, когда service worker скачал
