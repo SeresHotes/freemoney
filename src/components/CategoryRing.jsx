@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NAME_LINE_H, PER_ROW, arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
+import { NAME_LINE_H, arcPath, fmtPercent, layoutRing, sideWidth } from '../utils/ringLayout';
 import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 import CategoryIcon from './CategoryIcon';
 
 // Кольцо расходов по категориям для главного экрана (в духе Monefy): проценты
-// на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
-// ломаные выносные линии.
-// Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
+// на самих сегментах, подписи (иконка + название) по периметру вокруг кольца
+// (4 сверху, 4 снизу, по 3 по бокам), ломаные выносные линии.
+// Раскладка (поворот, порядок, места подписей, что уходит в «Другое», размер
+// кольца) — utils/ringLayout.js.
 // Касание сегмента/подписи — пока палец держится, категория подсвечена, а в
 // центре вместо итогов месяца её траты; короткий тап — onSelect(item);
 // сдвиг в первые HOLD_MS — свайп месяца, дольше — удержание.
-// data: [{ name, value, icon, color?, other? }] по убыванию; center: { expense, income }.
+// data: все категории [{ name, value, icon, color? }]; мелкие, которым не нашлось
+// места рядом с сектором, кольцо само собирает в сектор «Другое» (other: true),
+// а их подписи остаются на свободных местах — без линии (detached).
+// center: { expense, income }. memoryKey — ключ памяти мест (месяц + кошелёк).
 // Цвет — свой у категории (color), иначе по месту на кольце (см. layoutRing).
 
 const NAME_FS = 11;
@@ -20,6 +24,32 @@ const HELD_GROW = 5; // px: на сколько выдвигается нару�
 const HOLD_MS = 200; // столько без движения — удержание: дальше сдвиг уже не свайп
 const TAP_MS = 400; // отпустил раньше и не сдвигал — тап
 const LONG_PRESS_SLOP = 10; // px: сдвиг пальца больше — это свайп, не нажатие
+
+// Память раскладки (порядок секторов, поворот, места подписей) — по ключу
+// memoryKey (месяц + кошелёк), чтобы при новых тратах категории оставались на
+// своих местах (см. memory в layoutRing). Хранится на устройстве, последние
+// MEMORY_KEEP ключей.
+const LS_RING_MEMORY = 'freemoney:ringMemory';
+const MEMORY_KEEP = 24;
+function readMemory(key) {
+  try {
+    return JSON.parse(localStorage.getItem(LS_RING_MEMORY) || '{}')[key] || null;
+  } catch {
+    return null;
+  }
+}
+function saveMemory(key, memory) {
+  try {
+    const all = JSON.parse(localStorage.getItem(LS_RING_MEMORY) || '{}');
+    delete all[key]; // свежий ключ — в конец
+    all[key] = memory;
+    const keys = Object.keys(all);
+    for (const k of keys.slice(0, Math.max(0, keys.length - MEMORY_KEEP))) delete all[k];
+    localStorage.setItem(LS_RING_MEMORY, JSON.stringify(all));
+  } catch {
+    /* без хранилища места просто не запомнятся */
+  }
+}
 
 // Точная ширина текста шрифтом страницы (canvas), с запасным приближением.
 let measureCtx;
@@ -41,6 +71,10 @@ function fitText(text, maxW, fontSize) {
 }
 
 const NAME_FS_MIN = 9.5;
+const SUM_FS_MIN = 12; // итоги месяца в центре кольца — размер шрифта, px
+const SUM_FS_MAX = 28;
+const SUM_FILL = 0.84; // доля диаметра отверстия под строку итогов
+const BOLD = 1.08; // жирный шрифт шире обычного примерно на столько
 const SLACK = 1.12; // на сколько строка может выйти за свою ширину (зазор между подписями)
 
 // Разбить название на строки (до maxLines) по словам в ширину maxW. Слово,
@@ -82,20 +116,6 @@ function wrapName(name, maxW, maxLines) {
   return { lines: lines.map((l) => fitText(l, maxW * SLACK, fontSize)), fontSize };
 }
 
-// Ширина, доступная подписи: до середины расстояния к соседям в ряду и до края.
-function labelWidths(labels, w) {
-  const widths = new Map();
-  for (const top of [true, false]) {
-    const row = labels.filter((l) => l.top === top).sort((a, b) => a.x - b.x);
-    row.forEach((l, i) => {
-      const left = i > 0 ? l.x - row[i - 1].x : 2 * l.x;
-      const right = i < row.length - 1 ? row[i + 1].x - l.x : 2 * (w - l.x);
-      widths.set(l, Math.min(left, right) - 6);
-    });
-  }
-  return widths;
-}
-
 // Цвет текста поверх заливки: тёмный на светлой, белый на тёмной.
 function inkOn(hex) {
   const [r, g, b] = [1, 3, 5].map((i) => {
@@ -114,7 +134,7 @@ function ringPercent(s, g) {
   return { text, x: g.cx + rm * Math.cos(s.mid), y: g.cy + rm * Math.sin(s.mid) };
 }
 
-export default function CategoryRing({ data, center, formatValue, onSelect }) {
+export default function CategoryRing({ data, center, formatValue, onSelect, memoryKey = '' }) {
   const ref = useRef(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
 
@@ -130,16 +150,20 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   }, []);
 
   // Вторая строка под название — только если какое-то не влезает в одну строку
-  // обычного слота (иначе зря отнимали бы высоту у кольца).
+  // боковой колонки (самой узкой; иначе зря отнимали бы высоту у кольца).
   const nameLines = useMemo(() => {
-    const slotW = size.w / PER_ROW - 6;
+    const slotW = sideWidth(size.w) - 4;
     return data.some((d) => textWidth(d.name, NAME_FS) > slotW) ? 2 : 1;
   }, [data, size.w]);
+  // память читается только при пересчёте (новые данные, размер), а не после
+  // каждого сохранения — иначе раскладка пересчитывалась бы по кругу
   const g = useMemo(
-    () => layoutRing(data, size.w, size.h, { nameLines, palette: CATEGORY_COLORS, otherColor: OTHER_COLOR }),
-    [data, size.w, size.h, nameLines],
+    () => layoutRing(data, size.w, size.h, { nameLines, palette: CATEGORY_COLORS, otherColor: OTHER_COLOR, memory: readMemory(memoryKey) }),
+    [data, size.w, size.h, nameLines, memoryKey],
   );
-  const widths = useMemo(() => (g ? labelWidths(g.labels, size.w) : new Map()), [g, size.w]);
+  useEffect(() => {
+    if (g?.memory) saveMemory(memoryKey, g.memory);
+  }, [g, memoryKey]);
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   // Касание сегмента/подписи: сразу подсвечивает категорию и показывает её
@@ -230,7 +254,16 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
       el.removeEventListener('touchend', onTouchEnd);
     };
   }, []);
-  const heldSlice = held && g ? g.slices.find((s) => s.name === held) : null;
+  // Итоги месяца в центре — как можно крупнее: обе суммы влезают по ширине
+  // в отверстие кольца (жирный шрифт шире обычного — запас BOLD).
+  const sumFs = useMemo(() => {
+    if (!g || !center) return SUM_FS_MAX;
+    const widest = Math.max(...[center.expense, center.income].map((v) => textWidth(formatValue(v), 10) / 10));
+    return Math.max(SUM_FS_MIN, Math.min(SUM_FS_MAX, (g.r0 * 2 * SUM_FILL) / (widest * BOLD)));
+  }, [g, center, formatValue]);
+  // зажатая категория: сегмент или подпись отвязанной (её сумма — внутри «Другого»)
+  const heldItem = held && g ? g.labels.find((l) => l.s.name === held)?.s ?? g.slices.find((s) => s.name === held) : null;
+  const isHeld = (s) => s.name === held || (s.other && heldItem?.detached);
 
   return (
     <div className={`ring${held ? ' ring--held' : ''}`} ref={ref} onContextMenu={(e) => e.preventDefault()}>
@@ -239,9 +272,9 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
           {g.slices.map((s) => (
             <path
               key={s.name}
-              d={arcPath(g.cx, g.cy, g.r0, s.name === held ? g.R + HELD_GROW : g.R, s.a0, s.a1)}
+              d={arcPath(g.cx, g.cy, g.r0, isHeld(s) ? g.R + HELD_GROW : g.R, s.a0, s.a1)}
               fill={s.color}
-              className={`ring__slice${s.name === held ? ' is-held' : ''}`}
+              className={`ring__slice${isHeld(s) ? ' is-held' : ''}`}
               {...pressProps(s)}
             >
               <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
@@ -258,14 +291,14 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
                 dominantBaseline="central"
                 fontSize={RING_PCT_FS}
                 fill={inkOn(s.color)}
-                className={`ring__pct-on${s.name === held ? ' is-held' : ''}`}
+                className={`ring__pct-on${isHeld(s) ? ' is-held' : ''}`}
               >
                 {pct.text}
               </text>
             ) : null;
           })}
           {/* Ломаная: от кольца строго по радиусу, затем к подписи (при нужде — в обход кольца). */}
-          {g.labels.map(({ s, a }) => (
+          {g.labels.map(({ s, a }) => a && (
             <polyline
               key={`l-${s.name}`}
               points={a.points.map((pt) => pt.join(',')).join(' ')}
@@ -280,7 +313,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
             const { s, x, y } = l;
             const top = y - g.labelH / 2;
             const { mode } = g;
-            const name = mode.name ? wrapName(s.name, widths.get(l) ?? g.slot - 6, mode.nameLines) : null;
+            const name = mode.name ? wrapName(s.name, l.w - 4, mode.nameLines) : null;
             // процент в подписи — только если на сегменте он не поместился
             const pctHere = onRing.get(s.name) ? null : fmtPercent(s.percent);
             const lastY = (i, all) => top + mode.icon + 9 + NAME_LINE_H * (i + (mode.nameLines - all.length) / 2);
@@ -288,7 +321,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
               <g key={s.name} className={`ring__label${s.name === held ? ' is-held' : ''}`} {...pressProps(s)}>
                 <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
-                <rect x={x - (widths.get(l) ?? g.slot) / 2} y={top} width={widths.get(l) ?? g.slot} height={g.labelH} fill="transparent" />
+                <rect x={x - l.w / 2} y={top} width={l.w} height={g.labelH} fill="transparent" />
                 {/* процент, не влезший на сегмент, — у верхнего правого угла иконки (с обводкой цветом фона) */}
                 {/* иконка — цветом категории (аутлайн Lucide или тонированный эмодзи) */}
                 <CategoryIcon icon={s.icon} color={s.color} x={x} y={top + mode.icon / 2} size={mode.icon} />
@@ -321,23 +354,18 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
           className="ring__center"
           style={{ width: g.r0 * 2, height: g.r0 * 2, '--ring-fs': `${Math.min(22, Math.max(12, g.r0 * 0.2))}px` }}
         >
-          {heldSlice ? (
+          {heldItem ? (
             <>
-              <span className="ring__held-icon">{heldSlice.icon}</span>
-              <span className="donut__label ring__held-name">{heldSlice.name}</span>
-              <span className="donut__expense">{formatValue(heldSlice.value)}</span>
-              {g.r0 > 52 && <span className="donut__label">{fmtPercent(heldSlice.percent)}</span>}
+              <span className="ring__held-icon">{heldItem.icon}</span>
+              <span className="donut__label ring__held-name">{heldItem.name}</span>
+              <span className="donut__expense">{formatValue(heldItem.value)}</span>
+              {g.r0 > 52 && <span className="donut__label">{fmtPercent(heldItem.percent)}</span>}
             </>
           ) : (
             <>
-              <span className="donut__label">Расходы</span>
-              <span className="donut__expense">{formatValue(center.expense)}</span>
-              {g.r0 > 52 && (
-                <>
-                  <span className="donut__label">Доходы</span>
-                  <span className="donut__income">{formatValue(center.income)}</span>
-                </>
-              )}
+              {/* без подписей: красное — расходы, зелёное — доходы */}
+              <span className="donut__expense" title="Расходы" style={{ fontSize: sumFs }}>{formatValue(center.expense)}</span>
+              <span className="donut__income" title="Доходы" style={{ fontSize: sumFs }}>{formatValue(center.income)}</span>
             </>
           )}
         </div>

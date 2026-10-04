@@ -1,63 +1,63 @@
 // Раскладка кольца категорий главного экрана (см. components/CategoryRing.jsx).
 //
-// Кольцо фиксированного размера — его радиус всегда одна и та же доля ширины
-// (R_FRAC), чтобы на любом экране оно выглядело одинаково; уменьшается, только
-// если по высоте физически не помещается. Проценты — на самих сегментах (если
-// влезают); подписи (иконка + название) — рядами у верхнего и нижнего края
-// карточки, до 5 в ряду.
+// Подписи (иконка + название) — в 14 местах по периметру вокруг кольца, сеткой
+// 4×5 (как в Monefy): 4 сверху (два угла и два между ними), 4 снизу, по 3 слева
+// и справа. У «Другого» подписи нет — только сектор.
 //
-// Расстановка — поиск, минимизирующий САМЫЙ БОЛЬШОЙ отрыв подписи от её
-// сектора по кругу (насколько направление на подпись из центра уходит за дугу
-// сектора: подпись справа у сектора слева — плохо): порядок сегментов по кругу
-// (любой), поворот кольца и ряд каждой подписи. Старт — несколько порядков (по
-// убыванию, вперемешку, по бокам, горкой) × все повороты, затем обмены пар
-// сегментов, пока худший отрыв уменьшается. Вторично — средний отрыв, длина
-// линий, пересечения и обходы кольца. Детерминированно.
+// Категория привязывается к своему сектору (своя дуга и линия к подписи),
+// только если место подписи не слишком далеко по кругу от сектора: направление
+// на подпись из центра уходит за дугу сектора не больше чем на MAX_GAP. Если
+// так разместить все не получается — самая маленькая из привязанных уходит в
+// «Другое», и так, пока не получится. Отвязанная категория на кольце — часть
+// сектора «Другое», но её подпись (иконка, название, процент) остаётся на
+// свободном месте — без линии, ближе к «Другому», пока места хватает.
+// Подписи привязанных — с сохранением кругового порядка сегментов.
+//
+// Поиск: порядок сегментов по кругу (любой) и поворот кольца; места подписям —
+// с сохранением кругового порядка (линии не пересекаются), оптимально
+// динамикой. Старт — несколько порядков × все повороты, затем обмены пар
+// сегментов, пока стоимость падает. Детерминированно.
 // Выносные линии ломаные (до двух изломов, см. leader).
 
-// Кольцо на главной: не больше RING_NAMED отдельных категорий (по числу цветов
-// палитры) + «Другое». Категории раскладываются по убыванию, пока есть место и
-// пока остаток больше RING_REST_SHARE; хвост из 1% и меньше дальше не делим.
-const RING_NAMED = 8;
-const RING_REST_SHARE = 0.01;
+export const SLOTS = 14; // мест под подписи (сетка 4×5 по периметру)
+export const MAX_GAP = 50; // град: подпись дальше от своего сектора — категория уходит в «Другое»
+// «Другое» — только сектор (без подписи); иконка — для центра при удержании
+export const OTHER = { name: 'Другое', icon: '📦', other: true };
 
-// [[name, value]] по убыванию → сколько категорий показать отдельно.
-export function ringNamedCount(sorted, total) {
-  let rest = total;
-  for (let i = 0; i < sorted.length; i++) {
-    if (i === RING_NAMED) return i; // мест (цветов) больше нет — остальное «Другое»
-    if (sorted.length - i === 1) return sorted.length; // последняя — сама, не «Другое»
-    if (rest <= total * RING_REST_SHARE) return i;
-    rest -= sorted[i][1];
-  }
-  return sorted.length;
-}
-
-export const R_FRAC = 0.34; // радиус кольца — доля ширины (диаметр ≈ 68%)
-const MAX_SHRINK = 0.25; // на сколько кольцо может уменьшиться ради названий (невысокие экраны)
+export const R_FRAC = 0.36; // радиус кольца — доля ширины, не больше
+const MAX_SHRINK = 0.3; // на сколько кольцо может уменьшиться ради названий (невысокие экраны)
 export const INNER = 0.6; // внутренний радиус — доля внешнего (толщина под проценты)
 const PAD_ANGLE = 0.02; // зазор между сегментами, рад
-export const PER_ROW = 5;
 export const NAME_LINE_H = 13; // высота строки названия в подписи
-const STUB = 16; // радиальный отрезок линии от кольца (1-й излом)
-const TAIL = 10; // прямой (вертикальный) вход линии в подпись (2-й излом)
-const STRAIGHT = 12; // излом меньше этого угла, град, не делаем
-const LEADER = 34; // минимальный зазор между рядом подписей и кольцом (под линию)
-const CROSS_COST = 15; // пересечение двух линий «стоит» как +15° к самому большому отрыву
-const MEAN_WEIGHT = 0.3; // вес среднего отрыва (вторично к самому большому)
-const LEN_WEIGHT = 0.01; // совсем немного — длина линий (при прочих равных — короче)
+const SIDE_FRAC = 0.18; // ширина боковой колонки подписей — доля ширины
+const SIDE_MIN = 60;
+const SIDE_MAX = 84;
+const SIDE_GAP = 10; // зазор между боковой колонкой и кольцом (под линию)
+const V_GAP = 22; // зазор между верхним/нижним рядом и кольцом (под линию)
+const ROW_GAP = 2; // зазор между подписями в боковой колонке
+const ASPECT = 1.15; // сетка подписей по высоте — до ASPECT своей ширины (высокие экраны)
+const STUB = 16; // радиальный отрезок линии от кольца (только для обхода кольца)
+const BEND_ANGLE = 25; // град: линия отходит от кольца не круче к радиусу — иначе излом
+const BEND_AT = 0.5; // излом — на такой доле прямого пути от кольца до подписи
+const BLOCK_FRAC = 1; // линия не заходит в круг чужой подписи (доля его радиуса)
+const STAY_COST = 6; // цена переезда подписи с прошлого места (≈ отрыв 15° вместо 0°)
+const BLOCKED_GAP = 90; // град: «отрыв» места, к которому линия прошла бы через чужую подпись
 const SEED_ROTATIONS = 24; // повороты для стартовых порядков (шаг 15°)
-const ROT_STEPS = [-10, 0, 10]; // подстройка поворота при обменах, град
-const MAX_ITER = 25; // шагов улучшения обменами, не больше
-const EDGE = 2; // отступ рядов от края
-const DETOUR_COST = 60; // за каждую точку обхода кольца, ° (обход — крайний случай)
-// Подпись: иконка и название (1–2 строки); если по высоте тесно — без названия,
-// на совсем низких экранах — с иконкой поменьше.
+const ROT_STEPS = [-8, 0, 8]; // подстройка поворота при обменах, град
+const MAX_ITER = 10; // шагов улучшения обменами, не больше
+const EDGE = 2; // отступ подписей от края
+// Подпись: иконка и название (1–2 строки); если по высоте тесно — две строки
+// с иконкой поменьше, затем одна строка, затем без названия, на совсем низких
+// экранах — с иконкой поменьше.
+const SMALL_ICON = 36;
 const MODES = [
   { h: 66, icon: 46, name: true },
   { h: 48, icon: 44, name: false },
   { h: 30, icon: 26, name: false },
 ];
+
+// Ширина боковой колонки подписей (уже, чем верх/низ) — под неё переносится название.
+export const sideWidth = (w) => Math.min(SIDE_MAX, Math.max(SIDE_MIN, w * SIDE_FRAC));
 
 const DEG = Math.PI / 180;
 const polar = (cx, cy, r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
@@ -75,19 +75,6 @@ export function arcPath(cx, cy, r0, r1, a0, a1) {
   const [x2, y2] = polar(cx, cy, r0, a1);
   const [x3, y3] = polar(cx, cy, r0, a0);
   return `M${x0},${y0}A${r1},${r1} 0 ${large} 1 ${x1},${y1}L${x2},${y2}A${r0},${r0} 0 ${large} 0 ${x3},${y3}Z`;
-}
-
-// Расставить подписи ряда по x (порядок задан): ближе к желаемым, но не
-// ближе step друг к другу и в пределах [lo, hi].
-function spread(items, step, lo, hi) {
-  for (let i = 0; i < items.length; i++) {
-    const min = i === 0 ? lo : items[i - 1].x + step;
-    if (items[i].x < min) items[i].x = min;
-  }
-  for (let i = items.length - 1; i >= 0; i--) {
-    const max = i === items.length - 1 ? hi : items[i + 1].x - step;
-    if (items[i].x > max) items[i].x = max;
-  }
 }
 
 // Угол a, приведённый к окрестности ref (±π).
@@ -109,57 +96,62 @@ function distToSegment(px, py, x1, y1, x2, y2) {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-// Пересекаются ли отрезки p1–p2 и p3–p4 (строго, без общих концов).
-function crosses(x1, y1, x2, y2, x3, y3, x4, y4) {
-  const d1 = (x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3);
-  const d2 = (x4 - x3) * (y2 - y3) - (y4 - y3) * (x2 - x3);
-  const d3 = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
-  const d4 = (x2 - x1) * (y4 - y1) - (y2 - y1) * (x4 - x1);
-  return d1 * d2 < 0 && d3 * d4 < 0;
+// Линия к подписи — не больше одного излома. Подпись (весь слот) считается
+// кругом с центром (lx, ly) и радиусом rad: линия идёт к ближайшей точке этого
+// круга (целится в центр и останавливается на краю). Прямая, если она отходит
+// от кольца не круче BEND_ANGLE к радиусу; иначе первый отрезок — ровно под
+// BEND_ANGLE к радиусу (в сторону подписи), примерно до середины пути, а
+// оттуда — прямо к подписи. Если второму отрезку мешает кольцо, излом
+// отодвигается дальше по лучу. Только если и так нельзя (подпись «за
+// кольцом») — обход кольца по дуге. points — вершины; detour — точки обхода.
+function leader(s, lx, ly, rad, g) {
+  return leaderAt(ringPoint(s, Math.atan2(ly - g.cy, lx - g.cx)), lx, ly, rad, g);
 }
 
-// Ломаная линия к подписи с точкой крепления (lx, ly) — до двух изломов:
-// от кольца строго по радиусу (STUB), затем к «хвосту» и прямо в подпись
-// (TAIL; [dx, dy] — направление от подписи к кольцу). Излом пропускается,
-// если линия и так идёт почти прямо. Если путь зашёл бы на кольцо (подпись «с другой стороны»),
-// линия огибает кольцо снаружи по дуге. points — вершины; detour — точки
-// обхода; bend — отклонение направления к подписи от радиуса, град.
-function leader(s, lx, ly, g, [dx, dy]) {
-  const want = near(Math.atan2(ly - g.cy, lx - g.cx), s.mid);
+// Откуда на кольце выходит линия к подписи в направлении ang: ближайшая к нему
+// точка дуги сектора (чуть отступив от краёв). → { t, want }.
+function ringPoint(s, ang) {
+  const want = near(ang, s.mid);
   const m = Math.min(0.03, (s.a1 - s.a0) / 3);
-  const t = Math.min(s.a1 - m, Math.max(s.a0 + m, want));
+  return { t: Math.min(s.a1 - m, Math.max(s.a0 + m, want)), want };
+}
+
+function leaderAt({ t, want }, lx, ly, rad, g) {
   const [ax, ay] = polar(g.cx, g.cy, g.R, t);
-  const [bx, by] = polar(g.cx, g.cy, g.R + STUB, t);
-  const tail = [lx + dx * TAIL, ly + dy * TAIL];
-  const angleTo = (x0, y0, x1, y1, ux, uy) => {
-    const len = Math.hypot(x1 - x0, y1 - y0) || 1;
-    return Math.acos(Math.max(-1, Math.min(1, ((x1 - x0) * ux + (y1 - y0) * uy) / len))) / DEG;
+  // ближайшая к точке p точка круга подписи
+  const edge = ([px, py]) => {
+    const d = Math.hypot(lx - px, ly - py) || 1;
+    const k = Math.max(0, d - rad) / d;
+    return [px + (lx - px) * k, py + (ly - py) * k];
   };
-  const bend = angleTo(ax, ay, tail[0], tail[1], Math.cos(t), Math.sin(t));
-  // 1-й излом не нужен, если к хвосту и так почти по радиусу
-  const points = bend < STRAIGHT ? [[ax, ay]] : [[ax, ay], [bx, by]];
-  const [fx, fy] = points[points.length - 1];
-  const hits = (x, y) => distToSegment(g.cx, g.cy, x, y, tail[0], tail[1]) < g.R + 2;
-  let detour = 0;
-  if (points.length > 1 && hits(fx, fy)) {
-    // Обход по дуге радиуса rw в сторону подписи (кратчайшим путём). Шаг —
-    // такой, чтобы хорда между соседними точками не срезала край кольца.
-    const rw = g.R + STUB + 6;
-    const step = 2 * Math.acos((g.R + 2) / rw) * 0.9 * Math.sign(want - t || 1);
-    let a = t;
-    points.push(polar(g.cx, g.cy, rw, a));
-    for (let i = 0; i < 24 && hits(...points[points.length - 1]); i++) {
-      a += step;
-      points.push(polar(g.cx, g.cy, rw, a));
-      detour++;
-    }
+  const end = edge([ax, ay]);
+  const len = Math.hypot(end[0] - ax, end[1] - ay);
+  const [ux, uy] = [Math.cos(t), Math.sin(t)]; // радиус наружу
+  const angle = Math.acos(Math.max(-1, Math.min(1, ((lx - ax) * ux + (ly - ay) * uy) / (Math.hypot(lx - ax, ly - ay) || 1)))) / DEG;
+  if (angle <= BEND_ANGLE) return { points: [[ax, ay], end], len, detour: 0 };
+  // луч под BEND_ANGLE к радиусу, повёрнутый в сторону подписи
+  const side = Math.sign(ux * (ly - ay) - uy * (lx - ax)) || 1;
+  const r = t + side * BEND_ANGLE * DEG;
+  const clear = (p) => distToSegment(g.cx, g.cy, ...p, ...edge(p)) >= g.R + 2;
+  for (let k = BEND_AT; k <= 2; k += 0.25) {
+    const bend = [ax + Math.cos(r) * len * k, ay + Math.sin(r) * len * k];
+    // излом не внутри круга подписи
+    if (Math.hypot(lx - bend[0], ly - bend[1]) > rad && clear(bend)) return { points: [[ax, ay], bend, edge(bend)], len, detour: 0 };
   }
-  // 2-й излом (прямой вход в подпись) не нужен, если линия и так почти прямо
-  // входит в неё
-  const [px, py] = points[points.length - 1];
-  if (angleTo(px, py, lx, ly, -dx, -dy) >= STRAIGHT) points.push(tail);
-  points.push([lx, ly]);
-  return { points, stub: bend >= STRAIGHT, len: Math.hypot(lx - ax, ly - ay), bend, detour };
+  // Обход по дуге радиуса rw в сторону подписи (кратчайшим путём). Шаг —
+  // такой, чтобы хорда между соседними точками не срезала край кольца.
+  const rw = g.R + STUB + 6;
+  const points = [[ax, ay], polar(g.cx, g.cy, g.R + STUB, t)];
+  const step = 2 * Math.acos((g.R + 2) / rw) * 0.9 * Math.sign(want - t || 1);
+  let a = t;
+  let detour = 0;
+  while (detour < 24 && !clear(points[points.length - 1])) {
+    a += step;
+    points.push(polar(g.cx, g.cy, rw, a));
+    detour++;
+  }
+  points.push(edge(points[points.length - 1]));
+  return { points, len, detour };
 }
 
 // Стартовые порядки сегментов для поиска (по часовой): по убыванию;
@@ -193,102 +185,210 @@ function slicesAt(data, total, start) {
   });
 }
 
-// Насколько близко дуга сегмента подходит к верхнему / нижнему краю кольца
-// (минимальный / максимальный sin на дуге).
-function arcSinRange(s) {
-  let lo = Math.min(Math.sin(s.a0), Math.sin(s.a1));
-  let hi = Math.max(Math.sin(s.a0), Math.sin(s.a1));
-  const has = (ang) => {
-    const t = near(ang, (s.a0 + s.a1) / 2);
-    return t >= s.a0 && t <= s.a1;
-  };
-  if (has(-Math.PI / 2)) lo = -1;
-  if (has(Math.PI / 2)) hi = 1;
-  return [lo, hi];
-}
-
-// Ряд для каждой подписи — тот, к которому её сегмент ближе (не больше PER_ROW
-// в ряду: лишние переходят в другой ряд, начиная с тех, кому разница меньше).
-function assignRows(slices) {
-  const pref = slices.map((s) => {
-    const [lo, hi] = arcSinRange(s);
-    return { s, gain: 1 + lo - (1 - hi) }; // < 0 — ближе к верху
-  });
-  const top = pref.filter((p) => p.gain < 0);
-  const bottom = pref.filter((p) => p.gain >= 0);
-  const fix = (from, to, sign) => {
-    from.sort((a, b) => sign * (a.gain - b.gain));
-    while (from.length > PER_ROW) to.push(from.pop());
-  };
-  fix(top, bottom, -1);
-  fix(bottom, top, 1);
-  fix(top, bottom, -1);
-  return [top.map((p) => p.s), bottom.map((p) => p.s)];
-}
 
 // Отрыв подписи от её сектора по кругу, град: направление на подпись из центра
 // кольца против дуги сектора (0 — подпись прямо «напротив» сектора).
-function arcGap(s, x, y, g) {
-  const a = near(Math.atan2(y - g.cy, x - g.cx), (s.a0 + s.a1) / 2);
+function arcGap(s, ang) {
+  const a = near(ang, (s.a0 + s.a1) / 2);
   return (a < s.a0 ? s.a0 - a : a > s.a1 ? a - s.a1 : 0) / DEG;
 }
 
-const polyLen = (pts) => pts.slice(1).reduce((sum, p, i) => sum + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
-
-// Подписи рядов: каждый ряд слева направо по желаемому x (под своим сегментом),
-// затем ломаные линии. Стоимость — САМЫЙ БОЛЬШОЙ отрыв подписи от её сектора
-// по кругу (его и минимизируем), вторично — средний отрыв, чуть-чуть — длина
-// линий, плюс штрафы за пересечения линий и обходы кольца.
-function placeRows(topItems, bottomItems, g, bound = Infinity) {
-  const labels = [];
-  let detours = 0;
-  for (const [items, top] of [[topItems, true], [bottomItems, false]]) {
-    const placed = items
-      .map((s) => ({ s, top, y: top ? g.topY : g.botY, x: polar(g.cx, g.cy, g.R, s.mid)[0] }))
-      .sort((a, b) => a.x - b.x);
-    spread(placed, g.slot, g.slot / 2, g.w - g.slot / 2);
-    for (const p of placed) {
-      const dir = top ? [0, 1] : [0, -1];
-      p.a = leader(p.s, p.x, p.y + dir[1] * (g.labelH / 2 + 3), g, dir);
-      p.len = polyLen(p.a.points);
-      p.gap = arcGap(p.s, p.x, p.y, g);
-      detours += p.a.detour;
-    }
-    labels.push(...placed);
-  }
-  const gaps = labels.map((l) => l.gap);
-  const maxGap = Math.max(0, ...gaps);
-  const m = labels.length || 1;
-  const mean = gaps.reduce((a, b) => a + b, 0) / m;
-  const meanLen = labels.reduce((a, l) => a + l.len, 0) / m;
-  const base = maxGap + MEAN_WEIGHT * mean + LEN_WEIGHT * meanLen + DETOUR_COST * detours;
-  // заведомо хуже лучшего — пересечения не считаем (ускоряет поиск в разы)
-  if (base >= bound) return { labels, cost: base, maxGap };
-  // пересечения (все отрезки, кроме радиального у кольца — там линии и так расходятся)
-  const segs = labels.map((l) => {
-    const pts = l.a.stub ? l.a.points.slice(1) : l.a.points;
-    return pts.slice(1).map((pt, i) => [pts[i], pt]);
-  });
-  let crossings = 0;
-  for (let i = 0; i < segs.length; i++) {
-    for (let j = i + 1; j < segs.length; j++) {
-      if (segs[i].some(([p1, p2]) => segs[j].some(([q1, q2]) => crosses(...p1, ...p2, ...q1, ...q2)))) crossings++;
-    }
-  }
-  return { labels, cost: base + CROSS_COST * crossings, maxGap };
+// Цена места для подписи: резко растёт с отрывом (в сумме это почти «самый
+// большой отрыв»), чуть-чуть — отклонение от середины сектора (линии короче).
+// Плюс STAY_COST, если в прошлый раз (memory) подпись стояла на другом месте.
+function slotCost(s, slot, memory) {
+  const gap = fitGap(s, slot);
+  const was = memory?.slots?.[s.name];
+  const moved = was && was !== slot.id ? STAY_COST : 0;
+  return (gap / 10) ** 4 + 0.05 * gap + 0.002 * Math.abs(near(slot.ang, s.mid) - s.mid) / DEG + moved;
 }
 
-// nameLines — сколько строк отвести под название (2 — если какое-то название не
-// влезает в одну строку слота; см. CategoryRing). Цвет сегмента — собственный
-// цвет категории (d.color); у кого его нет — по месту на кольце: по часовой
-// стрелке в порядке palette (её порядок подобран так, что соседние — и
-// последний с первым — хорошо различимы), «Другое» (other) — otherColor.
+// Отрыв подписи на месте slot от сектора s, град; если линия к ней прошла бы
+// через чужую подпись — как будто подпись слишком далеко (BLOCKED_GAP).
+function fitGap(s, slot) {
+  const { t } = ringPoint(s, slot.ang);
+  const k = ((Math.round(t / DEG) % 360) + 360) % 360;
+  return slot.blocked[k] ? BLOCKED_GAP : arcGap(s, slot.ang);
+}
+
+// Места подписям с сохранением кругового порядка: сегменты (по часовой) →
+// места (по часовой, slots отсортированы по углу), минимум суммы slotCost.
+// Динамика по (сегмент, место) для каждого места первого сегмента.
+// → { cost, pick: [индекс места для каждого сегмента] }.
+function assignSlots(slices, slots, bound = Infinity, memory = null) {
+  const n = slices.length;
+  const m = slots.length;
+  const c = slices.map((s) => slots.map((t) => slotCost(s, t, memory)));
+  let best = { cost: Infinity, pick: null };
+  const span = m - n; // запас мест
+  for (let o = 0; o < m; o++) {
+    // dp[i][p]: сегменты 0..i, сегмент i — на месте o + i + p (p — сколько мест пропущено)
+    const dp = [];
+    const from = [];
+    for (let i = 0; i < n; i++) {
+      dp.push(new Float64Array(span + 1));
+      from.push(new Int8Array(span + 1));
+      let run = Infinity;
+      let runAt = 0;
+      for (let p = 0; p <= span; p++) {
+        if (i > 0 && dp[i - 1][p] < run) {
+          run = dp[i - 1][p];
+          runAt = p;
+        }
+        const own = c[i][(o + i + p) % m];
+        if (i === 0) dp[i][p] = p === 0 ? own : Infinity;
+        else dp[i][p] = run + own;
+        from[i][p] = runAt;
+      }
+    }
+    let end = 0;
+    for (let p = 1; p <= span; p++) if (dp[n - 1][p] < dp[n - 1][end]) end = p;
+    const cost = dp[n - 1][end];
+    if (cost < best.cost && cost < bound) {
+      const pick = new Array(n);
+      for (let i = n - 1, p = end; i >= 0; i--) {
+        pick[i] = (o + i + p) % m;
+        p = from[i][p];
+      }
+      best = { cost, pick };
+    }
+  }
+  return best;
+}
+
+// Геометрия: кольцо и 14 мест для подписей (сетка 4×5 по периметру).
+// Режим подписи — первый, при котором боковые колонки не налезают по высоте и
+// кольцо почти своего размера; иначе самый компактный.
+function frame(w, h, nameLines) {
+  const modes = MODES.flatMap((m) => {
+    if (!m.name) return [m];
+    const one = { ...m, nameLines: 1 };
+    if (nameLines < 2) return [one];
+    const two = { ...m, h: m.h + NAME_LINE_H, nameLines: 2 };
+    return [two, { ...two, icon: SMALL_ICON, h: two.h - (m.icon - SMALL_ICON) }, one];
+  });
+  const sideW = sideWidth(w);
+  const cx = w / 2;
+  const cy = h / 2;
+  const fixedR = Math.min(w * R_FRAC, h * R_FRAC, cx - EDGE - sideW - SIDE_GAP);
+  const fit = (mode) => {
+    const R = Math.min(fixedR, cy - EDGE - mode.h - V_GAP);
+    // боковые колонки — вплотную к кольцу, но не дальше края
+    const colX = Math.max(EDGE + sideW / 2, cx - R - SIDE_GAP - sideW / 2);
+    const lo = Math.max(R + V_GAP + mode.h / 2, 2 * (mode.h + ROW_GAP)); // полувысота сетки
+    const hi = cy - EDGE - mode.h / 2;
+    const halfH = Math.min(hi, Math.max(lo, (cx - colX) * ASPECT));
+    return { mode, R, colX, halfH, ok: lo <= hi && R >= fixedR * (1 - MAX_SHRINK) };
+  };
+  const f = modes.map(fit).find((x) => x.ok) || fit(modes[modes.length - 1]);
+  const { mode, colX, halfH } = f;
+  const R = Math.max(24, f.R);
+  const d = (w - 2 * colX) / 3; // шаг верхнего/нижнего ряда
+  const xs = [colX, colX + d, colX + 2 * d, w - colX];
+  const ys = [0, 1, 2, 3, 4].map((j) => cy - halfH + (j * halfH) / 2);
+  const slots = [];
+  // угол места — по его центру (линия целится в центр слота)
+  // id — позиция в сетке «столбец,строка»: одинакова на любом экране (для памяти мест)
+  const add = (x, y, side, sw, id) => slots.push({ id, x, y, side, w: sw, ang: Math.atan2(y - cy, x - cx) });
+  xs.forEach((x, i) => {
+    const corner = i === 0 || i === 3;
+    const sw = corner ? Math.min(sideW, d - 6) : d - 6;
+    add(x, ys[0], corner ? 'corner' : 'top', sw, `${i},0`);
+    add(x, ys[4], corner ? 'corner' : 'bottom', sw, `${i},4`);
+  });
+  ys.slice(1, 4).forEach((y, j) => {
+    add(xs[0], y, 'left', sideW, `0,${j + 1}`);
+    add(xs[3], y, 'right', sideW, `3,${j + 1}`);
+  });
+  slots.sort((a, b) => a.ang - b.ang);
+  // слот для линии — круг вокруг центра подписи (касается её верха и низа)
+  const g = { w, h, cx, cy, R, r0: R * INNER, mode, labelH: mode.h, labelR: mode.h / 2 + 2, slots };
+  // Для каждого места и каждой точки кольца (шаг 1°): проходит ли линия оттуда
+  // через другую подпись (её круг, чуть меньший) или в обход кольца.
+  const hit = g.labelR * BLOCK_FRAC;
+  for (const slot of slots) {
+    slot.blocked = new Uint8Array(360);
+    for (let k = 0; k < 360; k++) {
+      const t = k * DEG;
+      const { points, detour } = leaderAt({ t, want: near(slot.ang, t) }, slot.x, slot.y, g.labelR, g);
+      slot.blocked[k] = detour > 0 || slots.some((o) => o !== slot && points.slice(1).some((p, i) => distToSegment(o.x, o.y, ...points[i], ...p) < hit)) ? 1 : 0;
+    }
+  }
+  return g;
+}
+
+// Лучшая раскладка этих сегментов: порядок по кругу + поворот + места подписей.
+// memory — прошлая раскладка: её порядок и поворот — первый старт поиска, а
+// переезд подписи с прошлого места стоит STAY_COST.
+function search(list, total, g, doSearch, memory) {
+  const evaluate = (order, rot, bound) => {
+    const slices = slicesAt(order, total, rot);
+    // у «Другого» подписи нет — места только привязанным категориям
+    const named = slices.filter((sl) => !sl.other);
+    const { cost, pick } = assignSlots(named, g.slots, bound, memory);
+    return { cost, pick, slices, named, order, rot };
+  };
+  const bestRot = (order, rots, bound = Infinity) => {
+    let best = null;
+    for (const rot of rots) {
+      const v = evaluate(order, rot, best ? Math.min(best.cost, bound) : bound);
+      if (!best || v.cost < best.cost - 1e-9) best = v;
+    }
+    return best;
+  };
+  const fullRots = Array.from({ length: SEED_ROTATIONS }, (_, i) => (i / SEED_ROTATIONS) * Math.PI * 2);
+  const nearRots = (r) => ROT_STEPS.map((dd) => r + dd * DEG);
+  let best = null;
+  const seeds = doSearch ? seedOrders(list) : [list];
+  // прошлый порядок: известные — как были, новые — в конце (крупные первыми)
+  if (memory?.order) {
+    const pos = new Map(memory.order.map((name, i) => [name, i]));
+    const known = list.filter((d) => pos.has(d.name)).sort((a, b) => pos.get(a.name) - pos.get(b.name));
+    seeds.unshift([...known, ...list.filter((d) => !pos.has(d.name))]);
+  }
+  seeds.forEach((order, i) => {
+    const rots = i === 0 && memory?.order ? [memory.rot, ...fullRots] : fullRots;
+    const v = bestRot(order, rots, best ? best.cost : Infinity);
+    if (!best || v.cost < best.cost - 1e-9) best = v;
+  });
+  const n = list.length;
+  for (let iter = 0; doSearch && iter < MAX_ITER; iter++) {
+    let improved = null;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const order = [...best.order];
+        [order[i], order[j]] = [order[j], order[i]];
+        const bound = (improved ?? best).cost - 0.01;
+        const v = bestRot(order, nearRots(best.rot), bound);
+        if (v.pick && v.cost < bound) improved = v;
+      }
+    }
+    if (!improved) break;
+    best = improved;
+  }
+  return best;
+}
+
+// Подписи на выбранных местах и линии к ним.
+function placeLabels(best, g) {
+  return best.named.map((s, i) => {
+    const t = g.slots[best.pick[i]];
+    return { s, x: t.x, y: t.y, side: t.side, w: t.w, gap: fitGap(s, t), a: leader(s, t.x, t.y, g.labelR, g) };
+  });
+}
+
+// data — все категории [{ name, value, icon, color? }]; nameLines — сколько
+// строк отвести под название (2 — если какое-то не влезает в одну, см.
+// CategoryRing). Мелкие, которым не нашлось места рядом с сектором, —
+// в «Другое» ({ ...OTHER, value, items }). Цвет сегмента — свой цвет категории
+// (d.color); у кого его нет — по месту на кольце, по часовой в порядке palette;
+// «Другое» — otherColor.
 // Кэш раскладок: листание месяцев туда-обратно не пересчитывает поиск заново.
 const cache = new Map();
 const CACHE_SIZE = 40;
 
 export function layoutRing(data, w, h, opts = {}) {
-  const key = JSON.stringify([data.map((d) => [d.name, d.value, !!d.other, d.color || '']), Math.round(w), Math.round(h), opts.nameLines, opts.palette, opts.otherColor, opts.search]);
+  const key = JSON.stringify([data.map((d) => [d.name, d.value, d.color || '']), Math.round(w), Math.round(h), opts.nameLines, opts.palette, opts.otherColor, opts.search, opts.memory]);
   if (cache.has(key)) return cache.get(key);
   const result = computeLayout(data, w, h, opts);
   cache.set(key, result);
@@ -296,93 +396,73 @@ export function layoutRing(data, w, h, opts = {}) {
   return result;
 }
 
-function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherColor = '#64748b', search = true } = {}) {
-  const total = data.reduce((s, d) => s + d.value, 0);
+function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherColor = '#64748b', search: doSearch = true, memory = null } = {}) {
+  const sorted = data.filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  const total = sorted.reduce((sum, d) => sum + d.value, 0);
   if (!total || w < 100 || h < 80) return null;
+  const g = frame(w, h, nameLines);
 
-  const fixedR = w * R_FRAC;
-  const modes = MODES.flatMap((m) => {
-    if (!m.name) return [m];
-    const one = { ...m, nameLines: 1 };
-    return nameLines > 1 ? [{ ...m, h: m.h + NAME_LINE_H * (nameLines - 1), nameLines }, one] : [one];
-  });
-  const radiusFor = (m) => Math.min(fixedR, (h - 2 * (m.h + LEADER)) / 2);
-  // Первая подпись, при которой кольцо остаётся своего размера (допускаем
-  // уменьшение на MAX_SHRINK, чтобы не терять названия на невысоких экранах);
-  // иначе — самая компактная, а кольцо меньше (только на совсем низких экранах).
-  const mode = modes.find((m) => radiusFor(m) >= fixedR * (1 - MAX_SHRINK)) || modes[modes.length - 1];
-  const R = Math.max(30, radiusFor(mode));
-  const g = {
-    w, cx: w / 2, cy: h / 2, R, mode,
-    r0: R * INNER,
-    labelH: mode.h,
-    slot: w / PER_ROW,
-    // ряды — у верхнего и нижнего края (как можно дальше от кольца)
-    topY: mode.h / 2 + EDGE,
-    botY: h - mode.h / 2 - EDGE,
-  };
-
-  // Вариант = порядок сегментов + поворот (+ ряды подписей).
-  const evaluate = (order, rot, rows, bound) => {
-    const slices = slicesAt(order, total, rot);
-    const [top, bottom] = rows ? rows(slices) : assignRows(slices);
-    return { ...placeRows(top, bottom, g, bound), slices, order, rot };
-  };
-  const bestRot = (order, rots, bound = Infinity) => {
-    let best = null;
-    for (const rot of rots) {
-      const v = evaluate(order, rot, null, best ? Math.min(best.cost, bound) : bound);
-      if (!best || v.cost < best.cost - 1e-6) best = v;
+  // Сколько категорий привязать к секторам: сначала сколько влезает по местам
+  // (все — или SLOTS, остальное — «Другое»), затем меньше — пока все подписи
+  // не окажутся рядом со своими секторами (двоичным поиском: с ростом k
+  // разместить только труднее).
+  const N = sorted.length;
+  const tried = new Map();
+  const attempt = (k) => {
+    if (!tried.has(k)) {
+      const rest = sorted.slice(k);
+      const list = rest.length ? [...sorted.slice(0, k), { ...OTHER, value: rest.reduce((sum, d) => sum + d.value, 0), items: rest }] : sorted;
+      const v = search(list, total, g, doSearch, memory);
+      v.maxGap = Math.max(...v.named.map((sl, i) => fitGap(sl, g.slots[v.pick[i]])));
+      tried.set(k, v);
     }
-    return best;
+    return tried.get(k);
   };
-  const fullRots = Array.from({ length: SEED_ROTATIONS }, (_, i) => (i / SEED_ROTATIONS) * Math.PI * 2);
-  const nearRots = (r) => ROT_STEPS.map((d) => r + d * DEG);
-
-  // 1) стартовые порядки × все повороты; 2) улучшаем обменами пар сегментов
-  // (с подстройкой поворота), пока самая длинная линия укорачивается.
-  // search: false — только порядок по убыванию (для сравнения в тестах)
-  let best = null;
-  for (const order of search ? seedOrders(data) : [data]) {
-    const v = bestRot(order, fullRots, best ? best.cost : Infinity);
-    if (!best || v.cost < best.cost - 1e-6) best = v;
+  const uniq = Array.from({ length: Math.min(N, SLOTS) }, (_, i) => i + 1);
+  let lo = 0; // uniq[lo] подходит (k = 1: одна подпись — всегда)
+  let hi = uniq.length - 1;
+  if (attempt(uniq[hi]).maxGap <= MAX_GAP) lo = hi;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (attempt(uniq[mid]).maxGap <= MAX_GAP) lo = mid;
+    else hi = mid;
   }
-  const n = data.length;
-  for (let iter = 0; search && iter < MAX_ITER; iter++) {
-    let improved = null;
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const order = [...best.order];
-        [order[i], order[j]] = [order[j], order[i]];
-        const v = bestRot(order, nearRots(best.rot), (improved ?? best).cost);
-        if (v.cost < (improved ?? best).cost - 0.2) improved = v;
-      }
-    }
-    if (!improved) break;
-    best = improved;
+  const best = attempt(uniq[lo]);
+  const other = best.slices.find((sl) => sl.other);
+  // отвязанные (из «Другого») — на свободные места, крупные — ближе к «Другому»
+  const used = new Set(best.pick);
+  const free = g.slots
+    .map((t, i) => ({ t, i }))
+    .filter(({ i }) => !used.has(i))
+    .sort((p, q) => Math.abs(near(p.t.ang, other?.mid ?? 0) - (other?.mid ?? 0)) - Math.abs(near(q.t.ang, other?.mid ?? 0) - (other?.mid ?? 0)));
+  // отвязанные, чьё прошлое место свободно, — туда же
+  const items = other?.items ?? [];
+  const detached = [];
+  for (const d of items) {
+    const at = free.findIndex(({ t }) => t.id === memory?.slots?.[d.name]);
+    if (at >= 0) detached.push({ d, t: free.splice(at, 1)[0].t });
   }
-  // 3) подпись — в другой ряд, если так лучше (не больше PER_ROW в ряду)
-  for (let changed = search; changed; ) {
-    changed = false;
-    for (const l of best.labels) {
-      const name = l.s.name;
-      const curTop = best.labels.filter((x) => x.top).map((x) => x.s.name);
-      const toTop = !l.top;
-      const nextTop = toTop ? [...curTop, name] : curTop.filter((x) => x !== name);
-      if (nextTop.length > PER_ROW || n - nextTop.length > PER_ROW) continue;
-      const set = new Set(nextTop);
-      const v = evaluate(best.order, best.rot, (sl) => [sl.filter((s) => set.has(s.name)), sl.filter((s) => !set.has(s.name))]);
-      if (v.cost < best.cost - 0.2) {
-        best = v;
-        changed = true;
-        break;
-      }
-    }
+  for (const d of items) {
+    if (!free.length) break;
+    if (!detached.some((x) => x.d === d)) detached.push({ d, t: free.shift().t });
   }
 
   // цвета — свои у категории; иначе по месту на кольце, по часовой от первого сегмента
   let k = 0;
   const color = new Map(best.order.map((d) => [d.name, d.other ? otherColor : d.color || palette[k++ % palette.length]]));
+  for (const { d } of detached) color.set(d.name, d.color || palette[k++ % palette.length]);
   for (const sl of best.slices) sl.color = color.get(sl.name);
-  return { ...g, slices: best.slices, labels: best.labels, maxGap: best.maxGap };
+  const labels = placeLabels(best, g);
+  // подписи отвязанных — без линии (gap и a — null)
+  for (const { d, t } of detached) {
+    const s = { ...d, percent: d.value / total, color: color.get(d.name), detached: true };
+    labels.push({ s, x: t.x, y: t.y, side: t.side, w: t.w, gap: null, a: null });
+  }
+  // память для следующего раза: порядок секторов, поворот и места подписей
+  const remember = {
+    order: best.order.map((d) => d.name),
+    rot: best.rot,
+    slots: Object.fromEntries(labels.map((l) => [l.s.name, g.slots.find((t) => t.x === l.x && t.y === l.y).id])),
+  };
+  return { ...g, slices: best.slices, labels, maxGap: Math.max(0, ...labels.map((l) => l.gap ?? 0)), shown: best.slices.length, memory: remember };
 }
