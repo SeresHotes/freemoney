@@ -40,6 +40,7 @@ const STUB = 16; // радиальный отрезок линии от коль
 const BEND_ANGLE = 25; // град: линия отходит от кольца не круче к радиусу — иначе излом
 const BEND_AT = 0.5; // излом — на такой доле прямого пути от кольца до подписи
 const BLOCK_FRAC = 1; // линия не заходит в круг чужой подписи (доля его радиуса)
+const STAY_COST = 6; // цена переезда подписи с прошлого места (≈ отрыв 15° вместо 0°)
 const BLOCKED_GAP = 90; // град: «отрыв» места, к которому линия прошла бы через чужую подпись
 const SEED_ROTATIONS = 24; // повороты для стартовых порядков (шаг 15°)
 const ROT_STEPS = [-8, 0, 8]; // подстройка поворота при обменах, град
@@ -194,9 +195,12 @@ function arcGap(s, ang) {
 
 // Цена места для подписи: резко растёт с отрывом (в сумме это почти «самый
 // большой отрыв»), чуть-чуть — отклонение от середины сектора (линии короче).
-function slotCost(s, slot) {
+// Плюс STAY_COST, если в прошлый раз (memory) подпись стояла на другом месте.
+function slotCost(s, slot, memory) {
   const gap = fitGap(s, slot);
-  return (gap / 10) ** 4 + 0.05 * gap + 0.002 * Math.abs(near(slot.ang, s.mid) - s.mid) / DEG;
+  const was = memory?.slots?.[s.name];
+  const moved = was && was !== slot.id ? STAY_COST : 0;
+  return (gap / 10) ** 4 + 0.05 * gap + 0.002 * Math.abs(near(slot.ang, s.mid) - s.mid) / DEG + moved;
 }
 
 // Отрыв подписи на месте slot от сектора s, град; если линия к ней прошла бы
@@ -211,10 +215,10 @@ function fitGap(s, slot) {
 // места (по часовой, slots отсортированы по углу), минимум суммы slotCost.
 // Динамика по (сегмент, место) для каждого места первого сегмента.
 // → { cost, pick: [индекс места для каждого сегмента] }.
-function assignSlots(slices, slots, bound = Infinity) {
+function assignSlots(slices, slots, bound = Infinity, memory = null) {
   const n = slices.length;
   const m = slots.length;
-  const c = slices.map((s) => slots.map((t) => slotCost(s, t)));
+  const c = slices.map((s) => slots.map((t) => slotCost(s, t, memory)));
   let best = { cost: Infinity, pick: null };
   const span = m - n; // запас мест
   for (let o = 0; o < m; o++) {
@@ -284,17 +288,18 @@ function frame(w, h, nameLines) {
   const ys = [0, 1, 2, 3, 4].map((j) => cy - halfH + (j * halfH) / 2);
   const slots = [];
   // угол места — по его центру (линия целится в центр слота)
-  const add = (x, y, side, sw) => slots.push({ x, y, side, w: sw, ang: Math.atan2(y - cy, x - cx) });
+  // id — позиция в сетке «столбец,строка»: одинакова на любом экране (для памяти мест)
+  const add = (x, y, side, sw, id) => slots.push({ id, x, y, side, w: sw, ang: Math.atan2(y - cy, x - cx) });
   xs.forEach((x, i) => {
     const corner = i === 0 || i === 3;
     const sw = corner ? Math.min(sideW, d - 6) : d - 6;
-    add(x, ys[0], corner ? 'corner' : 'top', sw);
-    add(x, ys[4], corner ? 'corner' : 'bottom', sw);
+    add(x, ys[0], corner ? 'corner' : 'top', sw, `${i},0`);
+    add(x, ys[4], corner ? 'corner' : 'bottom', sw, `${i},4`);
   });
-  for (const y of ys.slice(1, 4)) {
-    add(xs[0], y, 'left', sideW);
-    add(xs[3], y, 'right', sideW);
-  }
+  ys.slice(1, 4).forEach((y, j) => {
+    add(xs[0], y, 'left', sideW, `0,${j + 1}`);
+    add(xs[3], y, 'right', sideW, `3,${j + 1}`);
+  });
   slots.sort((a, b) => a.ang - b.ang);
   // слот для линии — круг вокруг центра подписи (касается её верха и низа)
   const g = { w, h, cx, cy, R, r0: R * INNER, mode, labelH: mode.h, labelR: mode.h / 2 + 2, slots };
@@ -313,12 +318,14 @@ function frame(w, h, nameLines) {
 }
 
 // Лучшая раскладка этих сегментов: порядок по кругу + поворот + места подписей.
-function search(list, total, g, doSearch) {
+// memory — прошлая раскладка: её порядок и поворот — первый старт поиска, а
+// переезд подписи с прошлого места стоит STAY_COST.
+function search(list, total, g, doSearch, memory) {
   const evaluate = (order, rot, bound) => {
     const slices = slicesAt(order, total, rot);
     // у «Другого» подписи нет — места только привязанным категориям
     const named = slices.filter((sl) => !sl.other);
-    const { cost, pick } = assignSlots(named, g.slots, bound);
+    const { cost, pick } = assignSlots(named, g.slots, bound, memory);
     return { cost, pick, slices, named, order, rot };
   };
   const bestRot = (order, rots, bound = Infinity) => {
@@ -332,10 +339,18 @@ function search(list, total, g, doSearch) {
   const fullRots = Array.from({ length: SEED_ROTATIONS }, (_, i) => (i / SEED_ROTATIONS) * Math.PI * 2);
   const nearRots = (r) => ROT_STEPS.map((dd) => r + dd * DEG);
   let best = null;
-  for (const order of doSearch ? seedOrders(list) : [list]) {
-    const v = bestRot(order, fullRots, best ? best.cost : Infinity);
-    if (!best || v.cost < best.cost - 1e-9) best = v;
+  const seeds = doSearch ? seedOrders(list) : [list];
+  // прошлый порядок: известные — как были, новые — в конце (крупные первыми)
+  if (memory?.order) {
+    const pos = new Map(memory.order.map((name, i) => [name, i]));
+    const known = list.filter((d) => pos.has(d.name)).sort((a, b) => pos.get(a.name) - pos.get(b.name));
+    seeds.unshift([...known, ...list.filter((d) => !pos.has(d.name))]);
   }
+  seeds.forEach((order, i) => {
+    const rots = i === 0 && memory?.order ? [memory.rot, ...fullRots] : fullRots;
+    const v = bestRot(order, rots, best ? best.cost : Infinity);
+    if (!best || v.cost < best.cost - 1e-9) best = v;
+  });
   const n = list.length;
   for (let iter = 0; doSearch && iter < MAX_ITER; iter++) {
     let improved = null;
@@ -373,7 +388,7 @@ const cache = new Map();
 const CACHE_SIZE = 40;
 
 export function layoutRing(data, w, h, opts = {}) {
-  const key = JSON.stringify([data.map((d) => [d.name, d.value, d.color || '']), Math.round(w), Math.round(h), opts.nameLines, opts.palette, opts.otherColor, opts.search]);
+  const key = JSON.stringify([data.map((d) => [d.name, d.value, d.color || '']), Math.round(w), Math.round(h), opts.nameLines, opts.palette, opts.otherColor, opts.search, opts.memory]);
   if (cache.has(key)) return cache.get(key);
   const result = computeLayout(data, w, h, opts);
   cache.set(key, result);
@@ -381,7 +396,7 @@ export function layoutRing(data, w, h, opts = {}) {
   return result;
 }
 
-function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherColor = '#64748b', search: doSearch = true } = {}) {
+function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherColor = '#64748b', search: doSearch = true, memory = null } = {}) {
   const sorted = data.filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
   const total = sorted.reduce((sum, d) => sum + d.value, 0);
   if (!total || w < 100 || h < 80) return null;
@@ -397,7 +412,7 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
     if (!tried.has(k)) {
       const rest = sorted.slice(k);
       const list = rest.length ? [...sorted.slice(0, k), { ...OTHER, value: rest.reduce((sum, d) => sum + d.value, 0), items: rest }] : sorted;
-      const v = search(list, total, g, doSearch);
+      const v = search(list, total, g, doSearch, memory);
       v.maxGap = Math.max(...v.named.map((sl, i) => fitGap(sl, g.slots[v.pick[i]])));
       tried.set(k, v);
     }
@@ -420,7 +435,17 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
     .map((t, i) => ({ t, i }))
     .filter(({ i }) => !used.has(i))
     .sort((p, q) => Math.abs(near(p.t.ang, other?.mid ?? 0) - (other?.mid ?? 0)) - Math.abs(near(q.t.ang, other?.mid ?? 0) - (other?.mid ?? 0)));
-  const detached = (other?.items ?? []).slice(0, free.length).map((d, i) => ({ d, t: free[i].t }));
+  // отвязанные, чьё прошлое место свободно, — туда же
+  const items = other?.items ?? [];
+  const detached = [];
+  for (const d of items) {
+    const at = free.findIndex(({ t }) => t.id === memory?.slots?.[d.name]);
+    if (at >= 0) detached.push({ d, t: free.splice(at, 1)[0].t });
+  }
+  for (const d of items) {
+    if (!free.length) break;
+    if (!detached.some((x) => x.d === d)) detached.push({ d, t: free.shift().t });
+  }
 
   // цвета — свои у категории; иначе по месту на кольце, по часовой от первого сегмента
   let k = 0;
@@ -433,5 +458,11 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
     const s = { ...d, percent: d.value / total, color: color.get(d.name), detached: true };
     labels.push({ s, x: t.x, y: t.y, side: t.side, w: t.w, gap: null, a: null });
   }
-  return { ...g, slices: best.slices, labels, maxGap: Math.max(0, ...labels.map((l) => l.gap ?? 0)), shown: best.slices.length };
+  // память для следующего раза: порядок секторов, поворот и места подписей
+  const remember = {
+    order: best.order.map((d) => d.name),
+    rot: best.rot,
+    slots: Object.fromEntries(labels.map((l) => [l.s.name, g.slots.find((t) => t.x === l.x && t.y === l.y).id])),
+  };
+  return { ...g, slices: best.slices, labels, maxGap: Math.max(0, ...labels.map((l) => l.gap ?? 0)), shown: best.slices.length, memory: remember };
 }

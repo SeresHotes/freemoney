@@ -14,7 +14,7 @@ import CategoryIcon from './CategoryIcon';
 // data: все категории [{ name, value, icon, color? }]; мелкие, которым не нашлось
 // места рядом с сектором, кольцо само собирает в сектор «Другое» (other: true),
 // а их подписи остаются на свободных местах — без линии (detached).
-// center: { expense, income }.
+// center: { expense, income }. memoryKey — ключ памяти мест (месяц + кошелёк).
 // Цвет — свой у категории (color), иначе по месту на кольце (см. layoutRing).
 
 const NAME_FS = 11;
@@ -24,6 +24,32 @@ const HELD_GROW = 5; // px: на сколько выдвигается нару�
 const HOLD_MS = 200; // столько без движения — удержание: дальше сдвиг уже не свайп
 const TAP_MS = 400; // отпустил раньше и не сдвигал — тап
 const LONG_PRESS_SLOP = 10; // px: сдвиг пальца больше — это свайп, не нажатие
+
+// Память раскладки (порядок секторов, поворот, места подписей) — по ключу
+// memoryKey (месяц + кошелёк), чтобы при новых тратах категории оставались на
+// своих местах (см. memory в layoutRing). Хранится на устройстве, последние
+// MEMORY_KEEP ключей.
+const LS_RING_MEMORY = 'freemoney:ringMemory';
+const MEMORY_KEEP = 24;
+function readMemory(key) {
+  try {
+    return JSON.parse(localStorage.getItem(LS_RING_MEMORY) || '{}')[key] || null;
+  } catch {
+    return null;
+  }
+}
+function saveMemory(key, memory) {
+  try {
+    const all = JSON.parse(localStorage.getItem(LS_RING_MEMORY) || '{}');
+    delete all[key]; // свежий ключ — в конец
+    all[key] = memory;
+    const keys = Object.keys(all);
+    for (const k of keys.slice(0, Math.max(0, keys.length - MEMORY_KEEP))) delete all[k];
+    localStorage.setItem(LS_RING_MEMORY, JSON.stringify(all));
+  } catch {
+    /* без хранилища места просто не запомнятся */
+  }
+}
 
 // Точная ширина текста шрифтом страницы (canvas), с запасным приближением.
 let measureCtx;
@@ -108,7 +134,7 @@ function ringPercent(s, g) {
   return { text, x: g.cx + rm * Math.cos(s.mid), y: g.cy + rm * Math.sin(s.mid) };
 }
 
-export default function CategoryRing({ data, center, formatValue, onSelect }) {
+export default function CategoryRing({ data, center, formatValue, onSelect, memoryKey = '' }) {
   const ref = useRef(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
 
@@ -129,10 +155,15 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
     const slotW = sideWidth(size.w) - 4;
     return data.some((d) => textWidth(d.name, NAME_FS) > slotW) ? 2 : 1;
   }, [data, size.w]);
+  // память читается только при пересчёте (новые данные, размер), а не после
+  // каждого сохранения — иначе раскладка пересчитывалась бы по кругу
   const g = useMemo(
-    () => layoutRing(data, size.w, size.h, { nameLines, palette: CATEGORY_COLORS, otherColor: OTHER_COLOR }),
-    [data, size.w, size.h, nameLines],
+    () => layoutRing(data, size.w, size.h, { nameLines, palette: CATEGORY_COLORS, otherColor: OTHER_COLOR, memory: readMemory(memoryKey) }),
+    [data, size.w, size.h, nameLines, memoryKey],
   );
+  useEffect(() => {
+    if (g?.memory) saveMemory(memoryKey, g.memory);
+  }, [g, memoryKey]);
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   // Касание сегмента/подписи: сразу подсвечивает категорию и показывает её

@@ -186,6 +186,7 @@ export default function Home() {
             data={byCategory}
             center={{ expense, income }}
             formatValue={(v) => formatAmount(v, baseCurrency)}
+            memoryKey={`${month}|${selWallet}`}
             // тап по «Другому» — ничего (это не категория): только удержание с суммой
             onSelect={(c) => !c.other && navigate(addUrl('expense', `category=${encodeURIComponent(c.name)}`))}
           />

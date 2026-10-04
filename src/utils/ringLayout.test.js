@@ -187,3 +187,32 @@ describe('layoutRing: цвета', () => {
     expect(byName['Еда']).toBe('#a');
   });
 });
+
+describe('layoutRing: память мест', () => {
+  const slotsOf = (g) => g.memory.slots;
+
+  it('с памятью о самой себе раскладка не меняется', () => {
+    for (const vals of [CASES.убывание, CASES.крупная70, CASES.ровно12]) {
+      const a = layoutRing(mk(vals), 360, 383);
+      const b = layoutRing(mk(vals), 360, 383, { memory: a.memory });
+      expect(slotsOf(b)).toEqual(slotsOf(a));
+    }
+  });
+
+  it('новая небольшая трата — категории остаются на своих местах', () => {
+    for (const vals of [CASES.убывание, CASES.ровно12, CASES.две40и30]) {
+      const a = layoutRing(mk(vals), 360, 383);
+      const next = [...vals];
+      next[3] += sum(vals) * 0.01;
+      const b = layoutRing(mk(next), 360, 383, { memory: a.memory });
+      expect(slotsOf(b)).toEqual(slotsOf(a));
+      expect(b.maxGap).toBeLessThanOrEqual(MAX_GAP);
+    }
+  });
+
+  it('места запоминаются позициями сетки — подходят и для другого размера экрана', () => {
+    const a = layoutRing(mk(CASES.убывание), 360, 383);
+    const b = layoutRing(mk(CASES.убывание), 412, 560, { memory: a.memory });
+    expect(slotsOf(b)).toEqual(slotsOf(a));
+  });
+});
