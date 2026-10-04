@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-d
 import { AppProvider, useApp } from './context/AppContext';
 import NavBar from './components/NavBar';
 import SyncIndicator from './components/SyncIndicator';
+import SettingsButton from './components/SettingsButton';
 import CategoryTints from './components/CategoryTints';
 import Home from './pages/Home';
 import AddTransaction from './pages/AddTransaction';
@@ -86,7 +87,10 @@ function Shell() {
         </Routes>
       </main>
       <NavBar />
-      <SyncIndicator />
+      <div className="top-corner">
+        <SyncIndicator />
+        <SettingsButton />
+      </div>
       <BusyOverlay />
       <SyncSetupRedirect />
     </div>

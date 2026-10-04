@@ -68,6 +68,8 @@ h2 {
   max-width: 560px;
   margin: 0 auto;
   height: 100%;
+  /* С открытой клавиатурой — высота видимой области (см. syncViewport в main.jsx). */
+  height: var(--app-h, 100%);
   display: flex;
   flex-direction: column;
 }
@@ -115,7 +117,8 @@ h2 {
   flex: 0 0 auto;
   width: 44px;
   height: 44px;
-  margin-left: -10px;
+  /* -4px по вертикали: шапка с «Назад» той же высоты (36px), что и без неё */
+  margin: -4px 0 -4px -10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1047,6 +1050,10 @@ h2 {
   border-top: 1px solid var(--border);
   display: flex;
 }
+/* Клавиатура открыта: навбар не нужен и съедал бы место над ней. */
+.kb-open .navbar {
+  display: none;
+}
 .navbar__item {
   flex: 1;
   display: flex;
@@ -1163,14 +1170,42 @@ code {
   background: #ea580c;
   border-radius: 0.4rem;
 }
+/* --- Правый верхний угол: синхронизация + настройки ----------------------- */
+.top-corner {
+  position: fixed;
+  /* на линии заголовков: сверху отступ как у .page, а кнопка 36px — ровно
+     строка h1, так что центры совпадают */
+  top: calc(env(safe-area-inset-top, 0px) + 1.25rem);
+  right: 10px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Шестерёнка «Настройки» — на экранах нижнего меню. */
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 1.2rem;
+  line-height: 1;
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  -webkit-tap-highlight-color: transparent;
+}
+.settings-btn:active {
+  background: var(--surface-2);
+}
+
 /* --- Индикатор синхронизации --------------------------------------------- */
 /* Ненавязчивый: маленький кружок в верхнем углу, виден только когда идёт синк
    или требуется внимание. */
 .sync-indicator {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
-  right: 10px;
-  z-index: 80;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1265,7 +1300,8 @@ code {
   height: calc(100vh - var(--nav-h) - var(--nav-bump) - env(safe-area-inset-bottom, 0px));
   height: calc(100dvh - var(--nav-h) - var(--nav-bump) - env(safe-area-inset-bottom, 0px));
   min-height: 480px;
-  padding-top: 0.75rem;
+  /* как у .page — шапка на той же высоте, что и на остальных экранах */
+  padding-top: 1.25rem;
   padding-bottom: 0.5rem;
 }
 .home__head {
@@ -1286,7 +1322,6 @@ code {
   cursor: pointer;
 }
 .home__title {
-  font-size: 1.15rem;
   white-space: nowrap;
 }
 /* Выбранная карточка ленты кошельков (кольцо — по ней): зелёная, первая. */
