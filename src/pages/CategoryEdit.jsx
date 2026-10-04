@@ -2,8 +2,11 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import EmojiPicker from '../components/EmojiPicker';
+import ColorPicker from '../components/ColorPicker';
+import CategoryIcon from '../components/CategoryIcon';
 import { useApp } from '../context/AppContext';
-import { EMOJI_PALETTE } from '../utils/emoji';
+import { DEFAULT_ICON } from '../api/defaults';
+import { isColor, pickColor } from '../utils/categoryColors';
 
 export default function CategoryEdit() {
   const { id } = useParams();
@@ -15,7 +18,12 @@ export default function CategoryEdit() {
 
   const [name, setName] = useState(current?.name || '');
   const [kind, setKind] = useState(current?.kind || 'expense');
-  const [icon, setIcon] = useState(current?.icon || EMOJI_PALETTE[0]);
+  const [icon, setIcon] = useState(current?.icon || DEFAULT_ICON);
+  // Новой категории сразу предлагаем случайный свободный цвет — его можно сменить.
+  const [color, setColor] = useState(() => (isColor(current?.color) ? current.color : pickColor(categories.map((c) => c.color))));
+  // Раскрыт не больше чем один выбор: 'icon' | 'color' | null.
+  const [open, setOpen] = useState(null);
+  const toggle = (what) => setOpen((v) => (v === what ? null : what));
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -42,8 +50,8 @@ export default function CategoryEdit() {
     if (exists) { setFormError('Такая категория уже есть'); return; }
     setBusy(true);
     try {
-      if (editing) await updateCategory(current.id, { name: trimmed, kind, icon });
-      else await addCategory({ name: trimmed, kind, icon });
+      if (editing) await updateCategory(current.id, { name: trimmed, kind, icon, color });
+      else await addCategory({ name: trimmed, kind, icon, color });
       navigate('/categories');
     } catch {
       setFormError('Не удалось сохранить');
@@ -70,11 +78,28 @@ export default function CategoryEdit() {
 
       <form className="form" onSubmit={submit}>
         <div className="add-cat__row">
-          <span className="add-cat__preview">{icon}</span>
+          <button
+            type="button"
+            className={`add-cat__preview${open === 'icon' ? ' add-cat__preview--open' : ''}`}
+            aria-label="Иконка категории"
+            aria-expanded={open === 'icon'}
+            onClick={() => toggle('icon')}
+          >
+            <CategoryIcon icon={icon} color={color} />
+          </button>
           <input className="field__input" type="text" placeholder="Название" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!editing} />
+          <button
+            type="button"
+            className={`color-swatch${open === 'color' ? ' color-swatch--open' : ''}`}
+            style={{ background: color }}
+            aria-label="Цвет категории"
+            aria-expanded={open === 'color'}
+            onClick={() => toggle('color')}
+          />
         </div>
 
-        <EmojiPicker value={icon} onChange={setIcon} className="page__grow" />
+        {open === 'icon' && <EmojiPicker value={icon} onChange={(e) => { setIcon(e); setOpen(null); }} className="page__grow" />}
+        {open === 'color' && <ColorPicker value={color} onChange={(c) => { setColor(c); setOpen(null); }} />}
 
         <label className="field">
           <span className="field__label">Тип</span>

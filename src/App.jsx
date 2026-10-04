@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-d
 import { AppProvider, useApp } from './context/AppContext';
 import NavBar from './components/NavBar';
 import SyncIndicator from './components/SyncIndicator';
+import CategoryTints from './components/CategoryTints';
 import Home from './pages/Home';
 import AddTransaction from './pages/AddTransaction';
 import Transactions from './pages/Transactions';
@@ -52,6 +53,7 @@ function Shell() {
 
   return (
     <div className="app">
+      <CategoryTints />
       <main className="app__main">
         <Routes>
           <Route path="/" element={<Home />} />

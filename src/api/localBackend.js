@@ -477,11 +477,11 @@ export function createLocalBackend() {
       db.close();
     },
 
-    addCategory: async ({ name, kind, icon }) => {
+    addCategory: async ({ name, kind, icon, color }) => {
       const db = await openDb();
       const existing = (await getAll(db, STORE_CAT)).filter(isLive);
       await putStamped(db, STORE_CAT, {
-        id: newId(), name, kind, icon: icon || DEFAULT_ICON, archived: false,
+        id: newId(), name, kind, icon: icon || DEFAULT_ICON, color: color || '', archived: false,
         order: existing.length, deleted: false,
       });
       db.close();
@@ -495,13 +495,25 @@ export function createLocalBackend() {
       db.close();
     },
 
-    updateCategory: async (id, { name, kind, icon }) => {
+    updateCategory: async (id, { name, kind, icon, color }) => {
       const db = await openDb();
       const s = store(db, STORE_CAT, 'readwrite');
       const cat = await reqToPromise(s.get(id));
       if (cat) {
         Object.assign(cat, { name, kind, icon: icon || DEFAULT_ICON, updatedAt: nowStamp() });
+        if (color) cat.color = color;
         await reqToPromise(s.put(cat));
+      }
+      db.close();
+    },
+
+    // Точечно поправить поля категорий: [{ id, ...поля }] (бэкфилл цвета, замена иконок).
+    patchCategories: async (list) => {
+      const db = await openDb();
+      const s = store(db, STORE_CAT, 'readwrite');
+      for (const { id, ...patch } of list) {
+        const cat = await reqToPromise(s.get(id));
+        if (cat) await reqToPromise(s.put({ ...cat, ...patch, updatedAt: nowStamp() }));
       }
       db.close();
     },

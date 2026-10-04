@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
+import CategoryIcon from '../components/CategoryIcon';
 import { useApp } from '../context/AppContext';
 import { newId, todayIso, nowTime } from '../utils/format';
 import { CURRENCIES } from '../utils/currencies';
@@ -289,7 +290,7 @@ export default function AddTransaction() {
             <div className="category-grid">
               {available.map((c) => (
                 <button type="button" key={c.name} className={`category-chip${category === c.name ? ' category-chip--active' : ''}`} onClick={() => setCategory(c.name)}>
-                  <span className="category-chip__icon">{c.icon}</span>{c.name}
+                  <CategoryIcon icon={c.icon} color={c.color} className="category-chip__icon" />{c.name}
                 </button>
               ))}
             </div>

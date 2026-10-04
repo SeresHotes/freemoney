@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import CategoryIcon from './CategoryIcon';
 import { EMOJI_PALETTE, extractEmoji, loadEmojiData, searchEmoji } from '../utils/emoji';
 
 const POPULAR = { name: 'Популярные', icon: '⭐', items: EMOJI_PALETTE.map((e) => [e, '']) };
 
 // Выбор иконки: поиск по названию (рус/англ), вкладки групп и полный набор эмодзи.
+// Эмодзи рисуются выбранным стилем иконок (см. CategoryIcon).
 export default function EmojiPicker({ value, onChange, className = '' }) {
   const [groups, setGroups] = useState(null);
   const [loadError, setLoadError] = useState(false);
@@ -61,7 +63,7 @@ export default function EmojiPicker({ value, onChange, className = '' }) {
       className={`emoji-picker__item${value === emoji ? ' emoji-picker__item--active' : ''}`}
       onClick={() => onChange(emoji)}
     >
-      {emoji}
+      <CategoryIcon icon={emoji} />
     </button>
   );
 
@@ -88,7 +90,7 @@ export default function EmojiPicker({ value, onChange, className = '' }) {
               className={`emoji-picker__tab${activeGroup === i ? ' emoji-picker__tab--active' : ''}`}
               onClick={() => jumpTo(i)}
             >
-              {s.icon}
+              <CategoryIcon icon={s.icon} />
             </button>
           ))}
         </div>

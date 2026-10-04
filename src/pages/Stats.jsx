@@ -13,7 +13,9 @@ import ChipMultiSelect from '../components/ChipMultiSelect';
 import PeriodPicker from '../components/PeriodPicker';
 import CategoryTrendChart from '../components/CategoryTrendChart';
 import CategoryDonut from '../components/CategoryDonut';
-import { CATEGORY_COLORS as COLORS, buildCategorySeries } from '../utils/chartColors';
+import { buildCategorySeries, categoryColor } from '../utils/chartColors';
+import { DEFAULT_ICON } from '../api/defaults';
+import CategoryIcon from '../components/CategoryIcon';
 
 export default function Stats() {
   const { transactions, categories, wallets, tags, baseCurrency } = useApp();
@@ -82,7 +84,7 @@ export default function Stats() {
     () => activeCategories.filter((c) => c.kind === kind || c.kind === 'both'),
     [activeCategories, kind],
   );
-  const catOptions = useMemo(() => kindCategories.map((c) => ({ value: c.name, label: `${c.icon} ${c.name}` })), [kindCategories]);
+  const catOptions = useMemo(() => kindCategories.map((c) => ({ value: c.name, label: <><CategoryIcon icon={c.icon} color={c.color} /> {c.name}</> })), [kindCategories]);
   const walletOptions = useMemo(() => activeWallets.map((w) => ({ value: w.name, label: w.name })), [activeWallets]);
   const tagOptions = useMemo(() => {
     const set = new Set(tags.filter((t) => !t.archived).map((t) => t.name));
@@ -115,10 +117,15 @@ export default function Stats() {
   // Суммы по категориям выбранного вида (расходы или доходы).
   const byCategory = useMemo(() => totalsByCategory(scoped, toDisplay, matchKind), [scoped, matchKind, singleWallet, toBase]);
   const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
+  const colorByCategory = useMemo(
+    () => new Map(categories.filter((c) => c.color).map((c) => [c.name, c.color])),
+    [categories],
+  );
+  const catColors = useMemo(() => byCategory.map((c, i) => categoryColor(colorByCategory, c.name, i)), [byCategory, colorByCategory]);
 
   // Топ категорий за период (для цветов и стек-графика).
   const { series, catTrend } = useMemo(() => {
-    const { top, series: seriesList } = buildCategorySeries(byCategory);
+    const { top, series: seriesList } = buildCategorySeries(byCategory, colorByCategory);
 
     const raw = buildCategoryTimeSeries(scoped, granularity, toDisplay, top, matchKind);
     // Ограничение числа столбцов, чтобы график не разрастался на больших диапазонах.
@@ -131,7 +138,7 @@ export default function Stats() {
         : monthLabel(b.key).replace(/ \d{4}$/, ''),
     }));
     return { series: seriesList, catTrend: data };
-  }, [scoped, byCategory, granularity, matchKind, singleWallet, toBase]);
+  }, [scoped, byCategory, colorByCategory, granularity, matchKind, singleWallet, toBase]);
 
   const fmt = (v) => formatAmount(v, displayCurrency);
   const periodLabel = rangeLabel(from, to);
@@ -178,15 +185,17 @@ export default function Stats() {
           <>
             <CategoryDonut
               data={byCategory}
-              colors={COLORS}
+              colors={catColors}
               center={{ expense, income }}
               formatValue={(v) => fmt(v)}
             />
             <ul className="legend">
               {byCategory.map((c, i) => (
                 <li key={c.name} className="legend__item legend__item--clickable" onClick={() => openCategory(c.name)}>
-                  <span className="legend__dot" style={{ background: COLORS[i % COLORS.length] }} />
-                  <span className="legend__name">{iconByCategory.get(c.name) || '🏷️'} {c.name}</span>
+                  <span className="legend__dot" style={{ background: catColors[i] }} />
+                  <span className="legend__name">
+                    <CategoryIcon icon={iconByCategory.get(c.name) || DEFAULT_ICON} color={catColors[i]} /> {c.name}
+                  </span>
                   <span className="legend__value">{fmt(c.value)}</span>
                 </li>
               ))}

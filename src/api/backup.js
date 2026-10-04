@@ -11,7 +11,7 @@ export function exportBackup({ baseCurrency, wallets, categories, tags, transact
     version: VERSION,
     baseCurrency,
     wallets: wallets.map((w) => ({ name: w.name, currency: w.currency, archived: !!w.archived, kind: w.kind || 'cash' })),
-    categories: categories.map((c) => ({ name: c.name, kind: c.kind, archived: !!c.archived, icon: c.icon })),
+    categories: categories.map((c) => ({ name: c.name, kind: c.kind, archived: !!c.archived, icon: c.icon, color: c.color || '' })),
     tags: tags.map((t) => (typeof t === 'string' ? { name: t, archived: false } : { name: t.name, archived: !!t.archived })),
     transactions: transactions.map((t) => ({
       id: t.id, date: t.date, type: t.type, amount: t.amount, category: t.category,
@@ -55,7 +55,7 @@ export async function importBackup(text, backend, current) {
   const catNames = new Set(current.categories.map((c) => c.name.toLowerCase()));
   for (const c of data.categories || []) {
     if (!catNames.has(c.name.toLowerCase())) {
-      await backend.addCategory({ name: c.name, kind: c.kind, icon: c.icon });
+      await backend.addCategory({ name: c.name, kind: c.kind, icon: c.icon, color: c.color });
       catNames.add(c.name.toLowerCase());
     }
   }
@@ -63,7 +63,7 @@ export async function importBackup(text, backend, current) {
   for (const c of data.categories || []) {
     const id = catIdByName.get(c.name.toLowerCase());
     if (!id) continue;
-    await backend.updateCategory(id, { name: c.name, kind: c.kind, icon: c.icon });
+    await backend.updateCategory(id, { name: c.name, kind: c.kind, icon: c.icon, color: c.color });
     await backend.setCategoryArchived(id, isArchived(c));
     result.categories += 1;
   }

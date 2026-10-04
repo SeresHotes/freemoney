@@ -647,6 +647,9 @@ h2 {
   flex: 1;
 }
 .add-cat__preview {
+  padding: 0;
+  border: 2px solid transparent;
+  cursor: pointer;
   font-size: 1.6rem;
   width: 2.4rem;
   height: 2.4rem;
@@ -657,6 +660,54 @@ h2 {
   border-radius: var(--radius);
   flex-shrink: 0;
 }
+/* Цвет категории: квадратик-кнопка и раскрывающаяся палитра (под строкой). */
+.color-swatch {
+  width: 2.4rem;
+  height: 2.4rem;
+  flex-shrink: 0;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.add-cat__preview--open,
+.color-swatch--open {
+  border-color: var(--accent);
+}
+.color-palette {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.color-palette__item {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.color-palette__item--active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg) inset;
+}
+/* Иконка категории: эмодзи, нарисованный выбранным стилем (одноцветные — цветом
+   категории), или системный эмодзи, тонированный SVG-фильтром. */
+.cat-icon {
+  display: inline-block;
+}
+.cat-icon--art {
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+}
+/* Секции пикера вне экрана не рисуем — в нём сотни SVG. */
+.emoji-picker__section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 20rem;
+}
 .emoji-picker {
   display: flex;
   flex-direction: column;
@@ -665,10 +716,13 @@ h2 {
 .emoji-picker__tabs {
   display: flex;
   gap: 0.1rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .emoji-picker__tab {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 0 2.2rem;
+  min-width: 2.2rem;
+  color: var(--text);
   height: 2.2rem;
   padding: 0;
   font-size: 1.1rem;
@@ -717,6 +771,7 @@ h2 {
 .emoji-picker__item {
   aspect-ratio: 1;
   font-size: 1.4rem;
+  color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -1453,6 +1508,11 @@ code {
 }
 .ring__pct {
   font-weight: 700;
+  /* лежит на углу иконки — обводка цветом карточки отделяет его от рисунка */
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 .ring__center {
   position: absolute;
@@ -1529,4 +1589,35 @@ code {
 .ring__pct-on {
   font-weight: 700;
   pointer-events: none;
+}
+
+/* --- Стиль иконок (настройки) --------------------------------------------- */
+.icon-styles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.icon-style {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+}
+.icon-style--active {
+  border-color: var(--accent);
+}
+.icon-style__label {
+  font-weight: 600;
+}
+.icon-style__preview {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 1.7rem;
 }

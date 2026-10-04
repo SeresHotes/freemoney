@@ -119,4 +119,13 @@ describe('layoutRing: цвета по месту на кольце', () => {
     expect(g.slices.find((s) => s.other).color).toBe('#gray');
     expect(g.slices[0].color).toBe('#a'); // крупнейшая — первый цвет палитры
   });
+
+  it('свой цвет категории важнее палитры', () => {
+    const data = [{ name: 'Жильё', value: 5, color: '#123456' }, { name: 'Еда', value: 3 }, { name: 'Другое', value: 1, other: true }];
+    const g = layoutRing(data, 306, 520, { palette: ['#a', '#b'], otherColor: '#gray' });
+    const byName = Object.fromEntries(g.slices.map((s) => [s.name, s.color]));
+    expect(byName['Жильё']).toBe('#123456');
+    expect(byName['Еда']).toBe('#a');
+    expect(byName['Другое']).toBe('#gray');
+  });
 });

@@ -46,6 +46,17 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
+  // Рисовки иконок (src/utils/emojiArt, ~7 МБ на все стили) — в отдельную папку:
+  // service worker их не предкэширует, а кэширует по мере загрузки (см. workbox).
+  build: {
+    rollupOptions: {
+      output: {
+        chunkFileNames: (chunk) => (chunk.facadeModuleId?.includes('/emojiArt/')
+          ? 'assets/emoji-art/[name]-[hash].js'
+          : 'assets/[name]-[hash].js'),
+      },
+    },
+  },
   plugins: [
     react(),
     buildLabelHtml,
@@ -96,6 +107,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // Рисовки иконок грузятся по группам только для выбранного стиля —
+        // предкэшировать все стили (~7 МБ) незачем.
+        globIgnores: ['**/emoji-art/**'],
         // Запросы к Google API никогда не кэшируем — всегда идём в сеть.
         runtimeCaching: [
           {
@@ -104,6 +118,15 @@ export default defineConfig({
               url.origin === 'https://www.googleapis.com' ||
               url.origin === 'https://accounts.google.com',
             handler: 'NetworkOnly',
+          },
+          {
+            // Файлы с хэшем в имени не меняются — раз загруженные берём из кэша (и офлайн).
+            urlPattern: ({ url }) => url.pathname.includes('/assets/emoji-art/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'emoji-art',
+              expiration: { maxEntries: 60 },
+            },
           },
         ],
       },

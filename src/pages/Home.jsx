@@ -1,3 +1,4 @@
+import { DEFAULT_ICON } from '../api/defaults';
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
@@ -114,11 +115,13 @@ export default function Home() {
         catMap.set(cat, (catMap.get(cat) || 0) + mag);
       }
     }
-    const iconOf = new Map(categories.map((c) => [c.name, c.icon]));
+    const catOf = new Map(categories.map((c) => [c.name, c]));
     const sorted = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
     const named = sorted.slice(0, ringNamedCount(sorted, exp));
-    // цвета раздаёт кольцо — по месту сегмента, чтобы соседние различались
-    const cats = named.map(([name, value]) => ({ name, value, icon: iconOf.get(name) || '🏷️' }));
+    // цвет — свой у категории (у «Без категории» его нет — его раздаст кольцо)
+    const cats = named.map(([name, value]) => ({
+      name, value, icon: catOf.get(name)?.icon || DEFAULT_ICON, color: catOf.get(name)?.color || '',
+    }));
     if (named.length < sorted.length) {
       const rest = sorted.slice(named.length).reduce((sum, [, v]) => sum + v, 0);
       cats.push({ name: 'Другое', value: rest, icon: '📦', other: true });
