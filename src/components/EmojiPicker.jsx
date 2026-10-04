@@ -1,18 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import CategoryIcon from './CategoryIcon';
 import { EMOJI_PALETTE, extractEmoji, loadEmojiData, searchEmoji } from '../utils/emoji';
 
-// Источник иконок пикера: популярные (сразу), полный набор (лениво), отрисовка.
-export const EMOJI_SOURCE = {
-  popular: { name: 'Популярные', icon: '⭐', items: EMOJI_PALETTE.map((e) => [e, '']) },
-  load: () => loadEmojiData(),
-  render: (e) => e,
-  placeholder: 'Поиск эмодзи: кофе, car, 🍕…',
-  typed: true, // эмодзи можно вставить в поиск с клавиатуры
-};
+const POPULAR = { name: 'Популярные', icon: '⭐', items: EMOJI_PALETTE.map((e) => [e, '']) };
 
-// Выбор иконки: поиск по названию (рус/англ), вкладки групп и полный набор
-// (эмодзи или — с другим source — аутлайн-иконки Lucide).
-export default function EmojiPicker({ value, onChange, className = '', source = EMOJI_SOURCE }) {
+// Выбор иконки: поиск по названию (рус/англ), вкладки групп и полный набор эмодзи.
+// Эмодзи рисуются выбранным стилем иконок (см. CategoryIcon).
+export default function EmojiPicker({ value, onChange, className = '' }) {
   const [groups, setGroups] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [query, setQuery] = useState('');
@@ -22,16 +16,16 @@ export default function EmojiPicker({ value, onChange, className = '', source = 
 
   useEffect(() => {
     let alive = true;
-    source.load().then(
+    loadEmojiData().then(
       (d) => { if (alive) setGroups(d); },
       () => { if (alive) setLoadError(true); },
     );
     return () => { alive = false; };
-  }, [source]);
+  }, []);
 
-  const sections = useMemo(() => [source.popular, ...(groups || [])], [source, groups]);
+  const sections = useMemo(() => [POPULAR, ...(groups || [])], [groups]);
   const results = useMemo(() => (groups ? searchEmoji(groups, query) : []), [groups, query]);
-  const typed = source.typed ? extractEmoji(query) : null;
+  const typed = extractEmoji(query);
   const searching = query.trim() !== '';
 
   const jumpTo = (i) => {
@@ -69,7 +63,7 @@ export default function EmojiPicker({ value, onChange, className = '', source = 
       className={`emoji-picker__item${value === emoji ? ' emoji-picker__item--active' : ''}`}
       onClick={() => onChange(emoji)}
     >
-      {source.render(emoji)}
+      <CategoryIcon icon={emoji} />
     </button>
   );
 
@@ -78,7 +72,7 @@ export default function EmojiPicker({ value, onChange, className = '', source = 
       <input
         className="field__input emoji-picker__search"
         type="search"
-        placeholder={source.placeholder}
+        placeholder="Поиск иконки: кофе, car, 🍕…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         enterKeyHint="search"
@@ -96,7 +90,7 @@ export default function EmojiPicker({ value, onChange, className = '', source = 
               className={`emoji-picker__tab${activeGroup === i ? ' emoji-picker__tab--active' : ''}`}
               onClick={() => jumpTo(i)}
             >
-              {source.render(s.icon)}
+              <CategoryIcon icon={s.icon} />
             </button>
           ))}
         </div>
@@ -113,9 +107,7 @@ export default function EmojiPicker({ value, onChange, className = '', source = 
               <div className="emoji-picker__grid">{results.map((r) => item(r.emoji, r.label))}</div>
             )}
             {groups && !results.length && !typed && (
-              <p className="muted emoji-picker__note">
-                Ничего не найдено.{source.typed ? ' Можно вставить любой эмодзи с клавиатуры.' : ''}
-              </p>
+              <p className="muted emoji-picker__note">Ничего не найдено. Можно вставить любой эмодзи с клавиатуры.</p>
             )}
           </>
         ) : (

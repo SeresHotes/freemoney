@@ -289,11 +289,11 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
                 <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
                 <rect x={x - (widths.get(l) ?? g.slot) / 2} y={top} width={widths.get(l) ?? g.slot} height={g.labelH} fill="transparent" />
-                {/* процент, не влезший на сегмент, — рядом с иконкой (там есть место) */}
+                {/* процент, не влезший на сегмент, — у верхнего правого угла иконки (с обводкой цветом фона) */}
                 {/* иконка — цветом категории (аутлайн Lucide или тонированный эмодзи) */}
-                <CategoryIcon icon={s.icon} color={s.color} x={x} y={top + mode.icon / 2} size={mode.icon * 0.9} />
+                <CategoryIcon icon={s.icon} color={s.color} x={x} y={top + mode.icon / 2} size={mode.icon} />
                 {pctHere && (
-                  <text x={x + mode.icon / 2 + 2} y={top + mode.icon / 2 + 1} dominantBaseline="central" fontSize={PCT_FS} className="ring__pct" fill={s.color}>
+                  <text x={x + mode.icon * 0.32} y={top + 5} dominantBaseline="central" fontSize={PCT_FS} className="ring__pct" fill={s.color}>
                     {pctHere}
                   </text>
                 )}

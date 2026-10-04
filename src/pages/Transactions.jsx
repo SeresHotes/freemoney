@@ -155,7 +155,7 @@ export default function Transactions() {
       const balBefore = debtLeg ? debtBalanceBefore(transactions, debtW.name, debtLeg) : 0;
       const amt = Math.abs(cashLeg ? cashLeg.amount : debtLeg?.amount || 0);
       const cur = cashLeg ? cashLeg.currency : debtLeg?.currency;
-      icon = 'lucide:handshake';
+      icon = '🤝';
       title = debtRowLabel(cashOut, balBefore);
       subtitle = debtW?.name || '';
       amountClass = cashOut ? 'expense' : 'income';
@@ -163,7 +163,7 @@ export default function Transactions() {
       to = `/debt/${t.groupId}`;
     } else {
       const sameVal = outLeg && inLeg && outLeg.currency === inLeg.currency && Math.abs(outLeg.amount) === Math.abs(inLeg.amount);
-      icon = 'lucide:arrow-left-right';
+      icon = '⇄';
       title = 'Перевод';
       subtitle = `${outW?.name || '—'} → ${inW?.name || '—'}`;
       amountText = sameVal
@@ -197,7 +197,7 @@ export default function Transactions() {
     const interest = t.type === 'interest';
     const positive = t.amount >= 0;
     const cat = interest || adjust ? null : catByName.get(t.category);
-    const icon = interest ? 'lucide:trending-up' : adjust ? 'lucide:scale' : cat?.icon || DEFAULT_ICON;
+    const icon = interest ? '📈' : adjust ? '⚖️' : cat?.icon || DEFAULT_ICON;
     const title = interest
       ? (t.rate != null ? `Проценты · ${t.rate}%` : 'Проценты')
       : adjust ? 'Корректировка' : t.category || 'Без категории';

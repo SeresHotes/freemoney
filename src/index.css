@@ -694,29 +694,19 @@ h2 {
   border-color: var(--text);
   box-shadow: 0 0 0 2px var(--bg) inset;
 }
-/* Иконка категории: аутлайн Lucide (линия цвета категории) или эмодзи,
-   тонированный в цвет категории SVG-фильтром. */
+/* Иконка категории: эмодзи, нарисованный выбранным стилем (одноцветные — цветом
+   категории), или системный эмодзи, тонированный SVG-фильтром. */
 .cat-icon {
   display: inline-block;
 }
-.cat-icon--line {
+.cat-icon--art {
   vertical-align: -0.15em;
   flex-shrink: 0;
 }
-.icon-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.page__grow.icon-picker .icon-picker__body {
-  flex: 1 1 auto;
-}
-.page__grow.icon-picker .emoji-picker__scroll {
-  flex: 1 1 0;
-  height: auto;
-}
-.emoji-picker__item .cat-icon--line {
-  color: var(--text);
+/* Секции пикера вне экрана не рисуем — в нём сотни SVG. */
+.emoji-picker__section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 20rem;
 }
 .emoji-picker {
   display: flex;
@@ -781,6 +771,7 @@ h2 {
 .emoji-picker__item {
   aspect-ratio: 1;
   font-size: 1.4rem;
+  color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -1517,6 +1508,11 @@ code {
 }
 .ring__pct {
   font-weight: 700;
+  /* лежит на углу иконки — обводка цветом карточки отделяет его от рисунка */
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 .ring__center {
   position: absolute;
@@ -1593,4 +1589,35 @@ code {
 .ring__pct-on {
   font-weight: 700;
   pointer-events: none;
+}
+
+/* --- Стиль иконок (настройки) --------------------------------------------- */
+.icon-styles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.icon-style {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+}
+.icon-style--active {
+  border-color: var(--accent);
+}
+.icon-style__label {
+  font-weight: 600;
+}
+.icon-style__preview {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 1.7rem;
 }

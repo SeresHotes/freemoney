@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import CategoryIcon from '../components/CategoryIcon';
+import { ICON_STYLES } from '../utils/emojiArt';
 import { CURRENCIES, formatAmount } from '../utils/currencies';
 import { APP_VERSION, CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
 import { agoLabel } from '../utils/format';
@@ -368,6 +370,35 @@ function TableImportSection() {
   );
 }
 
+const STYLE_PREVIEW = [['🛒', '#22d3ee'], ['🍔', '#fbbf24'], ['🚕', '#a78bfa'], ['🏠', '#e879f9'], ['💊', '#34d399'], ['🎁', '#f472b6']];
+
+// Стиль иконок категорий: каким набором рисуются эмодзи (см. utils/emojiArt.js).
+function IconStyleSection() {
+  const { iconStyle, setIconStylePref, busy } = useApp();
+  return (
+    <section>
+      <h2 className="section-title">Стиль иконок</h2>
+      <div className="icon-styles">
+        {Object.entries(ICON_STYLES).map(([id, st]) => (
+          <button
+            key={id}
+            type="button"
+            className={`icon-style${iconStyle === id ? ' icon-style--active' : ''}`}
+            onClick={() => setIconStylePref(id)}
+            disabled={busy}
+            aria-pressed={iconStyle === id}
+          >
+            <span className="icon-style__label">{st.label}</span>
+            <span className="icon-style__preview">
+              {STYLE_PREVIEW.map(([e, color]) => <CategoryIcon key={e} icon={e} color={color} iconStyle={id} />)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function Settings() {
   const {
     transactions, categories, wallets, baseCurrency,
@@ -442,6 +473,8 @@ export default function Settings() {
         </select>
       </section>
 
+      <IconStyleSection />
+
       <SyncSection />
 
       <section>
@@ -493,6 +526,10 @@ export default function Settings() {
         <p className="muted hint">
           Новая версия подтянется автоматически: когда она будет готова,
           появится баннер «Доступна новая версия».
+        </p>
+        <p className="muted hint">
+          Иконки: <a href="https://github.com/microsoft/fluentui-emoji" target="_blank" rel="noreferrer">Fluent Emoji</a> © Microsoft (MIT),{' '}
+          <a href="https://github.com/joypixels/emojione" target="_blank" rel="noreferrer">EmojiOne</a> © Ranks.com (CC BY 4.0).
         </p>
       </section>
     </div>

@@ -50,8 +50,6 @@ export const LS_SYNC_ENABLED = 'freemoney:syncEnabled';
 export const LS_SYNC_PENDING = 'freemoney:syncPending';
 // Время последней успешной синхронизации (мс, Date.now()).
 export const LS_LAST_SYNC = 'freemoney:lastSyncAt';
-// Разовая замена эмодзи прежней палитры на аутлайн-иконки Lucide уже сделана.
-export const LS_ICONS_MIGRATED = 'freemoney:lucideIcons';
 
 // Признак, что Client ID не настроен (плейсхолдер).
 export const IS_CLIENT_ID_CONFIGURED = !GOOGLE_CLIENT_ID.startsWith('YOUR_');

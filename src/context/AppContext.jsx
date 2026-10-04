@@ -11,13 +11,14 @@ import { createDeviceBackend, isDeviceStoreReady, initDeviceStore } from '../api
 import { exportBackup, importBackup } from '../api/backup';
 import { readTableFile, parseTableRows, planTableImport, applyTableImport } from '../api/tableImport';
 import {
-  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_SYNC_PENDING, LS_LAST_SYNC, LS_ICONS_MIGRATED,
+  LS_SPREADSHEET_ID, LS_MODE, LS_SYNC_ENABLED, LS_SYNC_PENDING, LS_LAST_SYNC,
   DEFAULT_BASE_CURRENCY, IS_CLIENT_ID_CONFIGURED,
 } from '../config';
 import { newId, todayIso, nowTime } from '../utils/format';
 import { walletBalance } from '../utils/finance';
 import { assignMissingColors, pickColor } from '../utils/categoryColors';
-import { migrateIcon } from '../utils/icons';
+import { migrateIcon } from '../utils/legacyIcons';
+import { DEFAULT_ICON_STYLE, SERVICE_ICONS, ensureArt, iconStyleOf } from '../utils/emojiArt';
 
 const AppContext = createContext(null);
 
@@ -32,6 +33,7 @@ export function AppProvider({ children }) {
   const [wallets, setWallets] = useState([]);
   const [tags, setTags] = useState([]);
   const [baseCurrency, setBaseCurrency] = useState(DEFAULT_BASE_CURRENCY);
+  const [iconStyle, setIconStyle] = useState(DEFAULT_ICON_STYLE);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -81,21 +83,21 @@ export function AppProvider({ children }) {
       await backend.fetchAll();
     // Категориям без цвета (старые данные, импорт, чужое устройство) — раздаём
     // случайные свободные цвета и сохраняем, чтобы цвет больше не менялся.
-    // Разово (на устройство) — эмодзи прежней палитры меняем на аутлайн-иконки
-    // Lucide; эмодзи, выбранные после этого, остаются как есть.
+    // Иконки 'lucide:…' (недолго жили на dev-канале) переводим обратно в эмодзи.
     const patches = new Map(assignMissingColors(fetchedCats).map(({ id, color }) => [id, { id, color }]));
-    if (!localStorage.getItem(LS_ICONS_MIGRATED)) {
-      for (const c of fetchedCats) {
-        const icon = migrateIcon(c.icon);
-        if (icon !== c.icon) patches.set(c.id, { ...patches.get(c.id), id: c.id, icon });
-      }
+    for (const c of fetchedCats) {
+      const icon = migrateIcon(c.icon);
+      if (icon !== c.icon) patches.set(c.id, { ...patches.get(c.id), id: c.id, icon });
     }
     let cats = fetchedCats;
     if (patches.size) {
       await backend.patchCategories([...patches.values()]);
       cats = cats.map((c) => (patches.has(c.id) ? { ...c, ...patches.get(c.id) } : c));
     }
-    localStorage.setItem(LS_ICONS_MIGRATED, '1');
+    // Рисовки иконок категорий грузим заранее — чтобы экран не мигал пустыми местами.
+    const style = iconStyleOf(settings.iconStyle);
+    await ensureArt(style, [...cats.map((c) => c.icon), ...SERVICE_ICONS]);
+    setIconStyle(style);
     const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
     const defaultWallet = wls.find((w) => !w.archived) || wls[0];
     const walletCurrency = Object.fromEntries(wls.map((w) => [w.name, w.currency]));
@@ -666,6 +668,18 @@ export function AppProvider({ children }) {
     [mutate],
   );
 
+  // Стиль иконок категорий (см. utils/emojiArt.js). Рисовки нового стиля
+  // грузим до переключения — иначе иконки на миг пропадут.
+  const setIconStylePref = useCallback(
+    (style) =>
+      mutate(async () => {
+        await ensureArt(style, [...categories.map((c) => c.icon), ...SERVICE_ICONS]);
+        await backendRef.current.setSetting('iconStyle', style);
+        setIconStyle(style);
+      }),
+    [mutate, categories],
+  );
+
   // --- Резервная копия (единый JSON) ----------------------------------------
   const exportAll = useCallback(
     () => exportBackup({ baseCurrency, wallets, categories, tags, transactions }),
@@ -748,6 +762,8 @@ export function AppProvider({ children }) {
     wallets,
     tags,
     baseCurrency,
+    iconStyle,
+    setIconStylePref,
     error,
     busy,
     // синхронизация

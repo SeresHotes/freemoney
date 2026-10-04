@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
-import IconPicker from '../components/IconPicker';
+import EmojiPicker from '../components/EmojiPicker';
 import ColorPicker from '../components/ColorPicker';
 import CategoryIcon from '../components/CategoryIcon';
 import { useApp } from '../context/AppContext';
@@ -98,7 +98,7 @@ export default function CategoryEdit() {
           />
         </div>
 
-        {open === 'icon' && <IconPicker value={icon} onChange={(e) => { setIcon(e); setOpen(null); }} className="page__grow" />}
+        {open === 'icon' && <EmojiPicker value={icon} onChange={(e) => { setIcon(e); setOpen(null); }} className="page__grow" />}
         {open === 'color' && <ColorPicker value={color} onChange={(c) => { setColor(c); setOpen(null); }} />}
 
         <label className="field">

@@ -71,18 +71,22 @@
   или цвет), выбор значения сворачивает его.
 - Категориям без цвета (старые данные, импорт, чужое устройство) цвет раздаёт
   `loadData` в `AppContext` — случайный из свободных — и **сохраняет** его
-  (`backend.setCategoryColors`), чтобы цвет не менялся между запусками.
+  (`backend.patchCategories`), чтобы цвет не менялся между запусками.
 - В листе `Categories` цвет — колонка I (миграция схемы v4→v5 дописывает шапку).
-- Иконка категории — аутлайн Lucide (`lucide:<имя>`, по умолчанию) или эмодзи.
-  Рисует **только** `CategoryIcon` (HTML и SVG-кольцо): Lucide — линией цвета
-  категории, эмодзи — тонированным SVG-фильтром `tint-rrggbb` (`CategoryTints`).
-  Данные Lucide генерирует `npm run lucide` (`scripts/gen-lucide.mjs`): популярные —
-  `lucidePopular.json` в основном бандле, полный набор — `lucideData.json` лениво.
-  Русские слова для поиска — перевод всего набора `scripts/lucide-ru.json` плюс
-  ручной словарь `RU` в генераторе (сверху); группы — снимок категорий
-  `scripts/lucide-categories.json` (в npm-пакет они не входят).
-- Эмодзи прежней палитры разово (флаг `freemoney:lucideIcons` в localStorage)
-  меняются на аналоги Lucide в `loadData` (`EMOJI_TO_LUCIDE`, `src/utils/icons.js`).
+- Иконка категории в данных — **обычный эмодзи** (🍔), а рисуется выбранным
+  **стилем иконок** (настройка `iconStyle`, синхронизируется): Fluent Emoji High
+  Contrast (по умолчанию), EmojiOne Monotone, Fluent Emoji Flat или системные
+  эмодзи. Рисует **только** `CategoryIcon` (HTML и SVG-кольцо); одноцветные стили —
+  цветом категории, нет рисовки — системный эмодзи, тонированный фильтром
+  `tint-rrggbb` (`CategoryTints`).
+- Рисовки — `src/utils/emojiArt/` (`npm run emoji-art`, `scripts/gen-emoji-art.mjs`,
+  из пакетов `@iconify-json/*`): по файлу на группу пикера и стиль, грузятся лениво
+  (`ensureArt`), в `loadData` — заранее для иконок категорий. Service worker их **не
+  предкэширует** (`globIgnores`, ~7 МБ на все стили), а кэширует при загрузке
+  (`CacheFirst`, `assets/emoji-art/`).
+- Недолго (dev-канал) иконки хранились как `lucide:<имя>` — `loadData` переводит их
+  обратно в эмодзи (`src/utils/legacyIcons.js`).
+- EmojiOne — CC BY 4.0: авторство указано в «О приложении» (настройки), не убирать.
 
 ## Каналы и деплой
 

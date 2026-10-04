@@ -124,7 +124,7 @@ export default function Home() {
     }));
     if (named.length < sorted.length) {
       const rest = sorted.slice(named.length).reduce((sum, [, v]) => sum + v, 0);
-      cats.push({ name: 'Другое', value: rest, icon: 'lucide:package', other: true });
+      cats.push({ name: 'Другое', value: rest, icon: '📦', other: true });
     }
     return { income: inc, expense: exp, byCategory: cats };
   }, [transactions, categories, toBase, month, selWallet]);
