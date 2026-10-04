@@ -14,6 +14,7 @@ const CASES = {
   убывание: [30, 15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 0.5, 0.3],
   крупная70: [70, 5, 4, 4, 3, 3, 3, 2, 2, 1.5, 1.5, 1],
   крупная78: [91500, 5800, 4700, 3500, 3500, 3500, 2350, 1200, 600, 400, 300],
+  крупная76: [91500, 5800, 4700, 3500, 3500, 3500, 2350, 1200, 600, 400, 300, 1500, 1000, 560.24],
   крупная90: [90, 3, 2, 1, 1, 1, 1, 0.5, 0.5],
   две40и30: [40, 30, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1],
 };
@@ -69,33 +70,35 @@ describe('layoutRing: какие категории на кольце', () => {
 
   for (const [w, h] of SCREENS) {
     for (const [name, vals] of Object.entries(CASES)) {
-      it(`${name}, ${w}×${h}: каждая подпись не дальше MAX_GAP от сектора, в «Другом» — самые мелкие`, () => {
-        const g = layoutRing(mk(vals), w, h);
-        expect(g.slices.filter((s) => !s.other).length).toBeLessThanOrEqual(SLOTS);
-        expect(g.labels.length).toBeLessThanOrEqual(SLOTS);
-        expect(g.maxGap).toBeLessThanOrEqual(MAX_GAP);
-        // каждая подпись — на своём месте сетки, места не повторяются
-        expect(new Set(g.labels.map((l) => `${l.x},${l.y}`)).size).toBe(g.labels.length);
-        // всё на месте: сумма сохраняется, «Другое» — не из одной категории
-        expect(sum(g.slices.map((s) => s.value))).toBeCloseTo(sum(vals));
-        const other = g.slices.find((s) => s.other);
-        if (other) {
-          const named = g.slices.filter((s) => !s.other);
-          expect(Math.min(...named.map((s) => s.value))).toBeGreaterThanOrEqual(Math.max(...other.items.map((d) => d.value)));
-        }
-        // подписи — в пределах карточки
-        for (const l of g.labels) {
-          expect(l.x - l.w / 2).toBeGreaterThanOrEqual(-0.5);
-          expect(l.x + l.w / 2).toBeLessThanOrEqual(w + 0.5);
-          expect(l.y - g.labelH / 2).toBeGreaterThanOrEqual(-0.5);
-          expect(l.y + g.labelH / 2).toBeLessThanOrEqual(h + 0.5);
-        }
-        // линии не обходят кольцо и без лишних изломов (прямая или излом у подписи)
-        for (const l of g.labels.filter((x) => x.a)) {
-          expect(l.a.detour).toBe(0);
-          expect(l.a.points.length).toBeLessThanOrEqual(3);
-        }
-      });
+      for (const nameLines of [1, 2]) {
+        it(`${name}, ${w}×${h}, строк ${nameLines}: каждая подпись не дальше MAX_GAP от сектора, в «Другом» — самые мелкие`, () => {
+          const g = layoutRing(mk(vals), w, h, { nameLines });
+          expect(g.slices.filter((s) => !s.other).length).toBeLessThanOrEqual(SLOTS);
+          expect(g.labels.length).toBeLessThanOrEqual(SLOTS);
+          expect(g.maxGap).toBeLessThanOrEqual(MAX_GAP);
+          // каждая подпись — на своём месте сетки, места не повторяются
+          expect(new Set(g.labels.map((l) => `${l.x},${l.y}`)).size).toBe(g.labels.length);
+          // всё на месте: сумма сохраняется, «Другое» — не из одной категории
+          expect(sum(g.slices.map((s) => s.value))).toBeCloseTo(sum(vals));
+          const other = g.slices.find((s) => s.other);
+          if (other) {
+            const named = g.slices.filter((s) => !s.other);
+            expect(Math.min(...named.map((s) => s.value))).toBeGreaterThanOrEqual(Math.max(...other.items.map((d) => d.value)));
+          }
+          // подписи — в пределах карточки
+          for (const l of g.labels) {
+            expect(l.x - l.w / 2).toBeGreaterThanOrEqual(-0.5);
+            expect(l.x + l.w / 2).toBeLessThanOrEqual(w + 0.5);
+            expect(l.y - g.labelH / 2).toBeGreaterThanOrEqual(-0.5);
+            expect(l.y + g.labelH / 2).toBeLessThanOrEqual(h + 0.5);
+          }
+          // линии не обходят кольцо и без лишних изломов (прямая или излом у подписи)
+          for (const l of g.labels.filter((x) => x.a)) {
+            expect(l.a.detour).toBe(0);
+            expect(l.a.points.length).toBeLessThanOrEqual(3);
+          }
+        });
+      }
     }
   }
 });

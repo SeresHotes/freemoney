@@ -20,7 +20,7 @@
 // Выносные линии ломаные (до двух изломов, см. leader).
 
 export const SLOTS = 14; // мест под подписи (сетка 4×5 по периметру)
-export const MAX_GAP = 20; // град: подпись дальше от своего сектора — категория уходит в «Другое»
+export const MAX_GAP = 30; // град: подпись дальше от своего сектора — категория уходит в «Другое»
 // «Другое» — только сектор (без подписи); иконка — для центра при удержании
 export const OTHER = { name: 'Другое', icon: '📦', other: true };
 
@@ -98,8 +98,9 @@ function distToSegment(px, py, x1, y1, x2, y2) {
 // подписи к кольцу (так линия «правильно» входит в подпись). Без лишних изломов:
 // прямая от кольца к подписи, если она уходит от кольца наружу и входит в
 // подпись не слишком наискось (до ENTRY_MAX); иначе — один излом прямо перед
-// подписью (прямой вход TAIL; если ему мешает кольцо — всё же прямая). Только
-// если и прямая зашла бы на кольцо
+// подписью (прямой вход TAIL; если ему мешает кольцо — всё же прямая). Если и
+// прямая зашла бы на кольцо — один излом у кольца (радиальный отрезок STUB).
+// Только если и так нельзя
 // (подпись «с другой стороны») — от кольца по радиусу (STUB) и в обход кольца
 // по дуге. points — вершины; detour — точки обхода.
 function leader(s, lx, ly, g, [dx, dy]) {
@@ -121,7 +122,11 @@ function leader(s, lx, ly, g, [dx, dy]) {
   if (outward(...tail)) return { points: [[ax, ay], tail, [lx, ly]], len, detour: 0 };
   // излому у подписи мешает кольцо — тогда уж прямая, хоть и наискось
   if (outward(lx, ly)) return { points: [[ax, ay], [lx, ly]], len, detour: 0 };
-  const points = [[ax, ay], polar(g.cx, g.cy, g.R + STUB, t)];
+  // и прямой мешает — один излом у кольца: сперва по радиусу, затем к подписи
+  const stub = polar(g.cx, g.cy, g.R + STUB, t);
+  const clear = (p, q) => distToSegment(g.cx, g.cy, ...p, ...q) >= g.R + 2;
+  if (clear(stub, [lx, ly])) return { points: [[ax, ay], stub, [lx, ly]], len, detour: 0 };
+  const points = [[ax, ay], stub];
   const hits = (x, y) => distToSegment(g.cx, g.cy, x, y, tail[0], tail[1]) < g.R + 2;
   let detour = 0;
   if (hits(...points[1])) {
