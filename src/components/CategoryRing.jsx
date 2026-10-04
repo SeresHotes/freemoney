@@ -140,8 +140,9 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   // Касание сегмента/подписи: сразу подсвечивает категорию и показывает её
-  // траты в центре — пока палец держится. Отпустил быстро и не сдвигал —
-  // onSelect (новый расход); держал дольше LONG_PRESS_MS — только просмотр.
+  // траты в центре — пока палец держится. Ведёшь пальцем — подсветка
+  // переходит на категорию под ним. Отпустил быстро и не сдвигал — onSelect
+  // (новый расход); держал дольше LONG_PRESS_MS или вёл — только просмотр.
   const [held, setHeld] = useState(null);
   const pressRef = useRef(null); // { s, at, x, y, moved, cleanup }
   const endPress = (select) => {
@@ -160,7 +161,12 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
     endPress(false);
     const onMove = (ev) => {
       const p = pressRef.current;
-      if (p && Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP) p.moved = true;
+      if (!p) return;
+      if (Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP) p.moved = true;
+      // категория под пальцем (мимо сегментов и подписей — остаётся прежняя)
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-cat]');
+      const name = hit && ref.current?.contains(hit) ? hit.getAttribute('data-cat') : null;
+      if (name) setHeld(name);
     };
     // отпускание где угодно (палец мог съехать с сегмента) — вернуть итоги
     const onUp = () => endRef.current(true);
@@ -176,17 +182,20 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
     pressRef.current = { s, at: Date.now(), x: e.clientX, y: e.clientY, moved: false, cleanup };
     setHeld(s.name);
   };
-  const pressProps = (s) => ({ onPointerDown: (e) => startPress(e, s) });
+  const pressProps = (s) => ({ 'data-cat': s.name, onPointerDown: (e) => startPress(e, s) });
 
   // Системный «долгий тап» (вибрация, меню, выделение) и синяя рамка касания
   // гасятся отменой touchstart на сегментах/подписях. Слушатель — нативный
   // и не passive: у React touchstart пассивный. Клик тогда не приходит —
-  // тап обрабатывается по pointerup (см. endPress).
+  // тап обрабатывается по pointerup (см. endPress). Дальше касание не
+  // всплывает: пока палец на категории, свайп месяца (Home) не срабатывает.
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
     const onTouchStart = (e) => {
-      if (e.target.closest?.('.ring__slice, .ring__label')) e.preventDefault();
+      if (!e.target.closest?.('[data-cat]')) return;
+      e.preventDefault();
+      e.stopPropagation();
     };
     el.addEventListener('touchstart', onTouchStart, { passive: false });
     return () => el.removeEventListener('touchstart', onTouchStart);
