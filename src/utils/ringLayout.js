@@ -2,7 +2,7 @@
 //
 // Подписи (иконка + название) — в 14 местах по периметру вокруг кольца, сеткой
 // 4×5 (как в Monefy): 4 сверху (два угла и два между ними), 4 снизу, по 3 слева
-// и справа.
+// и справа. У «Другого» подписи нет — только сектор.
 //
 // Категория привязывается к своему сектору (своя дуга и линия к подписи),
 // только если место подписи не слишком далеко по кругу от сектора: направление
@@ -11,6 +11,7 @@
 // «Другое», и так, пока не получится. Отвязанная категория на кольце — часть
 // сектора «Другое», но её подпись (иконка, название, процент) остаётся на
 // свободном месте — без линии, ближе к «Другому», пока места хватает.
+// Подписи привязанных — с сохранением кругового порядка сегментов.
 //
 // Поиск: порядок сегментов по кругу (любой) и поворот кольца; места подписям —
 // с сохранением кругового порядка (линии не пересекаются), оптимально
@@ -20,6 +21,7 @@
 
 export const SLOTS = 14; // мест под подписи (сетка 4×5 по периметру)
 export const MAX_GAP = 20; // град: подпись дальше от своего сектора — категория уходит в «Другое»
+// «Другое» — только сектор (без подписи); иконка — для центра при удержании
 export const OTHER = { name: 'Другое', icon: '📦', other: true };
 
 export const R_FRAC = 0.36; // радиус кольца — доля ширины, не больше
@@ -35,8 +37,8 @@ const V_GAP = 22; // зазор между верхним/нижним рядо�
 const ROW_GAP = 2; // зазор между подписями в боковой колонке
 const ASPECT = 1.15; // сетка подписей по высоте — до ASPECT своей ширины (высокие экраны)
 const STUB = 16; // радиальный отрезок линии от кольца (только для обхода кольца)
-const TAIL = 10; // прямой вход линии в подпись (излом у подписи)
-const ENTRY_MAX = 60; // град: прямая входит в подпись наискось не больше — иначе излом у подписи
+const TAIL = 14; // прямой вход линии в подпись (излом у подписи)
+const ENTRY_MAX = 30; // град: прямая входит в подпись наискось не больше — иначе излом у подписи
 const OUTWARD_MAX = 80; // град: прямая от кольца должна уходить наружу (не круче к касательной)
 const SEED_ROTATIONS = 24; // повороты для стартовых порядков (шаг 15°)
 const ROT_STEPS = [-8, 0, 8]; // подстройка поворота при обменах, град
@@ -96,7 +98,8 @@ function distToSegment(px, py, x1, y1, x2, y2) {
 // подписи к кольцу (так линия «правильно» входит в подпись). Без лишних изломов:
 // прямая от кольца к подписи, если она уходит от кольца наружу и входит в
 // подпись не слишком наискось (до ENTRY_MAX); иначе — один излом прямо перед
-// подписью (прямой вход TAIL). Только если и так линия зашла бы на кольцо
+// подписью (прямой вход TAIL; если ему мешает кольцо — всё же прямая). Только
+// если и прямая зашла бы на кольцо
 // (подпись «с другой стороны») — от кольца по радиусу (STUB) и в обход кольца
 // по дуге. points — вершины; detour — точки обхода.
 function leader(s, lx, ly, g, [dx, dy]) {
@@ -116,6 +119,8 @@ function leader(s, lx, ly, g, [dx, dy]) {
     return { points: [[ax, ay], [lx, ly]], len, detour: 0 };
   }
   if (outward(...tail)) return { points: [[ax, ay], tail, [lx, ly]], len, detour: 0 };
+  // излому у подписи мешает кольцо — тогда уж прямая, хоть и наискось
+  if (outward(lx, ly)) return { points: [[ax, ay], [lx, ly]], len, detour: 0 };
   const points = [[ax, ay], polar(g.cx, g.cy, g.R + STUB, t)];
   const hits = (x, y) => distToSegment(g.cx, g.cy, x, y, tail[0], tail[1]) < g.R + 2;
   let detour = 0;
@@ -301,8 +306,10 @@ function frame(w, h, nameLines) {
 function search(list, total, g, doSearch) {
   const evaluate = (order, rot, bound) => {
     const slices = slicesAt(order, total, rot);
-    const { cost, pick } = assignSlots(slices, g.slots, bound);
-    return { cost, pick, slices, order, rot };
+    // у «Другого» подписи нет — места только привязанным категориям
+    const named = slices.filter((sl) => !sl.other);
+    const { cost, pick } = assignSlots(named, g.slots, bound);
+    return { cost, pick, slices, named, order, rot };
   };
   const bestRot = (order, rots, bound = Infinity) => {
     let best = null;
@@ -339,7 +346,7 @@ function search(list, total, g, doSearch) {
 
 // Подписи на выбранных местах и линии к ним.
 function placeLabels(best, g) {
-  return best.slices.map((s, i) => {
+  return best.named.map((s, i) => {
     const t = g.slots[best.pick[i]];
     return { s, x: t.x, y: t.y, side: t.side, w: t.w, gap: arcGap(s, t.ang), a: leader(s, t.ax, t.ay, g, t.dir) };
   });
@@ -371,9 +378,9 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
   const g = frame(w, h, nameLines);
 
   // Сколько категорий привязать к секторам: сначала сколько влезает по местам
-  // (все — или SLOTS − 1 и «Другое»), затем меньше — пока все подписи не
-  // окажутся рядом со своими секторами (двоичным поиском: с ростом k разместить
-  // только труднее). «Другое» из одной категории не бывает — она тогда сама.
+  // (все — или SLOTS, остальное — «Другое»), затем меньше — пока все подписи
+  // не окажутся рядом со своими секторами (двоичным поиском: с ростом k
+  // разместить только труднее).
   const N = sorted.length;
   const tried = new Map();
   const attempt = (k) => {
@@ -381,16 +388,13 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
       const rest = sorted.slice(k);
       const list = rest.length ? [...sorted.slice(0, k), { ...OTHER, value: rest.reduce((sum, d) => sum + d.value, 0), items: rest }] : sorted;
       const v = search(list, total, g, doSearch);
-      v.maxGap = Math.max(...v.slices.map((sl, i) => arcGap(sl, g.slots[v.pick[i]].ang)));
+      v.maxGap = Math.max(...v.named.map((sl, i) => arcGap(sl, g.slots[v.pick[i]].ang)));
       tried.set(k, v);
     }
     return tried.get(k);
   };
-  const ks = [];
-  for (let k = 1; k <= Math.min(N, SLOTS - 1); k++) if (k !== N - 1) ks.push(k);
-  if (N <= SLOTS) ks.push(N);
-  const uniq = [...new Set(ks)];
-  let lo = 0; // uniq[lo] подходит (k = 1: два сегмента — всегда)
+  const uniq = Array.from({ length: Math.min(N, SLOTS) }, (_, i) => i + 1);
+  let lo = 0; // uniq[lo] подходит (k = 1: одна подпись — всегда)
   let hi = uniq.length - 1;
   if (attempt(uniq[hi]).maxGap <= MAX_GAP) lo = hi;
   while (hi - lo > 1) {

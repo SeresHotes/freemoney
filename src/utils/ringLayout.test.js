@@ -25,13 +25,15 @@ describe('layoutRing: какие категории на кольце', () => {
     expect(g.slices.some((s) => s.other)).toBe(false);
   });
 
-  it('больше 14 — 13 категорий + «Другое» с суммой остальных', () => {
+  it('больше 14 — 14 категорий + «Другое» с суммой остальных; у «Другого» подписи нет', () => {
     const g = layoutRing(mk(CASES.ровно16), 360, 383);
-    expect(g.slices).toHaveLength(SLOTS);
+    expect(g.slices).toHaveLength(SLOTS + 1);
     const other = g.slices.find((s) => s.other);
     expect(other.name).toBe(OTHER.name);
-    expect(other.items).toHaveLength(3);
-    expect(other.value).toBe(30);
+    expect(other.items).toHaveLength(2);
+    expect(other.value).toBe(20);
+    expect(g.labels).toHaveLength(SLOTS);
+    expect(g.labels.some((l) => l.s.other)).toBe(false);
   });
 
   it('отвязанные категории — в секторе «Другое», но их иконки на свободных местах, без линии', () => {
@@ -44,8 +46,9 @@ describe('layoutRing: какие категории на кольце', () => {
       expect(other.items.map((d) => d.name)).toContain(l.s.name);
       expect(l.s.percent).toBeCloseTo(l.s.value / 100);
     }
-    // каждая категория видна подписью (12 категорий + «Другое» ≤ 14 мест)
-    expect(g.labels).toHaveLength(13);
+    // каждая категория видна подписью (12 категорий ≤ 14 мест), «Другое» — без подписи
+    expect(g.labels).toHaveLength(12);
+    expect(g.labels.some((l) => l.s.other)).toBe(false);
   });
 
   it('мало категорий — все отдельно, сколько есть', () => {
@@ -68,7 +71,7 @@ describe('layoutRing: какие категории на кольце', () => {
     for (const [name, vals] of Object.entries(CASES)) {
       it(`${name}, ${w}×${h}: каждая подпись не дальше MAX_GAP от сектора, в «Другом» — самые мелкие`, () => {
         const g = layoutRing(mk(vals), w, h);
-        expect(g.slices.length).toBeLessThanOrEqual(SLOTS);
+        expect(g.slices.filter((s) => !s.other).length).toBeLessThanOrEqual(SLOTS);
         expect(g.labels.length).toBeLessThanOrEqual(SLOTS);
         expect(g.maxGap).toBeLessThanOrEqual(MAX_GAP);
         // каждая подпись — на своём месте сетки, места не повторяются
@@ -77,7 +80,6 @@ describe('layoutRing: какие категории на кольце', () => {
         expect(sum(g.slices.map((s) => s.value))).toBeCloseTo(sum(vals));
         const other = g.slices.find((s) => s.other);
         if (other) {
-          expect(other.items.length).toBeGreaterThan(1);
           const named = g.slices.filter((s) => !s.other);
           expect(Math.min(...named.map((s) => s.value))).toBeGreaterThanOrEqual(Math.max(...other.items.map((d) => d.value)));
         }
