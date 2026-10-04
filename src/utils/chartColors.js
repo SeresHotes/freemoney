@@ -12,10 +12,13 @@ export const CATEGORY_COLORS = [
 export const OTHER_COLOR = '#64748b';
 export const TOP_CATEGORIES = 8;
 
+// Цвет категории для графиков: свой (colorOf — Map имя→цвет), иначе — по месту i.
+export const categoryColor = (colorOf, name, i) => colorOf?.get(name) || CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+
 // totals — [{name, value}] по убыванию. Возвращает список топ-имён и серии с цветами.
-export function buildCategorySeries(totals) {
+export function buildCategorySeries(totals, colorOf) {
   const top = totals.slice(0, TOP_CATEGORIES).map((c) => c.name);
-  const series = top.map((name, i) => ({ name, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }));
+  const series = top.map((name, i) => ({ name, color: categoryColor(colorOf, name, i) }));
   if (totals.length > TOP_CATEGORIES) series.push({ name: 'Другое', color: OTHER_COLOR });
   return { top, series };
 }

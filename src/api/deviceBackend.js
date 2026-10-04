@@ -24,7 +24,7 @@ const FILES = {
 };
 
 const TX_COLS = ['id', 'datetime', 'type', 'amount', 'category', 'note', 'tags', 'wallet', 'currency', 'origAmount', 'origCurrency', 'groupId', 'rate'];
-const CAT_COLS = ['id', 'name', 'kind', 'archived', 'icon'];
+const CAT_COLS = ['id', 'name', 'kind', 'archived', 'icon', 'color'];
 // Кошелёк идентифицируется по имени (колонка A), поле id упразднено.
 const WALLET_COLS = ['name', 'currency', 'archived', 'order', 'kind'];
 const TAG_COLS = ['name', 'archived'];
@@ -67,8 +67,8 @@ const rowToTx = (r) => {
     rate: r[12] != null && r[12] !== '' ? Number(r[12]) : null,
   });
 };
-const catToRow = (c) => [c.id, c.name, c.kind, encArch(c.archived), c.icon || DEFAULT_ICON];
-const rowToCat = (r, i) => ({ id: r[0], name: r[1], kind: r[2] || 'both', archived: decArch(r[3]), icon: r[4] || DEFAULT_ICON, order: i });
+const catToRow = (c) => [c.id, c.name, c.kind, encArch(c.archived), c.icon || DEFAULT_ICON, c.color || ''];
+const rowToCat = (r, i) => ({ id: r[0], name: r[1], kind: r[2] || 'both', archived: decArch(r[3]), icon: r[4] || DEFAULT_ICON, color: r[5] || '', order: i });
 const walletToRow = (w) => [w.name, w.currency, encArch(w.archived), w.order ?? 0, w.kind || 'cash'];
 // Старый wallets.csv мог нести 6-ю колонку rate — она упразднена и просто игнорируется.
 const rowToWallet = (r, i) => ({ name: r[0], currency: r[1] || DEFAULT_BASE_CURRENCY, archived: decArch(r[2]), order: Number(r[3]) || i, kind: r[4] || 'cash' });
@@ -158,13 +158,18 @@ export function createDeviceBackend() {
     updateTransaction: async (t) => { const l = await loadTx(); await saveTx(l.map((x) => (x.id === t.id ? t : x))); },
     deleteTransaction: async (id) => { const l = await loadTx(); await saveTx(l.filter((x) => x.id !== id)); },
 
-    addCategory: async ({ name, kind, icon }) => {
+    addCategory: async ({ name, kind, icon, color }) => {
       const l = await loadCats();
-      l.push({ id: newId(), name, kind, icon: icon || DEFAULT_ICON, archived: false, order: l.length });
+      l.push({ id: newId(), name, kind, icon: icon || DEFAULT_ICON, color: color || '', archived: false, order: l.length });
       await saveCats(l);
     },
     setCategoryArchived: async (id, archived) => { const l = await loadCats(); await saveCats(l.map((c) => (c.id === id ? { ...c, archived } : c))); },
     updateCategory: async (id, patch) => { const l = await loadCats(); await saveCats(l.map((c) => (c.id === id ? { ...c, ...patch } : c))); },
+    setCategoryColors: async (list) => {
+      const byId = new Map(list.map((x) => [x.id, x.color]));
+      const l = await loadCats();
+      await saveCats(l.map((c) => (byId.has(c.id) ? { ...c, color: byId.get(c.id) } : c)));
+    },
     renameCategory: async (oldName, newName) => { const l = await loadTx(); await saveTx(l.map((t) => (t.category === oldName ? { ...t, category: newName } : t))); },
 
     addWallet: async ({ name, currency, kind }) => { const l = await loadWallets(); l.push({ name, currency, archived: false, order: l.length, kind: kind || 'cash' }); await saveWallets(l); },

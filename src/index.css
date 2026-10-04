@@ -640,6 +640,7 @@ h2 {
 }
 .add-cat__row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
 }
@@ -656,6 +657,42 @@ h2 {
   background: var(--surface-2);
   border-radius: var(--radius);
   flex-shrink: 0;
+}
+/* Цвет категории: квадратик-кнопка и раскрывающаяся палитра (под строкой). */
+.color-swatch {
+  width: 2.4rem;
+  height: 2.4rem;
+  flex-shrink: 0;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.color-palette {
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0.5rem;
+  padding: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.color-palette__item {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.color-palette__item--active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg) inset;
+}
+/* Иконка категории: эмодзи тонируется в цвет категории SVG-фильтром. */
+.cat-icon {
+  display: inline-block;
 }
 .emoji-picker {
   display: flex;

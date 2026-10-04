@@ -2,8 +2,11 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import EmojiPicker from '../components/EmojiPicker';
+import ColorPicker from '../components/ColorPicker';
+import CategoryIcon from '../components/CategoryIcon';
 import { useApp } from '../context/AppContext';
 import { EMOJI_PALETTE } from '../utils/emoji';
+import { isColor, pickColor } from '../utils/categoryColors';
 
 export default function CategoryEdit() {
   const { id } = useParams();
@@ -16,6 +19,8 @@ export default function CategoryEdit() {
   const [name, setName] = useState(current?.name || '');
   const [kind, setKind] = useState(current?.kind || 'expense');
   const [icon, setIcon] = useState(current?.icon || EMOJI_PALETTE[0]);
+  // Новой категории сразу предлагаем случайный свободный цвет — его можно сменить.
+  const [color, setColor] = useState(() => (isColor(current?.color) ? current.color : pickColor(categories.map((c) => c.color))));
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -42,8 +47,8 @@ export default function CategoryEdit() {
     if (exists) { setFormError('Такая категория уже есть'); return; }
     setBusy(true);
     try {
-      if (editing) await updateCategory(current.id, { name: trimmed, kind, icon });
-      else await addCategory({ name: trimmed, kind, icon });
+      if (editing) await updateCategory(current.id, { name: trimmed, kind, icon, color });
+      else await addCategory({ name: trimmed, kind, icon, color });
       navigate('/categories');
     } catch {
       setFormError('Не удалось сохранить');
@@ -70,8 +75,9 @@ export default function CategoryEdit() {
 
       <form className="form" onSubmit={submit}>
         <div className="add-cat__row">
-          <span className="add-cat__preview">{icon}</span>
+          <span className="add-cat__preview"><CategoryIcon icon={icon} color={color} /></span>
           <input className="field__input" type="text" placeholder="Название" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!editing} />
+          <ColorPicker value={color} onChange={setColor} />
         </div>
 
         <EmojiPicker value={icon} onChange={setIcon} className="page__grow" />

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BackButton from '../components/BackButton';
+import CategoryIcon from '../components/CategoryIcon';
 import { useApp } from '../context/AppContext';
 
 const KIND_LABELS = { expense: 'Расход', income: 'Доход', both: 'Оба' };
@@ -35,7 +36,7 @@ export default function Categories() {
           {active.map((c) => (
             <li key={c.id} className="cat-item cat-item--clickable" onClick={() => navigate(`/transactions?category=${encodeURIComponent(c.name)}`)}>
               <div className="cat-item__main">
-                <span className="cat-item__icon">{c.icon}</span>
+                <CategoryIcon icon={c.icon} color={c.color} className="cat-item__icon" />
                 <span className="cat-item__name">{c.name}</span>
                 <span className={`kind-badge kind-badge--${c.kind}`}>{KIND_LABELS[c.kind]}</span>
               </div>
@@ -62,7 +63,7 @@ export default function Categories() {
               {archived.map((c) => (
                 <li key={c.id} className="cat-item cat-item--archived cat-item--clickable" onClick={() => navigate(`/categories/${c.id}/edit`)}>
                   <div className="cat-item__main">
-                    <span className="cat-item__icon">{c.icon}</span>
+                    <CategoryIcon icon={c.icon} color={c.color} className="cat-item__icon" />
                     <span className="cat-item__name">{c.name}</span>
                     <span className={`kind-badge kind-badge--${c.kind}`}>{KIND_LABELS[c.kind]}</span>
                   </div>

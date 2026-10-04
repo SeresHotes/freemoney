@@ -4,7 +4,7 @@ import { toCsv, parseCsv, downloadFile } from '../utils/csv';
 import { newId } from '../utils/format';
 
 const TX_COLUMNS = ['id', 'date', 'type', 'amount', 'category', 'note', 'tags'];
-const CAT_COLUMNS = ['name', 'kind', 'archived', 'icon'];
+const CAT_COLUMNS = ['name', 'kind', 'archived', 'icon', 'color'];
 
 // --- Экспорт ----------------------------------------------------------------
 
@@ -19,7 +19,7 @@ export function exportTransactionsCsv(transactions) {
 export function exportCategoriesCsv(categories) {
   const rows = [CAT_COLUMNS];
   for (const c of categories) {
-    rows.push([c.name, c.kind, c.archived ? '1' : '', c.icon]);
+    rows.push([c.name, c.kind, c.archived ? '1' : '', c.icon, c.color || '']);
   }
   downloadFile('freemoney-categories.csv', toCsv(rows));
 }
@@ -79,7 +79,11 @@ export async function importCategoriesCsv(text, backend, existingCategories) {
     const name = (idx.name >= 0 && row[idx.name] || '').trim();
     if (!name || existingNames.has(name.toLowerCase())) continue;
     const kind = ['expense', 'income', 'both'].includes(row[idx.kind]) ? row[idx.kind] : 'expense';
-    await backend.addCategory({ name, kind, icon: (idx.icon >= 0 && row[idx.icon]) || undefined });
+    await backend.addCategory({
+      name, kind,
+      icon: (idx.icon >= 0 && row[idx.icon]) || undefined,
+      color: (idx.color >= 0 && row[idx.color]) || undefined,
+    });
     existingNames.add(name.toLowerCase());
     added += 1;
   }

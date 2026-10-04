@@ -277,16 +277,16 @@ function placeRows(topItems, bottomItems, g, bound = Infinity) {
 }
 
 // nameLines — сколько строк отвести под название (2 — если какое-то название не
-// влезает в одну строку слота; см. CategoryRing). palette — цвета по месту на
-// кольце: по часовой стрелке в порядке палитры (её порядок подобран так, что
-// соседние — и последний с первым — хорошо различимы), «Другое» (other) —
-// otherColor.
+// влезает в одну строку слота; см. CategoryRing). Цвет сегмента — собственный
+// цвет категории (d.color); у кого его нет — по месту на кольце: по часовой
+// стрелке в порядке palette (её порядок подобран так, что соседние — и
+// последний с первым — хорошо различимы), «Другое» (other) — otherColor.
 // Кэш раскладок: листание месяцев туда-обратно не пересчитывает поиск заново.
 const cache = new Map();
 const CACHE_SIZE = 40;
 
 export function layoutRing(data, w, h, opts = {}) {
-  const key = JSON.stringify([data.map((d) => [d.name, d.value, !!d.other]), Math.round(w), Math.round(h), opts.nameLines, opts.palette, opts.otherColor, opts.search]);
+  const key = JSON.stringify([data.map((d) => [d.name, d.value, !!d.other, d.color || '']), Math.round(w), Math.round(h), opts.nameLines, opts.palette, opts.otherColor, opts.search]);
   if (cache.has(key)) return cache.get(key);
   const result = computeLayout(data, w, h, opts);
   cache.set(key, result);
@@ -378,9 +378,9 @@ function computeLayout(data, w, h, { nameLines = 1, palette = ['#888'], otherCol
     }
   }
 
-  // цвета — по месту на кольце, по часовой от первого сегмента
+  // цвета — свои у категории; иначе по месту на кольце, по часовой от первого сегмента
   let k = 0;
-  const color = new Map(best.order.map((d) => [d.name, d.other ? otherColor : palette[k++ % palette.length]]));
+  const color = new Map(best.order.map((d) => [d.name, d.other ? otherColor : d.color || palette[k++ % palette.length]]));
   for (const sl of best.slices) sl.color = color.get(sl.name);
   return { ...g, slices: best.slices, labels: best.labels, maxGap: best.maxGap };
 }

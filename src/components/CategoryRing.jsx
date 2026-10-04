@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NAME_LINE_H, PER_ROW, arcPath, fmtPercent, layoutRing } from '../utils/ringLayout';
 import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
+import { tintFilter } from '../utils/categoryColors';
 
 // Кольцо расходов по категориям для главного экрана (в духе Monefy): проценты
 // на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
@@ -9,8 +10,8 @@ import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 // Касание сегмента/подписи — пока палец держится, категория подсвечена, а в
 // центре вместо итогов месяца её траты; короткий тап — onSelect(item);
 // сдвиг в первые HOLD_MS — свайп месяца, дольше — удержание.
-// data: [{ name, value, icon, other? }] по убыванию; center: { expense, income }.
-// Цвета — по месту на кольце (см. layoutRing), а не по рангу.
+// data: [{ name, value, icon, color?, other? }] по убыванию; center: { expense, income }.
+// Цвет — свой у категории (color), иначе по месту на кольце (см. layoutRing).
 
 const NAME_FS = 11;
 const PCT_FS = 12.5;
@@ -289,7 +290,8 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
                 <rect x={x - (widths.get(l) ?? g.slot) / 2} y={top} width={widths.get(l) ?? g.slot} height={g.labelH} fill="transparent" />
                 {/* процент, не влезший на сегмент, — рядом с иконкой (там есть место) */}
-                <text x={x} y={top + mode.icon / 2 + 1} textAnchor="middle" dominantBaseline="central" fontSize={mode.icon}>
+                {/* иконка бесцветная, тонирована в цвет категории (см. CategoryTints) */}
+                <text x={x} y={top + mode.icon / 2 + 1} textAnchor="middle" dominantBaseline="central" fontSize={mode.icon} filter={tintFilter(s.color)}>
                   {s.icon}
                   {pctHere && (
                     <tspan fontSize={PCT_FS} className="ring__pct" fill={s.color} dx="2">

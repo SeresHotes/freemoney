@@ -8,7 +8,8 @@
 //     type    — expense|income|transfer|adjust|interest
 //     amount  — ЗНАКОВЫЙ: расход/перевод-из/списание < 0, доход/перевод-в > 0
 //               (старые записи transfer_in/out и т.п. приводятся normalizeTx на чтении)
-//   Categories: id|name|kind|archived|icon|order|updatedAt|deleted            (A:H)
+//   Categories: name|kind|archived|icon|id|order|updatedAt|deleted|color      (A:I)
+//     color — цвет категории '#rrggbb' (пусто у старых строк — назначит приложение)
 //   Wallets:    name|currency|archived|order|kind|updatedAt|deleted            (A:G)
 //     кошелёк идентифицируется по имени (колонка A); поле id упразднено. Старые
 //     таблицы со схемой id|name|... разово мигрируются в ensureSyncSchema.
@@ -61,7 +62,10 @@ const TX_HEADER = [
 // ВАЖНО: новые колонки (id/order/updatedAt/deleted) добавлены В КОНЕЦ, а старые
 // name|kind|status|icon остаются на местах A–D. Иначе у существующих таблиц
 // (старая схема name|kind|status|icon) данные читались бы со сдвигом.
-const CAT_HEADER = ['name', 'kind', 'archived', 'icon', 'id', 'order', 'updatedAt', 'deleted'];
+const CAT_HEADER = ['name', 'kind', 'archived', 'icon', 'id', 'order', 'updatedAt', 'deleted', 'color'];
+// ЗАМОРОЖЕННЫЙ снапшот шапки категорий v1–v4 (до колонки color) — для миграций,
+// которые пишут шапку A1:H1: актуальная CAT_HEADER туда уже не влезает.
+const CAT_HEADER_V4 = CAT_HEADER.slice(0, 8);
 const WALLET_HEADER = ['name', 'currency', 'archived', 'order', 'kind', 'updatedAt', 'deleted'];
 // ЗАМОРОЖЕННЫЙ снапшот шапки кошельков версий v2–v3 (с колонкой rate). Нужен
 // миграциям v1 → v2 и v2 → v3: на тех версиях данные ещё в раскладке с rate, а
@@ -89,7 +93,7 @@ const MIGRATIONS = [
     // WALLET_HEADER — он уже без id.
     await batchUpdateValues(id, [
       { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
-      { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
+      { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER_V4] },
       { range: `${SHEET_WALLET}!A1:I1`, values: [['id', 'name', 'currency', 'status', 'order', 'kind', 'rate', 'updatedAt', 'deleted']] },
       { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
       { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
@@ -134,7 +138,7 @@ const MIGRATIONS = [
   async (id) => {
     await batchUpdateValues(id, [
       { range: `${SHEET_TX}!A1:O1`, values: [TX_HEADER] },
-      { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER] },
+      { range: `${SHEET_CAT}!A1:H1`, values: [CAT_HEADER_V4] },
       { range: `${SHEET_WALLET}!A1:H1`, values: [WALLET_HEADER_V3] },
       { range: `${SHEET_TAG}!A1:D1`, values: [TAG_HEADER] },
       { range: `${SHEET_SETTINGS}!A1:C1`, values: [SETTINGS_HEADER] },
@@ -152,6 +156,12 @@ const MIGRATIONS = [
     });
     await clearValues(id, `${SHEET_WALLET}!A1:H`);
     await updateValues(id, `${SHEET_WALLET}!A1`, [WALLET_HEADER, ...migrated]);
+  },
+  // v4 → v5: у категорий появился цвет — колонка I (color) в конце листа.
+  // Только шапка: у старых строк ячейка пуста, цвет назначит приложение и
+  // допишет следующей синхронизацией. Идемпотентно.
+  async (id) => {
+    await updateValues(id, `${SHEET_CAT}!A1:I1`, [CAT_HEADER]);
   },
 ];
 // Текущая версия схемы = число миграций. Пре-версионные таблицы (без листа _Meta)
@@ -242,7 +252,7 @@ function rowToTx(r) {
 function catToRow(c) {
   return [
     c.name, c.kind || 'both', encBool(c.archived), c.icon || DEFAULT_ICON,
-    c.id || '', c.order ?? 0, encStamp(c.updatedAt), encBool(c.deleted),
+    c.id || '', c.order ?? 0, encStamp(c.updatedAt), encBool(c.deleted), c.color || '',
   ];
 }
 function rowToCat(r, index) {
@@ -256,6 +266,7 @@ function rowToCat(r, index) {
     order: r[5] === '' || r[5] == null ? index : decNum(r[5]),
     updatedAt: decStamp(r[6]),
     deleted: decBool(r[7]),
+    color: r[8] || '',
   };
 }
 
@@ -295,7 +306,7 @@ function rowToSetting(r) {
 // Диапазоны данных (без строки заголовка) и мапперы по сущностям.
 const ENTITY = {
   transactions: { sheet: SHEET_TX, lastCol: 'O', toRow: txToRow, fromRow: rowToTx },
-  categories: { sheet: SHEET_CAT, lastCol: 'H', toRow: catToRow, fromRow: rowToCat },
+  categories: { sheet: SHEET_CAT, lastCol: 'I', toRow: catToRow, fromRow: rowToCat },
   wallets: { sheet: SHEET_WALLET, lastCol: 'G', toRow: walletToRow, fromRow: rowToWallet },
   tags: { sheet: SHEET_TAG, lastCol: 'D', toRow: tagToRow, fromRow: rowToTag },
   settings: { sheet: SHEET_SETTINGS, lastCol: 'C', toRow: settingToRow, fromRow: rowToSetting },
@@ -387,7 +398,7 @@ export async function findExistingSpreadsheets() {
 export async function fetchAllForSync(id) {
   const [txRows, catRows, walletRows, tagRows, settingsRows] = await getValuesBatch(id, [
     `${SHEET_TX}!A2:O`,
-    `${SHEET_CAT}!A2:H`,
+    `${SHEET_CAT}!A2:I`,
     `${SHEET_WALLET}!A2:H`,
     `${SHEET_TAG}!A2:D`,
     `${SHEET_SETTINGS}!A2:C`,

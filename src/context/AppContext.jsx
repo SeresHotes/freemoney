@@ -16,6 +16,7 @@ import {
 } from '../config';
 import { newId, todayIso, nowTime } from '../utils/format';
 import { walletBalance } from '../utils/finance';
+import { assignMissingColors, pickColor } from '../utils/categoryColors';
 
 const AppContext = createContext(null);
 
@@ -75,8 +76,17 @@ export function AppProvider({ children }) {
 
   // Загрузка всех данных с нормализацией операций (кошелёк/валюта по умолчанию).
   const loadData = useCallback(async (backend) => {
-    const { categories: cats, transactions: txs, wallets: wls, tags: tgs, settings } =
+    const { categories: fetchedCats, transactions: txs, wallets: wls, tags: tgs, settings } =
       await backend.fetchAll();
+    // Категориям без цвета (старые данные, импорт, чужое устройство) — раздаём
+    // случайные свободные цвета и сохраняем, чтобы цвет больше не менялся.
+    let cats = fetchedCats;
+    const assigned = assignMissingColors(cats);
+    if (assigned.length) {
+      await backend.setCategoryColors(assigned);
+      const colorOf = new Map(assigned.map((a) => [a.id, a.color]));
+      cats = cats.map((c) => (colorOf.has(c.id) ? { ...c, color: colorOf.get(c.id) } : c));
+    }
     const base = settings.baseCurrency || DEFAULT_BASE_CURRENCY;
     const defaultWallet = wls.find((w) => !w.archived) || wls[0];
     const walletCurrency = Object.fromEntries(wls.map((w) => [w.name, w.currency]));
@@ -514,10 +524,11 @@ export function AppProvider({ children }) {
   const addCategory = useCallback(
     (cat) =>
       mutate(async () => {
-        await backendRef.current.addCategory(cat);
+        const color = cat.color || pickColor(categories.map((c) => c.color));
+        await backendRef.current.addCategory({ ...cat, color });
         setCategories(await backendRef.current.fetchCategories());
       }),
-    [mutate],
+    [mutate, categories],
   );
 
   const setCategoryArchived = useCallback(

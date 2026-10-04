@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import BackButton from '../components/BackButton';
+import CategoryIcon from '../components/CategoryIcon';
 import { useApp } from '../context/AppContext';
 import { formatAmount } from '../utils/currencies';
 import { monthKey, monthLabel, dayHeading } from '../utils/format';
@@ -45,7 +46,7 @@ export default function Transactions() {
   // Панель фильтров по умолчанию свёрнута; активные фильтры видны счётчиком на кнопке.
   const [showFilters, setShowFilters] = useState(false);
 
-  const iconByCategory = useMemo(() => new Map(categories.map((c) => [c.name, c.icon])), [categories]);
+  const catByName = useMemo(() => new Map(categories.map((c) => [c.name, c])), [categories]);
   const walletById = useMemo(() => new Map(wallets.map((w) => [w.name, w])), [wallets]);
 
   // Пары ног перевода/долга по groupId — берём из полного списка, чтобы
@@ -172,7 +173,7 @@ export default function Transactions() {
 
     return (
       <li key={t.groupId} className="tx-item tx-item--clickable" onClick={() => navigate(to)}>
-        <span className="tx-item__cat-icon">{icon}</span>
+        <CategoryIcon icon={icon} color={cat?.color} className="tx-item__cat-icon" />
         <div className="tx-item__main">
           <span className="tx-item__category">{title}</span>
           <span className="tx-item__note">{subtitle}{t.note ? ` · ${t.note}` : ''}</span>
@@ -194,7 +195,8 @@ export default function Transactions() {
     const adjust = t.type === 'adjust';
     const interest = t.type === 'interest';
     const positive = t.amount >= 0;
-    const icon = interest ? '📈' : adjust ? '⚖️' : iconByCategory.get(t.category) || '🏷️';
+    const cat = interest || adjust ? null : catByName.get(t.category);
+    const icon = interest ? '📈' : adjust ? '⚖️' : cat?.icon || '🏷️';
     const title = interest
       ? (t.rate != null ? `Проценты · ${t.rate}%` : 'Проценты')
       : adjust ? 'Корректировка' : t.category || 'Без категории';
