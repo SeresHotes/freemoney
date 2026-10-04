@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import BackButton from '../components/BackButton';
 import CategoryIcon from '../components/CategoryIcon';
 import { useApp } from '../context/AppContext';
 
@@ -21,8 +20,8 @@ export default function Categories() {
 
   return (
     <div className="page">
-      <header className="page__header page__header--with-back">
-        <BackButton fallback="/settings" />
+      {/* Категории — вкладка нижнего меню, «Назад» здесь не нужна. */}
+      <header className="page__header">
         <h1>Категории</h1>
       </header>
 

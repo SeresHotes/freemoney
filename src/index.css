@@ -1169,14 +1169,40 @@ code {
   background: #ea580c;
   border-radius: 0.4rem;
 }
-/* --- Индикатор синхронизации --------------------------------------------- */
-/* Ненавязчивый: маленький кружок в верхнем углу, виден только когда идёт синк
-   или требуется внимание. */
-.sync-indicator {
+/* --- Правый верхний угол: синхронизация + настройки ----------------------- */
+.top-corner {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 8px);
   right: 10px;
   z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Шестерёнка «Настройки» — на экранах нижнего меню. */
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 1.2rem;
+  line-height: 1;
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  -webkit-tap-highlight-color: transparent;
+}
+.settings-btn:active {
+  background: var(--surface-2);
+}
+
+/* --- Индикатор синхронизации --------------------------------------------- */
+/* Ненавязчивый: маленький кружок в верхнем углу, виден только когда идёт синк
+   или требуется внимание. */
+.sync-indicator {
   display: inline-flex;
   align-items: center;
   justify-content: center;
