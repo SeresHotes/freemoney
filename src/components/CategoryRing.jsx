@@ -9,7 +9,7 @@ import CategoryIcon from './CategoryIcon';
 // Раскладка (поворот, порядок, места подписей, что уходит в «Другое», размер
 // кольца) — utils/ringLayout.js.
 // Касание сегмента/подписи — пока палец держится, категория подсвечена, а в
-// центре вместо итогов месяца её траты; короткий тап — onSelect(item);
+// центре вместо итогов месяца только её сумма; короткий тап — onSelect(item);
 // сдвиг в первые HOLD_MS — свайп месяца, дольше — удержание.
 // data: все категории [{ name, value, icon, color? }]; мелкие, которым не нашлось
 // места рядом с сектором, кольцо само собирает в сектор «Другое» (other: true),
@@ -166,8 +166,8 @@ export default function CategoryRing({ data, center, formatValue, onSelect, memo
   }, [g, memoryKey]);
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
-  // Касание сегмента/подписи: сразу подсвечивает категорию и показывает её
-  // траты в центре — пока палец держится. Первые HOLD_MS решают, что это:
+  // Касание сегмента/подписи: сразу подсвечивает категорию и показывает в
+  // центре только её сумму — пока палец держится. Первые HOLD_MS решают, что это:
   // палец сдвинулся — свайп (подсветка снимается, месяц листает Home); нет —
   // удержание: подсветка ходит за пальцем по категориям, свайпа месяца нет.
   // Отпустил раньше TAP_MS, ни разу не сдвинув, — тап, onSelect (новый расход).
@@ -256,11 +256,12 @@ export default function CategoryRing({ data, center, formatValue, onSelect, memo
   }, []);
   // Итоги месяца в центре — как можно крупнее: обе суммы влезают по ширине
   // в отверстие кольца (жирный шрифт шире обычного — запас BOLD).
-  const sumFs = useMemo(() => {
-    if (!g || !center) return SUM_FS_MAX;
-    const widest = Math.max(...[center.expense, center.income].map((v) => textWidth(formatValue(v), 10) / 10));
+  const fitFs = (values) => {
+    if (!g) return SUM_FS_MAX;
+    const widest = Math.max(...values.map((v) => textWidth(formatValue(v), 10) / 10));
     return Math.max(SUM_FS_MIN, Math.min(SUM_FS_MAX, (g.r0 * 2 * SUM_FILL) / (widest * BOLD)));
-  }, [g, center, formatValue]);
+  };
+  const sumFs = useMemo(() => (center ? fitFs([center.expense, center.income]) : SUM_FS_MAX), [g, center, formatValue]);
   // зажатая категория: сегмент или подпись отвязанной (её сумма — внутри «Другого»)
   const heldItem = held && g ? g.labels.find((l) => l.s.name === held)?.s ?? g.slices.find((s) => s.name === held) : null;
   const isHeld = (s) => s.name === held || (s.other && heldItem?.detached);
@@ -355,12 +356,11 @@ export default function CategoryRing({ data, center, formatValue, onSelect, memo
           style={{ width: g.r0 * 2, height: g.r0 * 2, '--ring-fs': `${Math.min(22, Math.max(12, g.r0 * 0.2))}px` }}
         >
           {heldItem ? (
-            <>
-              <span className="ring__held-icon">{heldItem.icon}</span>
-              <span className="donut__label ring__held-name">{heldItem.name}</span>
-              <span className="donut__expense">{formatValue(heldItem.value)}</span>
-              {g.r0 > 52 && <span className="donut__label">{fmtPercent(heldItem.percent)}</span>}
-            </>
+            // удержание: в центре только сумма категории (какая — видно по
+            // подсвеченному сегменту и подписи), не мельче итогов месяца
+            <span className="donut__expense" style={{ fontSize: Math.max(sumFs, fitFs([heldItem.value])) }}>
+              {formatValue(heldItem.value)}
+            </span>
           ) : (
             <>
               {/* без подписей: красное — расходы, зелёное — доходы */}
