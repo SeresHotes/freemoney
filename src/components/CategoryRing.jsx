@@ -6,15 +6,16 @@ import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 // на самих сегментах, подписи (иконка + название) рядами сверху и снизу,
 // ломаные выносные линии.
 // Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
-// Тап по сегменту/подписи — onSelect(item). Долгое нажатие — пока палец
-// держится, в центре вместо итогов месяца траты этой категории.
+// Касание сегмента/подписи — пока палец держится, категория подсвечена, а в
+// центре вместо итогов месяца её траты; короткий тап — onSelect(item).
 // data: [{ name, value, icon, other? }] по убыванию; center: { expense, income }.
 // Цвета — по месту на кольце (см. layoutRing), а не по рангу.
 
 const NAME_FS = 11;
 const PCT_FS = 12.5;
 const RING_PCT_FS = 12; // процент на сегменте
-const LONG_PRESS_MS = 400;
+const HELD_GROW = 5; // px: на сколько выдвигается наружу зажатый сегмент
+const LONG_PRESS_MS = 400; // держали дольше — это просмотр, не тап
 const LONG_PRESS_SLOP = 10; // px: сдвиг пальца больше — это свайп, не нажатие
 
 // Точная ширина текста шрифтом страницы (canvas), с запасным приближением.
@@ -138,65 +139,70 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   const widths = useMemo(() => (g ? labelWidths(g.labels, size.w) : new Map()), [g, size.w]);
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
-  // Долгое нажатие на сегмент/подпись: категория в центре — только пока держат.
+  // Касание сегмента/подписи: сразу подсвечивает категорию и показывает её
+  // траты в центре — пока палец держится. Отпустил быстро и не сдвигал —
+  // onSelect (новый расход); держал дольше LONG_PRESS_MS — только просмотр.
   const [held, setHeld] = useState(null);
-  const pressRef = useRef(null); // { timer, x, y, cleanup }
-  const suppressClick = useRef(false); // клик после долгого нажатия — не переход
-  const endPress = () => {
+  const pressRef = useRef(null); // { s, at, x, y, moved, cleanup }
+  const endPress = (select) => {
     const p = pressRef.current;
     pressRef.current = null;
-    if (p) {
-      clearTimeout(p.timer);
-      p.cleanup();
-    }
+    if (!p) return;
+    p.cleanup();
     setHeld(null);
+    if (select && !p.moved && Date.now() - p.at < LONG_PRESS_MS) onSelect?.(p.s);
   };
-  useEffect(() => endPress, []);
+  const endRef = useRef(endPress);
+  endRef.current = endPress;
+  useEffect(() => () => endRef.current(false), []);
   const startPress = (e, s) => {
     if (e.button > 0) return;
-    endPress();
-    suppressClick.current = false;
+    endPress(false);
     const onMove = (ev) => {
       const p = pressRef.current;
-      if (p && !p.fired && Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP) endPress();
+      if (p && Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP) p.moved = true;
     };
     // отпускание где угодно (палец мог съехать с сегмента) — вернуть итоги
+    const onUp = () => endRef.current(true);
+    const onCancel = () => endRef.current(false);
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', endPress);
-    window.addEventListener('pointercancel', endPress);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
     const cleanup = () => {
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', endPress);
-      window.removeEventListener('pointercancel', endPress);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
     };
-    const timer = setTimeout(() => {
-      const p = pressRef.current;
-      if (!p) return;
-      p.fired = true;
-      suppressClick.current = true;
-      setHeld(s.name);
-    }, LONG_PRESS_MS);
-    pressRef.current = { timer, x: e.clientX, y: e.clientY, cleanup };
+    pressRef.current = { s, at: Date.now(), x: e.clientX, y: e.clientY, moved: false, cleanup };
+    setHeld(s.name);
   };
-  const pressProps = (s) => ({
-    onPointerDown: (e) => startPress(e, s),
-    onClick: () => {
-      if (suppressClick.current) suppressClick.current = false;
-      else onSelect?.(s);
-    },
-  });
+  const pressProps = (s) => ({ onPointerDown: (e) => startPress(e, s) });
+
+  // Системный «долгий тап» (вибрация, меню, выделение) и синяя рамка касания
+  // гасятся отменой touchstart на сегментах/подписях. Слушатель — нативный
+  // и не passive: у React touchstart пассивный. Клик тогда не приходит —
+  // тап обрабатывается по pointerup (см. endPress).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const onTouchStart = (e) => {
+      if (e.target.closest?.('.ring__slice, .ring__label')) e.preventDefault();
+    };
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    return () => el.removeEventListener('touchstart', onTouchStart);
+  }, []);
   const heldSlice = held && g ? g.slices.find((s) => s.name === held) : null;
 
   return (
-    <div className="ring" ref={ref} onContextMenu={(e) => e.preventDefault()}>
+    <div className={`ring${held ? ' ring--held' : ''}`} ref={ref} onContextMenu={(e) => e.preventDefault()}>
       {g && (
         <svg width={size.w} height={size.h} className="ring__svg" role="img" aria-label="Расходы по категориям">
           {g.slices.map((s) => (
             <path
               key={s.name}
-              d={arcPath(g.cx, g.cy, g.r0, g.R, s.a0, s.a1)}
+              d={arcPath(g.cx, g.cy, g.r0, s.name === held ? g.R + HELD_GROW : g.R, s.a0, s.a1)}
               fill={s.color}
-              className="ring__slice"
+              className={`ring__slice${s.name === held ? ' is-held' : ''}`}
               {...pressProps(s)}
             >
               <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
@@ -213,7 +219,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
                 dominantBaseline="central"
                 fontSize={RING_PCT_FS}
                 fill={inkOn(s.color)}
-                className="ring__pct-on"
+                className={`ring__pct-on${s.name === held ? ' is-held' : ''}`}
               >
                 {pct.text}
               </text>
@@ -228,6 +234,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
               stroke={s.color}
               strokeWidth="1.3"
               strokeLinejoin="round"
+              className={`ring__line${s.name === held ? ' is-held' : ''}`}
             />
           ))}
           {g.labels.map((l) => {
@@ -239,7 +246,7 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
             const pctHere = onRing.get(s.name) ? null : fmtPercent(s.percent);
             const lastY = (i, all) => top + mode.icon + 9 + NAME_LINE_H * (i + (mode.nameLines - all.length) / 2);
             return (
-              <g key={s.name} className="ring__label" {...pressProps(s)}>
+              <g key={s.name} className={`ring__label${s.name === held ? ' is-held' : ''}`} {...pressProps(s)}>
                 <title>{`${s.name}: ${formatValue(s.value)} (${fmtPercent(s.percent)})`}</title>
                 {/* прозрачная подложка — чтобы тап попадал не только в буквы */}
                 <rect x={x - (widths.get(l) ?? g.slot) / 2} y={top} width={widths.get(l) ?? g.slot} height={g.labelH} fill="transparent" />
