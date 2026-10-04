@@ -1269,8 +1269,21 @@ code {
   padding-bottom: 0.5rem;
 }
 .home__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   /* место под индикатор синхронизации в правом верхнем углу */
   padding-right: 28px;
+}
+/* Глаз рядом с заголовком: показать/скрыть балансы кошельков. */
+.home__eye {
+  display: inline-flex;
+  padding: 0.3rem;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.05rem;
+  cursor: pointer;
 }
 .home__title {
   font-size: 1.15rem;

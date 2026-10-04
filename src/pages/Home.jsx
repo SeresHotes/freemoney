@@ -29,6 +29,17 @@ function readHomeWallet() {
   }
 }
 
+// Балансы кошельков на главной скрыты (••••), пока их не показали кнопкой-глазом.
+const LS_HOME_BALANCES = 'freemoney:homeBalancesShown';
+function readBalancesShown() {
+  try {
+    return localStorage.getItem(LS_HOME_BALANCES) === '1';
+  } catch {
+    return false;
+  }
+}
+const HIDDEN_BALANCE = '••••';
+
 export default function Home() {
   const { transactions, wallets, categories, baseCurrency } = useApp();
   const navigate = useNavigate();
@@ -63,6 +74,18 @@ export default function Home() {
       /* без хранилища выбор просто не переживёт перезапуск */
     }
   };
+  const [balancesShown, setBalancesShown] = useState(readBalancesShown);
+  const toggleBalances = () => {
+    const next = !balancesShown;
+    setBalancesShown(next);
+    try {
+      if (next) localStorage.setItem(LS_HOME_BALANCES, '1');
+      else localStorage.removeItem(LS_HOME_BALANCES);
+    } catch {
+      /* без хранилища после перезапуска балансы снова скрыты */
+    }
+  };
+
   const walletQuery = selWallet ? `wallet=${encodeURIComponent(selWallet)}` : '';
 
   // Выбранный месяц — в адресе (?month=YYYY-MM), чтобы не сбрасывался после
@@ -129,13 +152,19 @@ export default function Home() {
     {
       key: '',
       name: `Всего${ratesNote ? ' *' : ''}`,
-      balance: formatAmount(netWorth, baseCurrency),
-      negative: netWorth < 0,
+      balance: balancesShown ? formatAmount(netWorth, baseCurrency) : HIDDEN_BALANCE,
+      negative: balancesShown && netWorth < 0,
       title: ratesNote ? `Все кошельки (${ratesNote})` : 'Все кошельки',
     },
     ...recentWallets.map((w) => {
       const bal = walletBalance(transactions, w.name);
-      return { key: w.name, name: w.name, balance: formatAmount(bal, w.currency), negative: bal < 0, title: w.name };
+      return {
+        key: w.name,
+        name: w.name,
+        balance: balancesShown ? formatAmount(bal, w.currency) : HIDDEN_BALANCE,
+        negative: balancesShown && bal < 0,
+        title: w.name,
+      };
     }),
   ].sort((a, b) => (b.key === selWallet) - (a.key === selWallet));
 
@@ -152,6 +181,21 @@ export default function Home() {
     <div className="page home">
       <header className="home__head">
         <h1 className="home__title">FreeMoney{IS_DEV_CHANNEL && <span className="channel-badge">DEV</span>}</h1>
+        <button
+          className="home__eye"
+          aria-label={balancesShown ? 'Скрыть балансы' : 'Показать балансы'}
+          title={balancesShown ? 'Скрыть балансы' : 'Показать балансы'}
+          aria-pressed={balancesShown}
+          onClick={toggleBalances}
+        >
+          <Icon
+            d={
+              balancesShown
+                ? 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 100 6 3 3 0 000-6z'
+                : 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 100 6 3 3 0 000-6zM3 3l18 18'
+            }
+          />
+        </button>
       </header>
 
       <section className="home__month" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
