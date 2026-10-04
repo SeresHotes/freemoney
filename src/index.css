@@ -1308,8 +1308,9 @@ code {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  /* место под индикатор синхронизации в правом верхнем углу */
-  padding-right: 28px;
+  /* место под угловой блок (синхронизация 26px + шестерёнка 36px, справа
+     10px от края экрана): кнопка кошелька в шапке не залезает под него */
+  padding-right: 70px;
 }
 /* Глаз рядом с заголовком: показать/скрыть балансы кошельков. */
 .home__eye {
@@ -1463,10 +1464,12 @@ code {
   margin-left: auto;
   min-width: 0;
   max-width: 55%;
+  /* высотой как шестерёнка рядом — на одной линии */
+  height: 36px;
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0 0.75rem;
   background: var(--surface);
   border: 1px solid var(--income);
   border-radius: 999px;
