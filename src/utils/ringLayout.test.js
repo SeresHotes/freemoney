@@ -96,6 +96,18 @@ describe('layoutRing: какие категории на кольце', () => {
           for (const l of g.labels.filter((x) => x.a)) {
             expect(l.a.detour).toBe(0);
             expect(l.a.points.length).toBeLessThanOrEqual(3);
+            // линия не проходит через чужие подписи
+            for (const o of g.labels) {
+              if (o === l) continue;
+              const pts = l.a.points;
+              for (let i = 1; i < pts.length; i++) {
+                const [[x1, y1], [x2, y2]] = [pts[i - 1], pts[i]];
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const k = Math.max(0, Math.min(1, ((o.x - x1) * dx + (o.y - y1) * dy) / (dx * dx + dy * dy || 1)));
+                expect(Math.hypot(o.x - x1 - k * dx, o.y - y1 - k * dy)).toBeGreaterThanOrEqual(g.labelR - 0.5);
+              }
+            }
           }
         });
       }
