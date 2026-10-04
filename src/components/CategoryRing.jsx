@@ -7,7 +7,8 @@ import { CATEGORY_COLORS, OTHER_COLOR } from '../utils/chartColors';
 // ломаные выносные линии.
 // Раскладка (поворот, порядок, ряды, размер кольца) — utils/ringLayout.js.
 // Касание сегмента/подписи — пока палец держится, категория подсвечена, а в
-// центре вместо итогов месяца её траты; короткий тап — onSelect(item).
+// центре вместо итогов месяца её траты; короткий тап — onSelect(item);
+// сдвиг в первые LONG_PRESS_MS — свайп месяца, дольше — удержание.
 // data: [{ name, value, icon, other? }] по убыванию; center: { expense, income }.
 // Цвета — по месту на кольце (см. layoutRing), а не по рангу.
 
@@ -15,7 +16,7 @@ const NAME_FS = 11;
 const PCT_FS = 12.5;
 const RING_PCT_FS = 12; // процент на сегменте
 const HELD_GROW = 5; // px: на сколько выдвигается наружу зажатый сегмент
-const LONG_PRESS_MS = 400; // держали дольше — это просмотр, не тап
+const LONG_PRESS_MS = 400; // столько без движения — удержание, не тап и не свайп
 const LONG_PRESS_SLOP = 10; // px: сдвиг пальца больше — это свайп, не нажатие
 
 // Точная ширина текста шрифтом страницы (canvas), с запасным приближением.
@@ -140,18 +141,21 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   const onRing = useMemo(() => new Map(g ? g.slices.map((s) => [s.name, ringPercent(s, g)]) : []), [g]);
 
   // Касание сегмента/подписи: сразу подсвечивает категорию и показывает её
-  // траты в центре — пока палец держится. Ведёшь пальцем — подсветка
-  // переходит на категорию под ним. Отпустил быстро и не сдвигал — onSelect
-  // (новый расход); держал дольше LONG_PRESS_MS или вёл — только просмотр.
+  // траты в центре — пока палец держится. Первые LONG_PRESS_MS решают, что
+  // это: палец сдвинулся — свайп (подсветка снимается, месяц листает Home);
+  // отпустил не сдвигая — тап, onSelect (новый расход); держит дольше —
+  // удержание: подсветка ходит за пальцем по категориям, свайпа месяца нет.
   const [held, setHeld] = useState(null);
-  const pressRef = useRef(null); // { s, at, x, y, moved, cleanup }
+  const pressRef = useRef(null); // { s, x, y, mode: 'pending'|'hold'|'swipe', timer, cleanup }
+  const holdTouch = useRef(false); // текущее касание — удержание: его touchend не до Home
   const endPress = (select) => {
     const p = pressRef.current;
     pressRef.current = null;
     if (!p) return;
+    clearTimeout(p.timer);
     p.cleanup();
     setHeld(null);
-    if (select && !p.moved && Date.now() - p.at < LONG_PRESS_MS) onSelect?.(p.s);
+    if (select && p.mode === 'pending') onSelect?.(p.s);
   };
   const endRef = useRef(endPress);
   endRef.current = endPress;
@@ -159,11 +163,19 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
   const startPress = (e, s) => {
     if (e.button > 0) return;
     endPress(false);
+    holdTouch.current = false;
     const onMove = (ev) => {
       const p = pressRef.current;
-      if (!p) return;
-      if (Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP) p.moved = true;
-      // категория под пальцем (мимо сегментов и подписей — остаётся прежняя)
+      if (!p || p.mode === 'swipe') return;
+      if (p.mode === 'pending') {
+        if (Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > LONG_PRESS_SLOP) {
+          p.mode = 'swipe';
+          clearTimeout(p.timer);
+          setHeld(null);
+        }
+        return;
+      }
+      // удержание: категория под пальцем (мимо сегментов и подписей — прежняя)
       const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-cat]');
       const name = hit && ref.current?.contains(hit) ? hit.getAttribute('data-cat') : null;
       if (name) setHeld(name);
@@ -179,26 +191,40 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-    pressRef.current = { s, at: Date.now(), x: e.clientX, y: e.clientY, moved: false, cleanup };
+    const timer = setTimeout(() => {
+      const p = pressRef.current;
+      if (p?.mode !== 'pending') return;
+      p.mode = 'hold';
+      holdTouch.current = true;
+    }, LONG_PRESS_MS);
+    pressRef.current = { s, x: e.clientX, y: e.clientY, mode: 'pending', timer, cleanup };
     setHeld(s.name);
   };
   const pressProps = (s) => ({ 'data-cat': s.name, onPointerDown: (e) => startPress(e, s) });
 
   // Системный «долгий тап» (вибрация, меню, выделение) и синяя рамка касания
-  // гасятся отменой touchstart на сегментах/подписях. Слушатель — нативный
+  // гасятся отменой touchstart на сегментах/подписях. Слушатели — нативные
   // и не passive: у React touchstart пассивный. Клик тогда не приходит —
-  // тап обрабатывается по pointerup (см. endPress). Дальше касание не
-  // всплывает: пока палец на категории, свайп месяца (Home) не срабатывает.
+  // тап обрабатывается по pointerup (см. endPress). touchend удержания не
+  // всплывает до Home — иначе отпускание после ведения пальцем листало бы месяц.
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
     const onTouchStart = (e) => {
-      if (!e.target.closest?.('[data-cat]')) return;
-      e.preventDefault();
+      holdTouch.current = false;
+      if (e.target.closest?.('[data-cat]')) e.preventDefault();
+    };
+    const onTouchEnd = (e) => {
+      if (!holdTouch.current) return;
+      holdTouch.current = false;
       e.stopPropagation();
     };
     el.addEventListener('touchstart', onTouchStart, { passive: false });
-    return () => el.removeEventListener('touchstart', onTouchStart);
+    el.addEventListener('touchend', onTouchEnd);
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
   }, []);
   const heldSlice = held && g ? g.slices.find((s) => s.name === held) : null;
 
