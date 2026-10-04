@@ -45,6 +45,10 @@ function fitText(text, maxW, fontSize) {
 }
 
 const NAME_FS_MIN = 9.5;
+const SUM_FS_MIN = 12; // итоги месяца в центре кольца — размер шрифта, px
+const SUM_FS_MAX = 28;
+const SUM_FILL = 0.84; // доля диаметра отверстия под строку итогов
+const BOLD = 1.08; // жирный шрифт шире обычного примерно на столько
 const SLACK = 1.12; // на сколько строка может выйти за свою ширину (зазор между подписями)
 
 // Разбить название на строки (до maxLines) по словам в ширину maxW. Слово,
@@ -219,6 +223,13 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
       el.removeEventListener('touchend', onTouchEnd);
     };
   }, []);
+  // Итоги месяца в центре — как можно крупнее: обе суммы влезают по ширине
+  // в отверстие кольца (жирный шрифт шире обычного — запас BOLD).
+  const sumFs = useMemo(() => {
+    if (!g || !center) return SUM_FS_MAX;
+    const widest = Math.max(...[center.expense, center.income].map((v) => textWidth(formatValue(v), 10) / 10));
+    return Math.max(SUM_FS_MIN, Math.min(SUM_FS_MAX, (g.r0 * 2 * SUM_FILL) / (widest * BOLD)));
+  }, [g, center, formatValue]);
   // зажатая категория: сегмент или подпись отвязанной (её сумма — внутри «Другого»)
   const heldItem = held && g ? g.labels.find((l) => l.s.name === held)?.s ?? g.slices.find((s) => s.name === held) : null;
   const isHeld = (s) => s.name === held || (s.other && heldItem?.detached);
@@ -321,14 +332,9 @@ export default function CategoryRing({ data, center, formatValue, onSelect }) {
             </>
           ) : (
             <>
-              <span className="donut__label">Расходы</span>
-              <span className="donut__expense">{formatValue(center.expense)}</span>
-              {g.r0 > 52 && (
-                <>
-                  <span className="donut__label">Доходы</span>
-                  <span className="donut__income">{formatValue(center.income)}</span>
-                </>
-              )}
+              {/* без подписей: красное — расходы, зелёное — доходы */}
+              <span className="donut__expense" title="Расходы" style={{ fontSize: sumFs }}>{formatValue(center.expense)}</span>
+              <span className="donut__income" title="Доходы" style={{ fontSize: sumFs }}>{formatValue(center.income)}</span>
             </>
           )}
         </div>
