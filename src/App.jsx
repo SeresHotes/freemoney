@@ -2,8 +2,7 @@ import { Suspense, lazy, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import NavBar from './components/NavBar';
-import SyncIndicator from './components/SyncIndicator';
-import SettingsButton from './components/SettingsButton';
+import TopCorner, { SyncStatusExtra } from './components/TopCorner';
 import CategoryTints from './components/CategoryTints';
 import Home from './pages/Home';
 import AddTransaction from './pages/AddTransaction';
@@ -85,12 +84,11 @@ function Shell() {
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        {/* в прокручиваемой области — уезжает вместе со страницей */}
+        <TopCorner />
       </main>
       <NavBar />
-      <div className="top-corner">
-        <SyncIndicator />
-        <SettingsButton />
-      </div>
+      <SyncStatusExtra />
       <BusyOverlay />
       <SyncSetupRedirect />
     </div>
