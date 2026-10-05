@@ -819,34 +819,6 @@ h2 {
   border-radius: var(--radius);
   padding: 0.75rem;
 }
-.wallet-chips {
-  display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
-  margin-top: 1rem;
-  padding-bottom: 0.25rem;
-}
-.wallet-chip {
-  flex: 0 0 auto;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.9rem;
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-width: 7rem;
-  text-align: left;
-}
-.wallet-chip__name {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-.wallet-chip__bal {
-  font-weight: 700;
-}
 .cat-item__right {
   display: flex;
   align-items: center;
@@ -1170,42 +1142,14 @@ code {
   background: #ea580c;
   border-radius: 0.4rem;
 }
-/* --- Правый верхний угол: синхронизация + настройки ----------------------- */
-.top-corner {
-  position: fixed;
-  /* на линии заголовков: сверху отступ как у .page, а кнопка 36px — ровно
-     строка h1, так что центры совпадают */
-  top: calc(env(safe-area-inset-top, 0px) + 1.25rem);
-  right: 10px;
-  z-index: 80;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-/* Шестерёнка «Настройки» — на экранах нижнего меню. */
-.settings-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  font-size: 1.2rem;
-  line-height: 1;
-  text-decoration: none;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  -webkit-tap-highlight-color: transparent;
-}
-.settings-btn:active {
-  background: var(--surface-2);
-}
-
 /* --- Индикатор синхронизации --------------------------------------------- */
 /* Ненавязчивый: маленький кружок в верхнем углу, виден только когда идёт синк
    или требуется внимание. */
 .sync-indicator {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  right: 10px;
+  z-index: 80;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1305,21 +1249,14 @@ code {
   padding-bottom: 0.5rem;
 }
 .home__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   /* место под индикатор синхронизации в правом верхнем углу */
   padding-right: 28px;
 }
 .home__title {
   white-space: nowrap;
-}
-/* Выбранная карточка ленты кошельков (кольцо — по ней): зелёная, первая. */
-.wallet-chip--selected {
-  border-color: var(--income);
-}
-.wallet-chip--selected .wallet-chip__bal {
-  color: var(--income);
-}
-.wallet-chip--negative .wallet-chip__bal {
-  color: var(--expense);
 }
 .home__rates-note {
   flex: 0 0 auto;
@@ -1419,12 +1356,154 @@ code {
   gap: 0.5rem;
   text-align: center;
 }
-.home__wallets {
-  flex: 0 0 auto;
-  margin-top: 0;
+/* Плашка периода: по центру — период и кошелёк, тап открывает шторку. */
+.home__period {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  padding: 0.2rem 0.75rem;
 }
-.home__wallets .wallet-chip {
-  padding: 0.45rem 0.8rem;
+.home__period-title {
+  white-space: nowrap;
+}
+.home__period-caret {
+  color: var(--muted);
+  font-size: 0.75em;
+}
+.home__period-wallet {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--income);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+/* «Всё время» листать некуда — стрелки скрыты, но место держат (центр не прыгает). */
+.home__month-btn--hidden {
+  visibility: hidden;
+}
+/* Шторка снизу поверх главной (период и кошелёк). */
+.wallet-sheet {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+.wallet-sheet__box {
+  width: 100%;
+  max-width: 480px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 0 1rem calc(1rem + env(safe-area-inset-bottom));
+  animation: sheet-up 0.22s ease-out;
+  transition: transform 0.2s ease-out;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+.wallet-sheet {
+  animation: sheet-fade 0.22s ease-out;
+}
+@keyframes sheet-fade {
+  from {
+    background: rgba(15, 23, 42, 0);
+  }
+}
+/* Зона захвата: за неё шторку можно стянуть вниз. */
+.wallet-sheet__grab {
+  flex: 0 0 auto;
+  padding-top: 0.5rem;
+  touch-action: none;
+}
+.wallet-sheet__handle {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 0.5rem;
+  background: var(--surface-2);
+  border-radius: 2px;
+}
+.home-sheet__period {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+.home-sheet__now {
+  align-self: center;
+  padding: 0.35rem 0.9rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.wallet-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+.wallet-sheet__close {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+}
+.wallet-sheet__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+.wallet-sheet__row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.35rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+.wallet-sheet__row--selected {
+  border-color: var(--income);
+}
+.wallet-sheet__bal {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.wallet-sheet__row--selected .wallet-sheet__bal {
+  color: var(--income);
+}
+.wallet-sheet__row--negative .wallet-sheet__bal {
+  color: var(--expense);
 }
 .home__tiles {
   flex: 0 0 auto;
@@ -1478,14 +1557,6 @@ code {
   }
   .home__tile {
     padding: 0.35rem 0.2rem;
-  }
-  /* кошелёк в одну строку: имя и баланс рядом */
-  .home__wallets .wallet-chip {
-    flex-direction: row;
-    align-items: baseline;
-    gap: 0.4rem;
-    min-width: 0;
-    padding: 0.35rem 0.7rem;
   }
   /* плитки — только иконки (полное название во всплывающей подсказке) */
   .home__tile-label {
