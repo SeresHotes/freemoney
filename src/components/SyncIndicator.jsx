@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useExperiment } from '../utils/experiments';
+import { useIsTabRoute } from './SettingsButton';
 
 // Ненавязчивый индикатор синхронизации в углу экрана:
 //  - идёт синхронизация → маленький спиннер;
@@ -8,8 +10,12 @@ import { useApp } from '../context/AppContext';
 export default function SyncIndicator() {
   const { syncEnabled, syncStatus, needsSignIn } = useApp();
   const navigate = useNavigate();
+  const syncView = useExperiment('syncIndicator');
+  const tab = useIsTabRoute();
 
   if (!syncEnabled) return null;
+  // Вариант «badge»: там, где есть шестерёнка, статус показывает она.
+  if (syncView === 'badge' && tab) return null;
 
   if (syncStatus === 'syncing') {
     return (

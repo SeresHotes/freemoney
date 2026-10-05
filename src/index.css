@@ -1201,6 +1201,29 @@ code {
 .settings-btn:active {
   background: var(--surface-2);
 }
+/* ВРЕМЕННО (вариант syncIndicator=badge): статус синхронизации на шестерёнке. */
+.settings-btn {
+  position: relative;
+}
+.settings-btn--syncing::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.settings-btn__badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  background: var(--expense);
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+}
 
 /* --- Индикатор синхронизации --------------------------------------------- */
 /* Ненавязчивый: маленький кружок в верхнем углу, виден только когда идёт синк
@@ -1309,7 +1332,7 @@ code {
   align-items: center;
   gap: 0.4rem;
   /* место под угловой блок (синхронизация 26px + шестерёнка 36px, справа
-     10px от края экрана): кнопка кошелька в шапке не залезает под него */
+     10px от края экрана) */
   padding-right: 70px;
 }
 /* Глаз рядом с заголовком: показать/скрыть балансы кошельков. */
@@ -1459,54 +1482,11 @@ code {
   font-size: 0.9rem;
   color: var(--text);
 }
-/* Кнопка списка кошельков в разных местах (варианты popup-*). */
-.home__wallet-pill {
-  margin-left: auto;
-  min-width: 0;
-  max-width: 55%;
-  /* высотой как шестерёнка рядом — на одной линии */
-  height: 36px;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--income);
-  border-radius: 999px;
-  color: var(--text);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
 .home__wallet-pill-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.home__month-center {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.home__month-title--compact {
-  min-height: 30px;
-}
-.home__month-wallet {
-  max-width: 100%;
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: 0.2rem;
-  padding: 0.15rem 0.7rem;
-  background: var(--surface-2);
-  border: none;
-  border-radius: 999px;
-  color: var(--income);
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.home__month-wallet:active {
-  background: var(--surface-2);
 }
 .home__wallet-bar {
   flex: 0 0 auto;
@@ -1522,34 +1502,37 @@ code {
   font-size: 0.95rem;
   cursor: pointer;
 }
-.home__actions--wallet {
-  grid-template-columns: 1fr auto 1fr;
-}
-.home__wallet-mid {
-  max-width: 6rem;
+/* Плашка периода: по центру — период и кошелёк, тап открывает шторку. */
+.home__period {
+  min-width: 0;
+  display: flex;
   flex-direction: column;
-  gap: 0 !important;
-  padding: 0.35rem 0.6rem !important;
-  border: 1px solid var(--income);
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  padding: 0.2rem 0.75rem;
 }
-.home__wallet-mid-icon {
-  font-size: 1.1rem;
-  line-height: 1.1;
+.home__period-title {
+  white-space: nowrap;
 }
-.home__wallet-mid-name {
+.home__period-caret {
+  color: var(--muted);
+  font-size: 0.75em;
+}
+.home__period-wallet {
   max-width: 100%;
-  font-size: 0.7rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--income);
+  font-size: 0.78rem;
+  font-weight: 500;
 }
-.home__tiles.home__tiles--5 {
-  grid-template-columns: repeat(5, 1fr);
+/* «Всё время» листать некуда — стрелки скрыты, но место держат (центр не прыгает). */
+.home__month-btn--hidden {
+  visibility: hidden;
 }
-.home__tile.home__tile--wallet {
-  border-color: var(--income);
-}
-/* Всплывающий список кошельков (варианты popup-*): снизу, над кнопками. */
+/* Шторка снизу поверх главной (период и кошелёк). */
 .wallet-sheet {
   position: fixed;
   inset: 0;
@@ -1568,7 +1551,53 @@ code {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius) var(--radius) 0 0;
-  padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  padding: 0 1rem calc(1rem + env(safe-area-inset-bottom));
+  animation: sheet-up 0.22s ease-out;
+  transition: transform 0.2s ease-out;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+.wallet-sheet {
+  animation: sheet-fade 0.22s ease-out;
+}
+@keyframes sheet-fade {
+  from {
+    background: rgba(15, 23, 42, 0);
+  }
+}
+/* Зона захвата: за неё шторку можно стянуть вниз. */
+.wallet-sheet__grab {
+  flex: 0 0 auto;
+  padding-top: 0.5rem;
+  touch-action: none;
+}
+.wallet-sheet__handle {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 0.5rem;
+  background: var(--surface-2);
+  border-radius: 2px;
+}
+.home-sheet__period {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+.home-sheet__now {
+  align-self: center;
+  padding: 0.35rem 0.9rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
 }
 .wallet-sheet__head {
   display: flex;
@@ -1686,9 +1715,6 @@ code {
   /* плитки — только иконки (полное название во всплывающей подсказке) */
   .home__tile-label {
     display: none;
-  }
-  .home__tile--wallet .home__tile-label {
-    display: block;
   }
   .home__tile-icon {
     font-size: 1.15rem;

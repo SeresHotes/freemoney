@@ -6,7 +6,7 @@ import { ICON_STYLES } from '../utils/emojiArt';
 import { CURRENCIES, formatAmount } from '../utils/currencies';
 import { APP_VERSION, CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
 import { agoLabel } from '../utils/format';
-import { HOME_WALLETS_VIEWS, readHomeWalletsView, writeHomeWalletsView } from '../utils/homeWalletsView';
+import { EXPERIMENTS, useExperiment, writeExperiment } from '../utils/experiments';
 import { downloadTemplateXlsx, downloadTemplateCsv } from '../api/tableImport';
 
 // Версию подставляет сборка (vite define). Локально без vite — 'dev'.
@@ -400,22 +400,29 @@ function IconStyleSection() {
   );
 }
 
-// ВРЕМЕННО: выбор вида кошельков на главной (только на этом устройстве).
-function HomeWalletsViewSection() {
-  const [view, setView] = useState(readHomeWalletsView);
+// ВРЕМЕННО: экспериментальные варианты интерфейса (только на этом устройстве).
+function ExperimentSelect({ id }) {
+  const exp = EXPERIMENTS[id];
+  const value = useExperiment(id);
   return (
-    <section>
-      <h2 className="section-title">Кошельки на главной (эксперимент)</h2>
+    <label className="field">
+      <span className="field__label">{exp.label}</span>
       <select
         className="field__input field__input--select"
-        value={view}
-        onChange={(e) => {
-          setView(e.target.value);
-          writeHomeWalletsView(e.target.value);
-        }}
+        value={value}
+        onChange={(e) => writeExperiment(id, e.target.value)}
       >
-        {Object.entries(HOME_WALLETS_VIEWS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        {Object.entries(exp.options).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
       </select>
+    </label>
+  );
+}
+
+function ExperimentsSection() {
+  return (
+    <section>
+      <h2 className="section-title">Эксперименты интерфейса</h2>
+      {Object.keys(EXPERIMENTS).map((id) => <ExperimentSelect key={id} id={id} />)}
     </section>
   );
 }
@@ -496,7 +503,7 @@ export default function Settings() {
 
       <IconStyleSection />
 
-      <HomeWalletsViewSection />
+      <ExperimentsSection />
 
       <SyncSection />
 
