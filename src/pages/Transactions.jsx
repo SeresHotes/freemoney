@@ -227,14 +227,10 @@ export default function Transactions() {
     <div className="page">
       {/* Кнопка «Назад» — только когда пришли сюда по фильтру (тап по категории
           или кошельку с главной/из списков), а не через нижнее меню. */}
-      {/* Заголовка у вкладки нет (где ты — видно по навбару); с фильтром из
-          перехода — «Назад» к тому, откуда пришли. */}
-      {activeCount > 0 && (
-        <header className="page__header page__header--with-back">
-          <BackButton />
-          <h1>Операции</h1>
-        </header>
-      )}
+      <header className={`page__header${activeCount ? ' page__header--with-back' : ''}`}>
+        {activeCount > 0 && <BackButton />}
+        <h1>Операции</h1>
+      </header>
 
       <input
         className="field__input"

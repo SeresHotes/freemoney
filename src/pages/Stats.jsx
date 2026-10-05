@@ -145,6 +145,8 @@ export default function Stats() {
 
   return (
     <div className="page">
+      <header className="page__header"><h1>Статистика</h1></header>
+
       <div className="filters">
         <div className="seg">
           <button className={`seg__btn${kind === 'expense' ? ' seg__btn--active' : ''}`} onClick={() => setKind('expense')}>Расходы</button>

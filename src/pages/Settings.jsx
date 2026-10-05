@@ -447,6 +447,8 @@ export default function Settings() {
 
   return (
     <div className="page">
+      <header className="page__header"><h1>Настройки</h1></header>
+
       <section>
         <h2 className="section-title">Разделы</h2>
         <div className="settings-actions">
