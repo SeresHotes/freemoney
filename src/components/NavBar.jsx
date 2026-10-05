@@ -1,14 +1,13 @@
 import { NavLink } from 'react-router-dom';
 
 // «Главная» — посередине, большой круглой кнопкой (центр — самое удобное
-// место под большой палец). Настройки — кнопкой меню «☰» в правом верхнем
-// углу (TopCorner), а справа внизу — категории, чтобы править их по-быстрому.
+// место под большой палец). Заголовков у вкладок нет — где ты, видно здесь.
 const items = [
   { to: '/transactions', label: 'Операции', icon: '📋' },
   { to: '/wallets', label: 'Кошельки', icon: '👛' },
   { to: '/', label: 'Главная', icon: '🏠', end: true, home: true },
   { to: '/stats', label: 'Статистика', icon: '📊' },
-  { to: '/categories', label: 'Категории', icon: '🏷️' },
+  { to: '/settings', label: 'Ещё', icon: '⚙️' },
 ];
 
 export default function NavBar() {

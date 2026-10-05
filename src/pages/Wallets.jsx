@@ -16,8 +16,6 @@ export default function Wallets() {
 
   return (
     <div className="page">
-      <header className="page__header"><h1>Кошельки</h1></header>
-
       <section className={`balance-card wallets-total ${netWorth < 0 ? 'balance-card--negative' : 'balance-card--positive'}`}>
         <div className="muted">Всего на всех кошельках</div>
         <div className="balance-card__value">{formatAmount(netWorth, baseCurrency)}</div>

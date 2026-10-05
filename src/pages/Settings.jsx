@@ -6,7 +6,6 @@ import { ICON_STYLES } from '../utils/emojiArt';
 import { CURRENCIES, formatAmount } from '../utils/currencies';
 import { APP_VERSION, CHANNEL, IS_DEV_CHANNEL, SPREADSHEET_TITLE } from '../config';
 import { agoLabel } from '../utils/format';
-import { EXPERIMENTS, useExperiment, writeExperiment } from '../utils/experiments';
 import { downloadTemplateXlsx, downloadTemplateCsv } from '../api/tableImport';
 
 // Версию подставляет сборка (vite define). Локально без vite — 'dev'.
@@ -400,33 +399,6 @@ function IconStyleSection() {
   );
 }
 
-// ВРЕМЕННО: экспериментальные варианты интерфейса (только на этом устройстве).
-function ExperimentSelect({ id }) {
-  const exp = EXPERIMENTS[id];
-  const value = useExperiment(id);
-  return (
-    <label className="field">
-      <span className="field__label">{exp.label}</span>
-      <select
-        className="field__input field__input--select"
-        value={value}
-        onChange={(e) => writeExperiment(id, e.target.value)}
-      >
-        {Object.entries(exp.options).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function ExperimentsSection() {
-  return (
-    <section>
-      <h2 className="section-title">Эксперименты интерфейса</h2>
-      {Object.keys(EXPERIMENTS).map((id) => <ExperimentSelect key={id} id={id} />)}
-    </section>
-  );
-}
-
 export default function Settings() {
   const {
     transactions, categories, wallets, baseCurrency,
@@ -475,8 +447,6 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <header className="page__header"><h1>Настройки</h1></header>
-
       <section>
         <h2 className="section-title">Разделы</h2>
         <div className="settings-actions">
@@ -502,8 +472,6 @@ export default function Settings() {
       </section>
 
       <IconStyleSection />
-
-      <ExperimentsSection />
 
       <SyncSection />
 
