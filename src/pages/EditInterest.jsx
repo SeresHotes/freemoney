@@ -168,7 +168,7 @@ export default function EditInterest({ tx }) {
 
         {formError && <p className="form-error">{formError}</p>}
 
-        <button type="submit" className="btn btn--block btn--income" disabled={saving}>
+        <button type="submit" className="btn btn--block btn--primary" disabled={saving}>
           {saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
         <button type="button" className="btn btn--block btn--danger" onClick={handleDelete} disabled={saving}>
