@@ -339,7 +339,7 @@ export default function AddTransaction() {
 
         {formError && <p className="form-error">{formError}</p>}
 
-        <button type="submit" className="btn btn--block btn--income" disabled={saving}>
+        <button type="submit" className="btn btn--block btn--primary" disabled={saving}>
           {saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
         {editing && (
