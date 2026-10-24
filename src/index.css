@@ -813,6 +813,13 @@ h2 {
   width: 6.5rem;
   flex-shrink: 0;
 }
+/* Валюта ввода не совпадает с валютой кошелька — подсвечиваем, чтобы было видно. */
+.amount-row__cur--foreign {
+  border-color: #fbbf24;
+  background-color: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  font-weight: 600;
+}
 .conversion {
   background: var(--surface);
   border: 1px dashed var(--border);

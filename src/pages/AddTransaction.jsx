@@ -272,7 +272,7 @@ export default function AddTransaction() {
           <span className="field__label">Сумма</span>
           <div className="amount-row">
             <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus={!editing} />
-            <select className="field__input field__input--select amount-row__cur" value={entryCurrency} onChange={(e) => { setEntryCurrency(e.target.value); setEntryCurrencyTouched(true); setWalletAmountTouched(false); }}>
+            <select className={`field__input field__input--select amount-row__cur${crossCurrency ? ' amount-row__cur--foreign' : ''}`} title={crossCurrency ? `Не валюта кошелька (${walletCurrency})` : undefined} value={entryCurrency} onChange={(e) => { setEntryCurrency(e.target.value); setEntryCurrencyTouched(true); setWalletAmountTouched(false); }}>
               {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
             </select>
           </div>
