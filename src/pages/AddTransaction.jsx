@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext';
 import { newId, todayIso, nowTime } from '../utils/format';
 import { CURRENCIES } from '../utils/currencies';
 import { getRate } from '../api/rates';
+import { lastEntryCurrency } from '../utils/finance';
 import EditAdjustment from './EditAdjustment';
 import EditInterest from './EditInterest';
 
@@ -58,9 +59,14 @@ export default function AddTransaction() {
   const [amount, setAmount] = useState(() =>
     editingTx ? String(editingTx.origAmount ?? Math.abs(editingTx.amount)) : '',
   );
+  // Валюта ввода по умолчанию — та, в которой последний раз вводили операцию
+  // этого типа по кошельку (запоминается сама: оплатил с карты в USD — дальше USD).
+  const defaultEntryCurrency = (name) => lastEntryCurrency(transactions, name, type) || currencyOf(name);
   const [entryCurrency, setEntryCurrency] = useState(
-    () => editingTx?.origCurrency || editingTx?.currency || currencyOf(walletId),
+    () => editingTx?.origCurrency || editingTx?.currency || defaultEntryCurrency(walletId),
   );
+  // Валюту выбрали руками — при смене кошелька её не трогаем.
+  const [entryCurrencyTouched, setEntryCurrencyTouched] = useState(editing);
   const [walletAmount, setWalletAmount] = useState(() =>
     editingTx?.origCurrency ? String(Math.abs(editingTx.amount)) : '',
   );
@@ -82,9 +88,10 @@ export default function AddTransaction() {
   const [formError, setFormError] = useState(null);
 
   const changeWallet = (id) => {
-    // Меняем только кошелёк: валюта ввода остаётся прежней, чтобы её не сбрасывать.
-    // Сумму списания пересчитаем заново под валюту нового кошелька.
+    // Валюту ввода, выбранную руками, не сбрасываем; иначе подставляем привычную
+    // для нового кошелька. Сумму списания пересчитаем заново под его валюту.
     setWalletId(id);
+    if (!entryCurrencyTouched) setEntryCurrency(defaultEntryCurrency(id));
     setWalletAmountTouched(false);
   };
 
@@ -265,7 +272,7 @@ export default function AddTransaction() {
           <span className="field__label">Сумма</span>
           <div className="amount-row">
             <input className="field__input field__input--amount" type="text" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus={!editing} />
-            <select className="field__input field__input--select amount-row__cur" value={entryCurrency} onChange={(e) => { setEntryCurrency(e.target.value); setWalletAmountTouched(false); }}>
+            <select className="field__input field__input--select amount-row__cur" value={entryCurrency} onChange={(e) => { setEntryCurrency(e.target.value); setEntryCurrencyTouched(true); setWalletAmountTouched(false); }}>
               {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
             </select>
           </div>

@@ -119,6 +119,20 @@ function txOrderKey(t) {
   return `${t.date} ${t.time || '00:00'}`;
 }
 
+// Валюта, в которой последний раз вводили операцию этого типа (расход/доход) по
+// кошельку: origCurrency — если платили в чужой валюте, иначе валюта кошелька.
+// '' — таких операций ещё не было. Так форма «запоминает» привычную валюту
+// (например, расходы с долларовой карты в USD) — из самих данных, без настроек.
+export function lastEntryCurrency(transactions, walletName, type) {
+  let latest = null;
+  for (const t of transactions) {
+    if (t.deleted || t.wallet !== walletName || txKind(t) !== type) continue;
+    const key = txOrderKey(t);
+    if (!latest || key > latest.key) latest = { key, currency: t.origCurrency || t.currency || '' };
+  }
+  return latest?.currency || '';
+}
+
 // Баланс кошелька на момент orderKey (все операции с ключом <= orderKey), кроме
 // операции excludeId. Нужен для «сколько было денег на тот момент» — база
 // начисления процентов и хронология долгов.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { signedDelta, walletBalance, txKind, isIncome, isExpense } from './finance';
+import { signedDelta, walletBalance, txKind, isIncome, isExpense, lastEntryCurrency } from './finance';
 
 describe('signedDelta', () => {
   it('новый формат: возвращает знаковый amount', () => {
@@ -51,5 +51,22 @@ describe('txKind / isIncome / isExpense', () => {
     expect(isIncome({ type: 'income' })).toBe(true);
     expect(isExpense({ type: 'expense' })).toBe(true);
     expect(isIncome({ type: 'transfer' })).toBe(false);
+  });
+});
+
+describe('lastEntryCurrency', () => {
+  const txs = [
+    { type: 'expense', wallet: 'Карта', currency: 'RUB', origCurrency: 'USD', date: '2026-10-20', time: '10:00:00' },
+    { type: 'expense', wallet: 'Карта', currency: 'RUB', origCurrency: '', date: '2026-10-01', time: '10:00:00' },
+    { type: 'income', wallet: 'Карта', currency: 'RUB', origCurrency: '', date: '2026-10-22', time: '10:00:00' },
+    { type: 'expense', wallet: 'Нал', currency: 'GEL', origCurrency: 'USD', date: '2026-10-23', time: '10:00:00', deleted: true },
+  ];
+  it('берёт валюту ввода последней операции этого типа', () => {
+    expect(lastEntryCurrency(txs, 'Карта', 'expense')).toBe('USD');
+    expect(lastEntryCurrency(txs, 'Карта', 'income')).toBe('RUB');
+  });
+  it('нет операций (или только удалённые) — пусто', () => {
+    expect(lastEntryCurrency(txs, 'Нал', 'expense')).toBe('');
+    expect(lastEntryCurrency(txs, 'Другой', 'expense')).toBe('');
   });
 });
