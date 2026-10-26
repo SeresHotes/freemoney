@@ -349,6 +349,9 @@ export default function AddTransaction() {
         <button type="submit" className="btn btn--block btn--primary" disabled={saving}>
           {saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
+        {!editing && isExpense && (
+          <button type="button" className="btn btn--block tpl-save-btn">☆ Сохранить как шаблон</button>
+        )}
         {editing && (
           <button type="button" className="btn btn--block btn--danger" onClick={handleDelete} disabled={saving}>
             Удалить операцию
