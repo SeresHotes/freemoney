@@ -1720,3 +1720,135 @@ code {
   gap: 0.6rem;
   font-size: 1.7rem;
 }
+
+/* --- ПРОТОТИП: шаблоны расхода -------------------------------------------- */
+.tpl-strip {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -1rem;
+  padding: 0 1rem 0.1rem;
+  scroll-padding: 0 1rem;
+}
+.tpl-strip::-webkit-scrollbar {
+  display: none;
+}
+.tpl-chip {
+  --tpl-color: var(--accent);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem 0.45rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--tpl-color) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--tpl-color) 45%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.tpl-chip:active {
+  filter: brightness(0.85);
+}
+.tpl-chip__icon {
+  font-size: 1.1rem;
+  display: flex;
+}
+.tpl-chip__name {
+  font-weight: 600;
+}
+.tpl-chip__amount {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.tpl-toast {
+  left: 0.75rem;
+  right: 0.75rem;
+  border-color: var(--income);
+}
+.tpl-sheet__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0 1rem;
+}
+.tpl-sheet__icon {
+  font-size: 1.8rem;
+  color: var(--text);
+  display: flex;
+}
+.tpl-sheet__info {
+  flex: 1;
+  min-width: 0;
+}
+.tpl-sheet__name {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.tpl-sheet__meta {
+  font-size: 0.85rem;
+}
+.tpl-sheet__amount {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tpl-sheet__actions {
+  display: grid;
+  gap: 0.5rem;
+}
+.tpl-save-btn {
+  margin-top: 0.5rem;
+  background: transparent;
+  color: var(--accent);
+  border: 1px dashed var(--accent);
+}
+.tpl-list {
+  grid-template-columns: minmax(0, 1fr);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.tpl-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.tpl-row__grip {
+  color: var(--muted);
+  letter-spacing: -0.2em;
+  cursor: grab;
+}
+.tpl-row__icon {
+  font-size: 1.4rem;
+  display: flex;
+}
+.tpl-row__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tpl-row__name {
+  font-weight: 600;
+}
+.tpl-row__meta {
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tpl-row__amount {
+  font-weight: 700;
+  white-space: nowrap;
+}

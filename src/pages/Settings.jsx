@@ -455,6 +455,7 @@ export default function Settings() {
           <button className="btn btn--block" onClick={() => navigate('/categories')}>🏷️ Категории</button>
           <button className="btn btn--block" onClick={() => navigate('/wallets')}>👛 Кошельки</button>
           <button className="btn btn--block" onClick={() => navigate('/tags')}>🔖 Теги</button>
+          <button className="btn btn--block" onClick={() => navigate('/templates')}>⚡ Шаблоны</button>
         </div>
       </section>
 

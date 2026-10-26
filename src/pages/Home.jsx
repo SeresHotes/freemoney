@@ -8,6 +8,9 @@ import { walletBalance, isIncome, isExpense } from '../utils/finance';
 import { useNetWorth } from '../hooks/useNetWorth';
 import { IS_DEV_CHANNEL } from '../config';
 import CategoryRing from '../components/CategoryRing';
+import TemplateStrip from '../components/TemplateStrip';
+import CategoryIcon from '../components/CategoryIcon';
+import { MOCK_TEMPLATES } from '../utils/templatesMock';
 
 // Иконка-контур 24×24 (стрелки, плюс/минус): в отличие от символов шрифта
 // («‹», «−»), всегда ровно по центру по вертикали.
@@ -110,6 +113,15 @@ export default function Home() {
 
   // Шторка «что показывать»: период и кошелёк. Тап по плашке периода.
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // ПРОТОТИП шаблонов: тост «Записано · Отменить» и меню по удержанию.
+  const [toast, setToast] = useState(null);
+  const [heldTpl, setHeldTpl] = useState(null);
+  const tplUrl = (t) => addUrl('expense', `category=${encodeURIComponent(t.category)}`);
+  const tapTemplate = (t) => {
+    if (t.amount > 0) setToast(t);
+    else navigate(tplUrl(t));
+  };
 
   // Период кольца: месяц / год / всё время (запоминается). Какой именно месяц
   // или год — в адресе (?month=YYYY-MM / ?year=YYYY), чтобы не сбрасывался
@@ -271,6 +283,8 @@ export default function Home() {
         )}
       </section>
 
+      <TemplateStrip templates={MOCK_TEMPLATES} categories={categories} onTap={tapTemplate} onHold={setHeldTpl} />
+
       <section className="home__actions">
         <button className="btn btn--expense" onClick={() => navigate(addUrl('expense'))}>
           <Icon d="M5 12h14" /> Расход
@@ -292,6 +306,37 @@ export default function Home() {
           </button>
         ))}
       </section>
+
+      {toast && (
+        <div className="update-toast tpl-toast" role="status">
+          <span className="update-toast__text">✓ Записано: {toast.name} · {formatAmount(toast.amount, toast.currency)}</span>
+          <div className="update-toast__actions">
+            <button className="update-toast__btn" onClick={() => setToast(null)}>Отменить</button>
+          </div>
+        </div>
+      )}
+
+      {heldTpl && (
+        <BottomSheet title="Шаблон" onClose={() => setHeldTpl(null)}>
+          <div className="tpl-sheet__head">
+            <span className="tpl-sheet__icon">
+              <CategoryIcon icon={categories.find((c) => c.name === heldTpl.category)?.icon} color={categories.find((c) => c.name === heldTpl.category)?.color} />
+            </span>
+            <div className="tpl-sheet__info">
+              <div className="tpl-sheet__name">{heldTpl.name}</div>
+              <div className="muted tpl-sheet__meta">
+                {heldTpl.category} · {heldTpl.wallet || 'любой кошелёк'}
+              </div>
+            </div>
+            <span className="tpl-sheet__amount">{heldTpl.amount > 0 ? formatAmount(heldTpl.amount, heldTpl.currency) : 'сумма — при вводе'}</span>
+          </div>
+          <div className="tpl-sheet__actions">
+            <button className="btn btn--block btn--primary" onClick={() => navigate(tplUrl(heldTpl))}>📝 Открыть в форме</button>
+            <button className="btn btn--block" onClick={() => navigate('/templates')}>✏️ Изменить шаблон</button>
+            <button className="btn btn--block btn--danger" onClick={() => setHeldTpl(null)}>Удалить шаблон</button>
+          </div>
+        </BottomSheet>
+      )}
 
       {sheetOpen && (
         <BottomSheet title="Что показывать" onClose={() => setSheetOpen(false)}>

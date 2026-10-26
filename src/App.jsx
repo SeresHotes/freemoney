@@ -17,6 +17,7 @@ import Debt from './pages/Debt';
 import Interest from './pages/Interest';
 import NewAdjustment from './pages/NewAdjustment';
 import Settings from './pages/Settings';
+import Templates from './pages/Templates';
 import { LoadingScreen } from './pages/Gate';
 
 // Статистика тянет recharts — грузим её отдельным чанком по требованию.
@@ -73,6 +74,7 @@ function Shell() {
           <Route path="/interest" element={<Interest />} />
           <Route path="/adjust" element={<NewAdjustment />} />
           <Route path="/tags" element={<Tags />} />
+          <Route path="/templates" element={<Templates />} />
           <Route
             path="/stats"
             element={
