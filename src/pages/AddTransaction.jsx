@@ -21,7 +21,8 @@ export default function AddTransaction() {
 
   const editing = Boolean(params.id);
   const editingTx = editing ? transactions.find((t) => t.id === params.id) : null;
-  const type = editing ? editingTx?.type : params.type; // 'expense' | 'income'
+  // 'expense' | 'income' — переключается прямо в форме (в т.ч. при правке).
+  const [type, setType] = useState(() => (editing ? editingTx?.type : params.type));
   const isExpense = type === 'expense';
 
   const activeWallets = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
@@ -86,6 +87,14 @@ export default function AddTransaction() {
   const [tags, setTags] = useState(() => editingTx?.tags || []);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  const changeType = (next) => {
+    if (next === type) return;
+    setType(next);
+    // Категория другого типа к новому не подходит — выбрать заново.
+    const cat = categories.find((c) => c.name === category);
+    if (cat && cat.kind !== next && cat.kind !== 'both') setCategory('');
+  };
 
   const changeWallet = (id) => {
     // Валюту ввода, выбранную руками, не сбрасываем; иначе подставляем привычную
@@ -261,6 +270,21 @@ export default function AddTransaction() {
       </header>
 
       <form className="form" onSubmit={handleSubmit}>
+        <div className="type-switch" role="radiogroup" aria-label="Тип операции">
+          {[['expense', 'Расход'], ['income', 'Доход']].map(([value, label]) => (
+            <button
+              type="button"
+              key={value}
+              role="radio"
+              aria-checked={type === value}
+              className={`type-switch__btn type-switch__btn--${value}${type === value ? ' type-switch__btn--active' : ''}`}
+              onClick={() => changeType(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <label className="field">
           <span className="field__label">Кошелёк</span>
           <select className="field__input field__input--select" value={walletId} onChange={(e) => changeWallet(e.target.value)}>
